@@ -42,15 +42,18 @@ const app = express();
 
 app.set("view engine", "ejs");
 app.set("views", "./web/views");
-app.use(expressLayouts);                 // Layout sistem
-app.set("layout", "layout");             // layout.ejs
+app.use(expressLayouts);
+app.set("layout", "layout");
 
 app.use(express.static("./web/public"));
 app.use(express.urlencoded({ extended: true }));
 
+// Bitno kada je server iza IP + port
+app.set("trust proxy", 1);
+
 
 // =======================================
-// 💾 SESSION STORAGE – SQLite
+// 💾 SESSION STORAGE – SQLite (FIXED COOKIE SETTINGS)
 // =======================================
 const SQLiteStore = SQLiteStoreFactory(session);
 
@@ -64,7 +67,10 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dana
+      httpOnly: true,                 // zaštita od JS pristupa
+      secure: false,                  // ❗ IP + HTTP → mora biti false
+      sameSite: "lax",                // ❗ jedini mod koji radi na IP adresi
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dana
     },
   })
 );
