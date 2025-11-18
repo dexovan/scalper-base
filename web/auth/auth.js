@@ -2,18 +2,12 @@ import bcrypt from "bcrypt";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import path from "path";
-import { fileURLToPath } from "url";
 
-// Fix ES module paths
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Use unified project paths (Windows + Linux safe)
+import paths from "../../src/config/paths.js";
 
-// Always resolve project root no matter where PM2 or Node is running
-// /web/auth/auth.js → projectRoot = scalper-base/
-const projectRoot = path.resolve(__dirname, "../../");
-
-// Our database file → scalper-base/data/users.db
-const dbPath = path.join(projectRoot, "data", "users.db");
+// DB location always inside data/
+const dbPath = path.join(paths.DATA_DIR, "users.db");
 
 export async function createDB() {
     const db = await open({
@@ -51,4 +45,4 @@ export async function authenticate(db, username, password) {
     return await bcrypt.compare(password, row.password);
 }
 
-export { dbPath, projectRoot };
+export { dbPath };
