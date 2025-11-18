@@ -2,9 +2,9 @@
 import session from "express-session";
 import path from "path";
 
-import authRoutes from "./routes/auth.js";
-import { requireAuth } from "../src/auth/middleware.js";
-import { createDB } from "../src/auth/auth.js";
+import authRoutes from "./routes/auth.js";            // ✔ OK
+import { requireAuth } from "./auth/middleware.js";   // ✔ OK
+import { createDB } from "./auth/auth.js";            // ✔ FIXED
 
 import apiRoutes from "./routes/api.js";
 import paths from "../src/config/paths.js";
@@ -68,9 +68,7 @@ console.log("✅ Phase 1 Health Monitoring initialized!\n");
 // =======================================
 // 🔐 ROUTES
 // =======================================
-
 app.use(authRoutes);
-
 app.use("/api", apiRoutes);
 
 app.get("/", requireAuth, (req, res) => {
