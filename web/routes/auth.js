@@ -7,9 +7,8 @@ const router = express.Router();
 // GET /login
 router.get("/login", (req, res) => {
   res.render("login", {
-    error: null,
     title: "Login",
-    user: null
+    error: null
   });
 });
 
@@ -21,18 +20,16 @@ router.post("/login", async (req, res) => {
   const user = await findUser(db, username);
   if (!user) {
     return res.render("login", {
-      error: "User not found",
       title: "Login",
-      user: null
+      error: "User not found"
     });
   }
 
   const match = await bcrypt.compare(password, user.password);
   if (!match) {
     return res.render("login", {
-      error: "Invalid password",
       title: "Login",
-      user: null
+      error: "Invalid password"
     });
   }
 
