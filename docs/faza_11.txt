@@ -1,0 +1,865 @@
+========================================
+PHASE 11 – DASHBOARD BACKEND + FRONTEND
+(LIVE PREGLED CELOG SISTEMA – STATUS, SIGNALI, STATE, RIZIK, POZICIJE, NALOZI)
+FINAL SPEC (TXT – DETALJNO I PRECIZNO)
+
+PREGLED
+
+Phase 11 je faza u kojoj sve što smo gradili u fazama 1–10 postaje vidljivo:
+
+sve metrice, score-ovi, režimi, stanja, rizik, pozicije, nalozi, TP/SL →
+prikazani u jednom AI Scalper Dashboard-u.
+
+Ciljevi:
+
+Jedinstven web dashboard na / (posle login-a) koji u realnom vremenu prikazuje:
+
+globalne metrike (equity, PnL, heat, global regime, mode SIM/DRY/LIVE),
+
+hotlist kandidata (scoring + regime + state),
+
+per-symbol detalje (orderbook/flow/pump regimi – koliko je dostupno),
+
+aktivne pozicije + TP/SL info,
+
+aktivne naloge + panic kontrole,
+
+health svih servisa (market data, feature engine, regime, scoring, state, risk, execution).
+
+Backend API sloj (Express rute) koji povezuje:
+
+postojeće JSON fajlove (data/metrics, data/system, data/events, data/orders, data/trades_log)
+
+runtime state modula (health, scoring, regime, risk, execution, state machine).
+
+Frontend JS (bez SPA komplikacija) koji:
+
+periodično (polling) povlači JSON sa /api/…
+
+renderuje tabele, badge-ove i indikatore,
+
+radi minimalno filter/sort po client-side-u.
+
+Phase 11 NE uvodi novi “brain”, samo pravi prozor u mozak koji već postoji.
+
+FAJLOVI KOJE FAZA 11 KREIRA / MENJA
+
+1.1 Novi fajlovi (backend)
+
+web/routes/dashboard.js ← backend endpoints za EJS view + meta-data
+web/routes/api-dashboard.js ← „aggregated“ API (npr. /api/dashboard/summary)
+
+1.2 Novi fajlovi (frontend)
+
+web/public/js/dashboard.js ← glavni JS za AJAX + UI update
+web/public/css/dashboard.css ← specifični stilovi (ako treba preko bootstrapa)
+
+1.3 Novi / izmenjeni view fajlovi
+
+web/views/dashboard.ejs ← glavni dashboard template (umesto trenutnog „demo placeholder“)
+web/views/partials/header.ejs ← opcioni partial za header/nav
+web/views/partials/footer.ejs ← opcioni partial
+
+1.4 Modifikovani fajlovi
+
+web/server.js ← registruje nove rute (dashboard, api-dashboard)
+web/routes/api.js ← koristi se i dalje za “low level” API, ali Phase 11 koristi i agregate
+
+GLAVNA STRUKTURA DASHBOARD-A (UI LAYOUT)
+
+Glavni ekran (posle uspešnog login-a na /):
+
+Layout:
+
+Gornji header (navbar):
+
+levo: logo + naziv sistema: “AI Scalper Control Center”
+
+desno:
+
+Mode badge: SIM / DRY_RUN / LIVE
+
+Global Regime badge: NORMAL / RISK_OFF / PANIC
+
+User dropdown (admin, Logout)
+
+Glavni sadržaj – 3 velika bloka:
+
+A) „Global Overview & Health“ (gornji red)
+B) „Market Scanner & Symbol State“ (srednji deo – glavni)
+C) „Positions / Orders / TPSL / Logs“ (donji deo – tabovi)
+
+2.1 Global Overview & Health panel
+
+Podaci koji se prikazuju (sa leve na desno):
+
+Equity & PnL card:
+
+total equity (USDT)
+
+open PnL (unrealized)
+
+realized PnL (total + dnevnI)
+
+daily PnL %
+
+Risk card:
+
+portfolioHeatPct vs maxPortfolioHeatPct
+
+dayMaxDrawdownPct
+
+riskAllowNewPositions / riskAllowNewLong / riskAllowNewShort (vizuelni indikatori)
+
+Regime card:
+
+globalRegime (GLOBAL_NORMAL / RISK_OFF / PANIC)
+
+broj simbola u NORMAL / PUMP / MANIPULATED / NEWS_DRIVEN / COOLDOWN
+
+Engine Health card:
+
+status per modul:
+
+config/paths
+
+market data service
+
+feature engine
+
+regime engine
+
+scoring engine
+
+state machine
+
+risk engine
+
+execution engine
+
+svaki status: OK / WARN / ERROR (boje: zeleno / žuto / crveno)
+
+timestamp poslednjeg heartbeat-a
+
+2.2 Market Scanner & Symbol State tabela (Hotlist)
+
+Centralna tabela (glavni fokus):
+
+Kolone (tipovi u zagradama):
+
+Symbol (string)
+
+Category (string: "Prime" | "Normal" | "Wild")
+
+Side (string: "LONG" / "SHORT" / "-")
+
+FinalScore (number)
+
+SignalState (string: "NONE" | "WATCH" | "ARM")
+
+Regime (string: "NORMAL" | "PUMP" | "MANIPULATED" | "NEWS_DRIVEN" | "COOLDOWN")
+
+GlobalRegime (string)
+
+PumpRisk (number 0–1)
+
+Spoofing (number 0–1)
+
+Volatility (number 0–1)
+
+CurrentState (string: FLAT / WATCHING / ARMED / ORDER_PLACED / IN_POSITION / MANAGING / COOLDOWN / BLOCKED)
+
+Akcije:
+
+klik na red → otvara “Symbol Detail Panel” (sa desne strane ili u modal-u).
+
+2.3 Donji deo – tabovi
+
+4 taba:
+
+Positions
+
+Orders
+
+TPSL & PnL detail
+
+Logs & Events
+
+BACKEND: AGGREGATED DASHBOARD API
+
+3.1 Endpoint: GET /api/dashboard/summary
+
+Svrha: jedan poziv za globalne brojke + health.
+
+Response JSON:
+
+timestamp: string (ISO)
+
+mode: string (CONFIG.execution.mode)
+
+health:
+
+services: object
+
+config: { status: "OK" | "WARN" | "ERROR", lastUpdateAt: string }
+
+marketData: { status, lastUpdateAt }
+
+featureEngine: { status, lastUpdateAt }
+
+regimeEngine: { status, lastUpdateAt }
+
+scoringEngine: { status, lastUpdateAt }
+
+stateMachine: { status, lastUpdateAt }
+
+riskEngine: { status, lastUpdateAt }
+
+executionEngine: { status, lastUpdateAt }
+
+riskSnapshot:
+
+account: AccountState (iz Phase 8)
+
+dailyStats: DailyRiskStats
+
+riskFlags: RiskFlags
+
+globalRegime:
+
+current: string ("GLOBAL_NORMAL" | "GLOBAL_RISK_OFF" | "GLOBAL_PANIC")
+
+lastUpdateAt: string
+
+3.2 Endpoint: GET /api/dashboard/hotlist
+
+Svrha: kombinuje scoring + regime + state u jednu listu.
+
+Response JSON:
+
+timestamp: string
+
+entries: array<HotlistDashboardEntry>
+
+HotlistDashboardEntry:
+
+symbol: string
+
+category: string ("Prime" | "Normal" | "Wild")
+
+side: string ("LONG" | "SHORT")
+
+finalScore: number
+
+signalState: string ("NONE" | "WATCH" | "ARM")
+
+regime: string (per-symbol regime)
+
+globalRegime: string
+
+pumpRisk: number (0–1)
+
+spoofing: number (0–1)
+
+volatility: number (0–1)
+
+currentState: string (iz state machine)
+
+3.3 Endpoint: GET /api/dashboard/symbol/:symbol/detail
+
+Svrha: detaljan view za jedan simbol.
+
+Response JSON:
+
+symbol: string
+
+category: string
+
+regime: RegimeState snapshot
+
+scoring: ScoreState snapshot
+
+state: SymbolStateContext snapshot
+
+tpsl: TPSLState snapshot (ako pozicija postoji)
+
+positions: array<PositionState> (aktivne za taj simbol)
+
+recentEvents: array<StateChangeEvent> (poslednjih N iz data/events/<symbol>.json)
+
+Tipovi su oni definisani u fazama 5–10.
+
+3.4 Endpoint: GET /api/dashboard/positions
+
+Svrha: za „Positions“ tab.
+
+Response JSON:
+
+timestamp: string
+
+positions: array<PositionState>
+
+PositionState:
+
+symbol: string
+
+side: string
+
+entryPrice: number
+
+currentPrice: number | null (ako dostupno)
+
+qty: number
+
+leverage: number
+
+unrealizedPnl: number
+
+unrealizedPnlPct: number
+
+realizedPnl: number
+
+mfe: number
+
+mae: number
+
+openedAt: string
+
+updatedAt: string
+
+3.5 Endpoint: GET /api/dashboard/orders
+
+Query parametri:
+
+symbol? (string)
+
+status? ("OPEN" | "ALL")
+
+Response JSON:
+
+timestamp: string
+
+orders: array<ExecutionOrder> (kao u Phase 10)
+
+3.6 Endpoint: GET /api/dashboard/tpsl
+
+Response JSON:
+
+timestamp: string
+
+tpslStates: array<TPSLState>
+
+TPSLState:
+
+symbol: string
+
+side: string
+
+entryPrice: number
+
+tp1Price: number
+
+tp2Price: number
+
+stopLossPrice: number
+
+breakEvenPrice: number
+
+trailingActive: boolean
+
+trailingDistancePct: number
+
+pumpOverrideApplied: boolean
+
+spoofingOverrideApplied: boolean
+
+volatilityOverrideApplied: boolean
+
+3.7 Endpoint: GET /api/dashboard/logs/:symbol
+
+Query parametar:
+
+limit? (number, default 50)
+
+Vraća:
+
+timestamp: string
+
+events: array<StateChangeEvent>
+
+StateChangeEvent:
+
+timestamp: string
+
+fromState: string
+
+toState: string
+
+eventType: string
+
+reason: string
+
+extra: object
+
+FRONTEND: web/public/js/dashboard.js
+
+4.1 Glavna arhitektura JS-a
+
+Objekti i funkcije:
+
+DashboardApp:
+
+properties:
+
+refreshIntervalMs: number (npr. 2000–3000 ms)
+
+timers:
+
+summaryTimerId
+
+hotlistTimerId
+
+positionsTimerId
+
+ordersTimerId
+
+main methods:
+
+init():
+
+veže event listenere za tabove i panic dugmad
+
+pozove prvi put: loadSummary(), loadHotlist(), loadPositions(), loadOrders()
+
+pokrene intervale.
+
+loadSummary():
+
+GET /api/dashboard/summary
+
+updateGlobalOverviewPanel(data)
+
+loadHotlist():
+
+GET /api/dashboard/hotlist
+
+renderHotlistTable(entries)
+
+loadPositions():
+
+GET /api/dashboard/positions
+
+renderPositionsTable(positions)
+
+loadOrders():
+
+GET /api/dashboard/orders?status=OPEN
+
+renderOrdersTable(orders)
+
+loadSymbolDetail(symbol):
+
+GET /api/dashboard/symbol/:symbol/detail
+
+renderSymbolDetailPanel(detailData)
+
+4.2 Event handling
+
+klik na red hotlista (data-symbol atribut) →
+DashboardApp.loadSymbolDetail(symbol)
+
+klik na tab „Orders“ →
+odmah poziva loadOrders() (i može ubrzati refresh dok je tab aktivan).
+
+klik na „PANIC CLOSE ALL“ →
+POST /api/execution/panic-close-all (JS fetch POST).
+Posle success:
+
+notifikuje korisnika,
+
+triggeruje instant refresh positions+orders.
+
+klik na „Panic Close symbol“ u symbol detail:
+POST /api/execution/panic-close-symbol sa symbol.
+
+4.3 Formati podataka u JS-u
+
+Kada se podaci učitaju, JS ih tretira kao plain JS objekat:
+
+summary: object
+
+hotlist: { entries: array<object> }
+
+positions: { positions: array<object> }
+
+orders: { orders: array<object> }
+
+JS funkcije NE menjaju strukturu, samo renderuju HTML.
+
+VIEW: web/views/dashboard.ejs
+
+5.1 Glavni container
+
+<div id="global-overview"> – globalne kartice
+
+<div id="market-scanner"> – hotlist tabela
+
+<div id="symbol-detail"> – detaljni panel (prvo prazan, posle se puni)
+
+<div id="bottom-tabs"> – nav tabs + content panovi:
+
+positions
+
+orders
+
+tpsl
+
+logs/debug
+
+5.2 IDs (bitno za JS selektore)
+
+Global overview:
+
+#equity-value
+
+#unrealized-pnl
+
+#realized-pnl
+
+#daily-pnl-pct
+
+#portfolio-heat
+
+#global-regime-badge
+
+#execution-mode-badge
+
+#risk-status-badge
+
+Hotlist:
+
+tabela: #hotlist-table
+
+tbody gde se renderuje: #hotlist-body
+
+Symbol detail:
+
+root: #symbol-detail-panel
+
+unutar:
+
+#symbol-detail-header
+
+#symbol-detail-regime
+
+#symbol-detail-scoring
+
+#symbol-detail-state
+
+#symbol-detail-tpsl
+
+#symbol-detail-events
+
+Positions:
+
+tabela: #positions-table
+
+tbody → #positions-body
+
+Orders:
+
+#orders-table, #orders-body
+
+TPSL:
+
+#tpsl-table, #tpsl-body
+
+Logs:
+
+#logs-table, #logs-body
+
+select symbol za filtriranje: #logs-symbol-select
+
+STATUS I BOJE (UI SIGNALI)
+
+6.1 Global mode badge
+
+SIM → siva/plava
+
+DRY_RUN → narandžasta
+
+LIVE → crvena (da privuče pažnju da je real money)
+
+6.2 Global regime badge
+
+GLOBAL_NORMAL → zeleno
+
+GLOBAL_RISK_OFF → žuto
+
+GLOBAL_PANIC → crveno
+
+6.3 Per-symbol regime badge
+
+NORMAL → zeleno
+
+PUMP → narandžasto, ikona 🔥
+
+MANIPULATED → ljubičasto, ikona 🎭
+
+NEWS_DRIVEN → plavo, ikona 📢
+
+COOLDOWN → sivo, ikona ❄️
+
+6.4 State machine state
+
+FLAT → neutral
+
+WATCHING_* → žuto
+
+ARMED_* → narandžasto
+
+ORDER_PLACED_* → plavo
+
+IN_POSITION_, MANAGING_ → zeleno
+
+COOLDOWN → sivo
+
+BLOCKED_REGIME → crveno
+
+6.5 Risk flags
+
+Na global risk panelu:
+
+portfolioHeatPct > 0 i < 1/2 maxPortfolioHeatPct → OK (zeleno)
+
+1/2 do max → WARN (žuto)
+
+max → CRIT (crveno)
+
+nearDailyLossLimit → žuti warning icon
+
+dailyLossLimitHit → „TRADING LOCKED“ crveni badge
+
+HEALTH INTEGRACIJA (Phase 1 + ostalo)
+
+web/monitoring/health.js već ima health info; Phase 11 samo vizualizuje:
+
+services.health:
+
+svaka komponenta ima:
+
+status
+
+lastBeatAt
+
+message (opcija)
+
+API: GET /api/health (postoji iz Phase 01, ili ga dodefinisati)
+
+Dashboard summary loader može da koristi /api/health direktno ili aggregated /api/dashboard/summary (koji već embeduje health).
+
+Tip polja health service:
+
+status: string
+
+lastUpdateAt: string
+
+message: string
+
+LOGOVI I DEBUG TAB
+
+U „Logs & Events“ tabu:
+
+Podaci:
+
+state events (state machine transitions)
+
+order log (poslednji n naloga)
+
+trade log (zatvoreni trejdovi)
+
+Minimalna struktura UI:
+
+Dropdown: Symbol (ALL or concrete)
+
+Sub-tabovi:
+
+„State Events“
+
+„Orders“
+
+„Trades“
+
+Backend:
+
+GET /api/dashboard/logs/:symbol (state events)
+
+GET /api/dashboard/orders?symbol=… (order log)
+
+GET /api/trades_log/:dateKey?limit=N (već definisano Phase 8)
+
+Frontend:
+
+na promeni symbol dropdown → re-fetch logove.
+
+Tipovi:
+
+state events: već definisano
+
+orders: ExecutionOrder
+
+trades: struktura iz trades_log JSON Lines (entryPrice, closePrice, realizedPnl, durationSeconds, itd.)
+
+REFRESH & PERFORMANSE
+
+Preporučeni intervali (konfigurisano u JS kao number, eventualno u CONFIG.frontend):
+
+summary refresh: svakih 3–5 sekundi
+
+hotlist refresh: svakih 2–3 sekunde
+
+positions refresh: 3–5 sekundi
+
+orders refresh: 3–5 sekundi
+
+symbol detail:
+
+osveži se svaki put kada je panel aktivan (npr. na klik i posle svakih 2–3 sekunde dok je izabran simbol).
+
+logs tab: ručno, na zahtev (reload dugme).
+
+Svi ovi intervali su brojevi u milisekundama i mogu se držati u jednom JS objektu, npr:
+
+DashboardApp.refreshIntervals = {
+summary: 4000,
+hotlist: 2500,
+positions: 4000,
+orders: 4000
+};
+
+TEST SCENARIJI ZA PHASE 11
+
+Test 1 – Bez pozicija, bez naloga:
+
+sistem u SIM modu, bez open positions
+
+dashboard mora da se lepo renderuje bez „undefined“
+
+hotlist možda prazan (nema signala) → tabla treba reći „No candidates“
+
+Test 2 – Jedan aktivan signal + WATCHING state:
+
+scoringEngine generiše ARM/WATCH signal za npr. AIUSDT
+
+stateMachine: WATCHING_LONG
+
+hotlist tabela prikazuje:
+
+symbol=AIUSDT
+
+side=LONG
+
+finalScore>0
+
+signalState="WATCH"
+
+currentState="WATCHING_LONG"
+
+Test 3 – Pozicija otvorena, TP/SL aktivni:
+
+jedna pozicija: BTCUSDT LONG
+
+TP/SL engine postavio tp1/tp2/SL
+
+positions tab: vidi poziciju + unrealizedPnl
+
+TPSL tab: vidi entry, TP1, TP2, SL, break-even, trailingActive
+
+Test 4 – Risk lock:
+
+simulirati dailyLossLimitHit=true
+
+summary risk panel:
+
+badge “TRADING LOCKED”
+
+scoring + hotlist:
+
+kandidat postoji, ali allowed = false, state ne prelazi u WATCH/ARM (i dashboard ne pokazuje da su novi entry dozvoljeni)
+
+Test 5 – Global Panic + Panic Close:
+
+globalRegime=GLOBAL_PANIC
+
+klik „PANIC CLOSE ALL“
+
+sve pozicije odlaze ka closing
+
+posle fill-a:
+
+positions tab prazan
+
+orders tab prikazuje closing naloge
+
+logs tab ima panic događaje
+
+Test 6 – Health failure:
+
+simulirati da npr. featureEngine šalje status=ERROR, message npr. „WS disconnected“
+
+health panel:
+
+featureEngine = crveno
+
+dashboard se i dalje renderuje, ali korisnik vidi problem.
+
+Test 7 – Symbol detail:
+
+klik na symbol u hotlistu
+
+detail panel puni se:
+
+scoring breakdown (components)
+
+regime info
+
+state info (currentState, lastStateChangeReason)
+
+recent events timeline
+
+nema JS errora ako nema TPSL (npr. FLAT stanje).
+
+FINALNI REZULTAT FAZE 11
+
+Posle Phase 11:
+
+Imaš jedinstven, ozbiljan dashboard koji u realnom vremenu prikazuje kompletnu sliku sistema:
+
+globalni risk i PnL,
+
+globalni i per-symbol režimi,
+
+scoring signale i state machine statuse,
+
+aktivne pozicije i naloge,
+
+TP/SL planove i trailing,
+
+event, trade i order logove,
+
+health svih servisa.
+
+Sve je jasno razdvojeno:
+
+backend API (web/routes/api-dashboard.js + postojeći /api/*),
+
+frontend JS (web/public/js/dashboard.js),
+
+EJS view (web/views/dashboard.ejs),
+
+JSON datoteke (data/*) i runtime state (engine moduli).
+
+Svaka stavka koju smo ranije u planu napisali „želim da vidim na dashboardu“ sada ima TAČAN API, tip, ID u DOM-u i refresh logiku.
+
+========================================
+KRAJ DOKUMENTA – PHASE 11

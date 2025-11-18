@@ -1,0 +1,779 @@
+========================================
+PHASE 15 – LATENCY & SLIPPAGE ADAPTATION
+(DINAMIČNO PRILAGOĐAVANJE REALNOM SVETU)
+Ovom fazom sistem prestaje da živi u „idealnoj matematici“ i počinje da se aktivno prilagođava realnosti:
+
+
+meri network latency (REST + WS),
+
+
+meri slippage za svaku stvarnu egzekuciju,
+
+
+meri spread i „execution quality“ po simbolu / dobu dana,
+
+
+automatski koriguje:
+
+
+minimalni pomak za profit (MinMoveForProfit),
+
+
+TP/SL distance,
+
+
+scoring (kazni simbole/raspone gde execution jede profit),
+
+
+TP1/TP2/TPSL parametre,
+
+
+risk (isključi ili smanji risk za loše trade-okruženje).
+
+
+
+
+Ovo je sloj koji kaže: „Ne zanima me kako izgleda u teoriji, već koliko para stvarno ostane posle fill-ova“.
+
+0. CILJ PHASE 15
+
+
+Napraviti Latency Monitor (mrežni i exchange response delay)
+
+
+Napraviti Slippage Tracker (po trade-u, po simbolu, po dobu dana)
+
+
+Izračunavati Execution Quality Profile per simbol
+
+
+Integrisati rezultate u:
+
+
+Fee & TP/SL engine,
+
+
+Scoring engine,
+
+
+Risk & Symbol Profile sistem,
+
+
+Dashboard (specijalan Execution Quality panel).
+
+
+
+
+Sve mora raditi automatski, bez manuelnog „čukanja“.
+
+1. NOVI FAJLOVI / IZMJENE
+1.1 Novi fajlovi
+src/latency/latencyMonitor.js
+src/latency/latencyStats.js
+
+src/execution/slippageTracker.js
+src/execution/executionQuality.js
+
+1.2 Izmene
+
+
+src/execution/orderRouter.js
+→ šalje podatke slippageTracker-u posle order fill-a.
+
+
+src/risk/positionTracker.js
+→ prosleđuje planirani entry/exit vs real entry/exit.
+
+
+src/profiles/profileUpdater.js
+→ koristi nove statistike slippage-a i latency-ja za update symbol profila.
+
+
+src/config/index.js / configEngine
+→ dodaje execution-adaptive parametre (bufferi).
+
+
+web/routes/api-dashboard.js
+→ dodaje execution quality / latency API.
+
+
+web/public/js/dashboard.js
+→ dodaje Execution Quality panel (tab ili card).
+
+
+
+2. KONFIGURACIJA – CONFIG.execution.latency & slippage
+U config.json dodaju se:
+"execution": {
+  "mode": "SIM",
+  "maxSlippagePct": 0.10,
+  "maxSpreadPct": 0.15,
+  "minNotionalUsd": 5,
+  "maxNotionalUsd": 500,
+  "latency": {
+    "pingIntervalMs": 5000,
+    "maxAllowedPingMs": 350,
+    "latencyPenaltyThresholdMs": 250
+  },
+  "slippage": {
+    "updateWindowTrades": 100,
+    "maxAllowedAvgSlippagePct": 0.20,
+    "hardSymbolBlockSlippagePct": 0.40,
+    "adaptativeMinMoveFactor": 1.0,
+    "minMoveFloorPct": 0.08,
+    "minMoveCeilPct": 0.6
+  }
+}
+
+Tipovi:
+
+
+pingIntervalMs, maxAllowedPingMs, latencyPenaltyThresholdMs, updateWindowTrades → number (ms / broj trejdova)
+
+
+maxAllowedAvgSlippagePct, hardSymbolBlockSlippagePct, adaptativeMinMoveFactor, minMoveFloorPct, minMoveCeilPct → number (proceni u %)
+
+
+
+3. LATENCY MONITOR – src/latency/latencyMonitor.js
+3.1 Svrha
+
+
+periodično meri network i exchange latency:
+
+
+REST ping (GET /v5/market/time ili sl.)
+
+
+WS ping/pong (ako je private/public WS konektor spreman)
+
+
+
+
+čuva pokretni prosek, max, min
+
+
+detektuje „loše stanje mreže“
+
+
+daje signale Execution & Risk Engine-u da se prilagode (safeMode / avoid new entries)
+
+
+3.2 Struktura LatencySample
+LatencySample {
+  timestamp: string,         // ISO
+  type: "REST" | "WS",
+  latencyMs: number,
+  endpoint: string | null    // npr "/v5/market/time" ili "private/ws"
+}
+
+3.3 LatencyStats
+LatencyStats {
+  windowSize: number,        // koliko uzoraka čuvamo (npr. 100)
+  rest: {
+    samples: LatencySample[],
+    avgMs: number,
+    maxMs: number,
+    minMs: number
+  },
+  ws: {
+    samples: LatencySample[],
+    avgMs: number,
+    maxMs: number,
+    minMs: number
+  },
+  lastUpdate: string
+}
+
+3.4 LatencyMonitor API
+LatencyMonitor {
+  init(config): void;  // uzima pingIntervalMs itd.
+  start(): void;
+  stop(): void;
+  getStats(): LatencyStats;
+  isLatencyBad(): boolean;
+}
+
+Algoritam:
+
+
+svakih pingIntervalMs:
+
+
+šalje REST ping:
+
+
+beleži t0 = now
+
+
+GET /time
+
+
+t1 = now
+
+
+latencyMs = t1 - t0
+
+
+čuva sample
+
+
+
+
+
+
+WS ping:
+
+
+ako private/public WS ima ping/pong mehanizam:
+
+
+šalje ping (ili čita already builtin ping), meri roundtrip
+
+
+
+
+
+
+isLatencyBad():
+return (stats.rest.avgMs > CONFIG.execution.latency.latencyPenaltyThresholdMs)
+   || (stats.ws.avgMs > CONFIG.execution.latency.latencyPenaltyThresholdMs);
+
+
+4. SLIPPAGE TRACKER – src/execution/slippageTracker.js
+4.1 Svrha
+Za svaki trade:
+
+
+pre egzekucije znamo:
+
+
+plannedEntryPrice (iz TPSL/planera)
+
+
+side (LONG/SHORT)
+
+
+
+
+posle egzekucije znamo:
+
+
+fillPrice
+
+
+
+
+izračunamo slippage:
+
+
+Za long:
+slippagePct = (fillPrice - plannedEntryPrice) / plannedEntryPrice * 100
+
+Za short:
+slippagePct = (plannedEntryPrice - fillPrice) / plannedEntryPrice * 100
+
+Uvek pozitivna vrednost znači negativna po nas (platili više / prodali niže nego plan).
+4.2 Struktura SlippageSample
+SlippageSample {
+  timestamp: string,
+  symbol: string,
+  side: "LONG" | "SHORT",
+  plannedPrice: number,
+  fillPrice: number,
+  slippagePct: number,
+  spreadPctAtEntry: number | null,
+  mode: "SIM" | "DRY_RUN" | "LIVE"
+}
+
+4.3 SlippageStats per simbol
+SymbolSlippageStats {
+  symbol: string,
+  samplesCount: number,
+  avgSlippagePct: number,
+  maxSlippagePct: number,
+  p95SlippagePct: number,
+  avgSpreadPct: number,
+  lastUpdate: string
+}
+
+4.4 Interni storage
+SlippageTrackerState {
+  perSymbol: {
+    [symbol: string]: {
+      windowSize: number,
+      samples: SlippageSample[],
+      stats: SymbolSlippageStats
+    }
+  }
+}
+
+4.5 SlippageTracker API
+SlippageTracker {
+  addSample(sample: SlippageSample): void;
+  getSymbolStats(symbol: string): SymbolSlippageStats | null;
+  getAllStats(): SymbolSlippageStats[];
+}
+
+4.6 Integracija sa ExecutionEngine / orderRouter
+Kad ExecutionEngine dobije filled order:
+
+
+mora znati plannedEntryPrice (to već ima u PositionState/TPSLPlan).
+
+
+kreira SlippageSample:
+
+
+plannedPrice = calculated entry
+
+
+fillPrice = avgFillPrice
+
+
+spreadPctAtEntry = spread u trenutku entry-ja (zapisano iz feature/market snapshot-a)
+
+
+
+
+poziva slippageTracker.addSample(sample).
+
+
+
+5. EXECUTION QUALITY – src/execution/executionQuality.js
+5.1 Svrha
+Na osnovu:
+
+
+SlippageStats
+
+
+LatencyStats
+
+
+Spread statistika (već imamo u feature engine / market pipeline)
+
+
+računa ExecutionQualityScore per simbol i globalno.
+5.2 Struktura ExecutionQuality per simbol
+ExecutionQualitySymbol {
+  symbol: string,
+  qualityScore: number,         // 0–100 (100 = perfektno)
+  avgSlippagePct: number,
+  p95SlippagePct: number,
+  avgSpreadPct: number,
+  avgLatencyMs: number,
+  lastUpdate: string,
+  flags: {
+    highSlippage: boolean,
+    highSpread: boolean,
+    highLatency: boolean,
+    blockNewEntries: boolean
+  }
+}
+
+5.3 Global ExecutionQuality
+ExecutionQualityGlobal {
+  timestamp: string,
+  avgLatencyMsRest: number,
+  avgLatencyMsWs: number,
+  overallQualityScore: number,
+  symbols: ExecutionQualitySymbol[]
+}
+
+5.4 API
+ExecutionQualityEngine {
+  recompute(): ExecutionQualityGlobal;
+  getSymbolQuality(symbol: string): ExecutionQualitySymbol | null;
+  getGlobalQuality(): ExecutionQualityGlobal;
+}
+
+Algoritam za qualityScore (per simbol):
+
+
+počinje sa 100
+
+
+slippage penalty:
+
+
+ako avgSlippagePct <= 0.05 → -0
+
+
+0.05–0.1 → -10
+
+
+0.1–0.2 → -20
+
+
+
+0.2 → -40
+
+
+
+
+
+spread penalty:
+
+
+slična granična logika
+
+
+
+
+latency penalty (global avg):
+
+
+ako latency > latencyPenaltyThresholdMs → -20
+
+
+
+
+Minimum score = 0, maximum 100.
+flags.blockNewEntries:
+blockNewEntries = (p95SlippagePct > CONFIG.execution.slippage.hardSymbolBlockSlippagePct)
+               || (avgSpreadPct > CONFIG.execution.maxSpreadPct * 2)
+
+
+6. KAKO SE OVO UVEZJE U ENGINE?
+6.1 Fee & MinMoveForProfit adaptacija (Phase 9 integracija)
+Do sada:
+MinMoveForProfit = entryFee + exitFee + buffer
+Sada dodajemo:
+symbolStats = slippageTracker.getSymbolStats(symbol);
+if (symbolStats) {
+  effectiveSlippage = symbolStats.avgSlippagePct;
+} else {
+  effectiveSlippage = DEFAULT_SLIPPAGE_GUESS; // npr 0.05%
+}
+
+baseMove = entryFee + exitFee + (effectiveSlippage / 100 * price);
+minMoveForProfit = clamp(
+  baseMove * CONFIG.execution.slippage.adaptativeMinMoveFactor,
+  CONFIG.execution.slippage.minMoveFloorPct / 100 * price,
+  CONFIG.execution.slippage.minMoveCeilPct / 100 * price
+);
+
+To znači:
+
+
+što su fill-ovi gori → minMoveForProfit raste
+
+
+što su fill-ovi bolji → možeš spustiti prag (ali ne ispod floor-a)
+
+
+6.2 TP/SL distance RT adaptacija
+TPSL Engine, kada planira TP1/TP2/SL:
+
+
+koristi minMoveForProfit kao bazu umesto fiksnog modela
+
+
+u PUMP/NEWS režimu i dalje radi svoje override, ali sada „zna“ koliko realno mora da pokrije.
+
+
+6.3 Scoring penal za lošu egzekuciju
+Scoring Engine (Phase 7):
+
+
+uvodi novi feature: ExecutionPenaltyFactor:
+
+
+if (executionQualitySymbol.qualityScore < 60) {
+  penalty = 0.2; // smanji 20%
+} else if (executionQualitySymbol.qualityScore < 80) {
+  penalty = 0.1;
+} else {
+  penalty = 0;
+}
+
+FinalScalpScoreLong *= (1 - penalty);
+FinalScalpScoreShort *= (1 - penalty);
+
+6.4 Risk Engine integracija
+Risk Engine prenosi informaciju:
+
+
+ako blockNewEntries === true za simbol:
+
+
+riskAllowNewPositionsForSymbol[symbol] = false
+
+
+
+
+ako globalQualityScore < 50:
+
+
+smanjuje maxRiskPerTradePct i maxPortfolioHeatPct npr x0.5
+
+
+
+
+
+7. PROFILEUPDATER INTEGRACIJA (Phase 14 link)
+ProfileUpdater (Phase 14):
+
+
+sada koristi SlippageStats + LatencyStats za update polja:
+
+
+executionStats: {
+  avgSlippagePct,
+  avgSpreadPct,
+  recommendedMinMoveForProfitPct
+}
+
+I iz toga ažurira:
+
+
+recommendedLeverage (niža poluga za simbole koji „jedu“ profit slippage-om)
+
+
+recommendedRiskPct smanjuje kada je slippage visok.
+
+
+
+8. DASHBOARD: EXECUTION QUALITY PANEL
+8.1 API endpointi
+GET /api/execution/quality
+Response:
+{
+  timestamp: string,
+  global: {
+    avgLatencyRestMs: number,
+    avgLatencyWsMs: number,
+    overallQualityScore: number
+  },
+  symbols: ExecutionQualitySymbol[]
+}
+
+GET /api/execution/slippage/:symbol
+Response:
+{
+  symbol: string,
+  stats: SymbolSlippageStats,
+  lastSamples: SlippageSample[]  // poslednjih N
+}
+
+GET /api/latency
+Response:
+LatencyStats
+
+8.2 UI
+U dashboard-u (Phase 11):
+
+
+novi card „Execution Quality“ u global overview-u:
+
+
+overallQualityScore
+
+
+avgLatencyRest
+
+
+avgLatencyWs
+
+
+
+
+nova tabela:
+
+
+kolone:
+
+
+Symbol
+
+
+Avg Slippage %
+
+
+P95 Slippage %
+
+
+Avg Spread %
+
+
+Quality Score
+
+
+Flags (HighSlippage / HighSpread / Blocked)
+
+
+
+
+
+
+Boje:
+
+
+qualityScore ≥ 80 → zeleno
+
+
+60–80 → žuto
+
+
+< 60 → crveno
+
+
+Ikonica pored simbola ako blockNewEntries=true (npr. 🚫)
+
+
+Klik na simbol → otvori detaljan slippage history (modal), kroz /api/execution/slippage/:symbol.
+
+9. HEALTH INTEGRACIJA
+HealthSnapshot.services dodaje:
+latencyMonitor: {
+  status: "OK" | "WARN" | "ERROR",
+  lastUpdateAt: string,
+  message: string | null
+},
+slippageTracker: {
+  status: "OK" | "WARN" | "ERROR",
+  lastUpdateAt: string,
+  message: string | null
+}
+
+Logika:
+
+
+ako avgLatency > maxAllowedPingMs → WARN
+
+
+ako nema uspešnog pinga > X sekundi → ERROR
+
+
+ako slippage tracker nema nijedan sample u LIVE modu → WARN (nema podataka)
+
+
+ako avgSlippagePct > hardSymbolBlockSlippagePct i globalno (mnogo simbola) → WARN/ERROR (možda problem na berzi).
+
+
+
+10. TEST SCENARIJI PHASE 15
+Test 1 – Latency monitor radi
+
+
+pokreni sistem u SIM/DRY_RUN (može pingati REST testnet)
+
+
+proveri /api/latency
+
+
+proveri da se avgLatencyRestMs ažurira na svake pingIntervalMs.
+
+
+Test 2 – Slippage tracking (simulacija)
+
+
+napravi nekoliko SIM trejdova sa poznatim plannedPrice i fillPrice
+
+
+proveri SlippageTracker.getSymbolStats(symbol)
+
+
+proveri /api/execution/slippage/symbol → statistika tačna.
+
+
+Test 3 – MinMoveForProfit adaptacija
+
+
+namesti config da tj. slippage je visok (ručno feed-uj nekoliko sample-ova)
+
+
+pozovi TPSL planner za simbol →
+
+
+proveri da se minMoveForProfit povećao (u odnosu na scenario bez slippage).
+
+
+
+
+Test 4 – ExecutionQuality penal
+
+
+ručno postavi avgSlippagePct i avgSpreadPct visoko
+
+
+pozovi ScoringEngine →
+
+
+proveri da se FinalScalpScore smanjio.
+
+
+
+
+Test 5 – BlockNewEntries
+
+
+p95SlippagePct pređe hardSymbolBlockSlippagePct
+
+
+ExecutionQualityEngine postavi blockNewEntries=true
+
+
+Risk/Execution SafetyGuards → REJECT new entries za taj simbol.
+
+
+Test 6 – Dashboard
+
+
+otvori Execution Quality panel
+
+
+vidi real-time update slippage/latency
+
+
+vidi crvenu oznaku za simbole sa blockNewEntries=true.
+
+
+
+11. FINALNI REZULTAT PHASE 15
+Posle ove faze:
+
+
+Tvoj sistem zna koliko ga svet „bije“:
+
+
+meri koliko mreža kasni,
+
+
+meri koliko puta Bybit isporuči loš fill,
+
+
+zna realne slippage + spread uslove po simbolu.
+
+
+
+
+Automatski:
+
+
+povećava minimalnu distancu da bi trejd realno bio u plusu,
+
+
+smanjuje scoring i risk za simbole/okruženja gde execution jede profit,
+
+
+potpuno blokira nove ulaze kada slippage/latency pređu opasan nivo.
+
+
+
+
+Dashboard ti daje:
+
+
+kristalno jasan pogled na „kvalitet egzekucije“,
+
+
+kontrolnu tablu za latency, slippage i execution health.
+
+
+
+
+Ovo transformiše sistem iz „idealnog“ u real-world adaptivnog mikro-structure scalpera.
+========================================
+KRAJ DOKUMENTA – PHASE 15

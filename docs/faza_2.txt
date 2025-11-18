@@ -1,0 +1,755 @@
+========================================
+PHASE 02 – BYBIT PUBLIC CONNECTOR, UNIVERSE & SYMBOL PROFILE
+FINAL SPEC (TXT EDITION) – VARIJANTA C
+
+PREGLED
+
+Phase 02 uvodi sledeće ključne stvari:
+
+Bybit public konektor (REST + WebSocket) za USDT perp markete.
+
+Universe modul koji drži listu svih simbola (USDT perp).
+
+Kategorizaciju simbola (Prime / Normal / Wild).
+
+Detekciju novih simbola (listing).
+
+Osnovni SymbolProfile sistem (stub) koji per simbol čuva osnovne informacije za kasnije „learning“ logike.
+
+API endpoint-e za dashboard da vidi:
+
+listu simbola,
+
+kategorizaciju,
+
+osnovne podatke po simbolu.
+
+Logovanje universe i profila u JSON fajlove u data/.
+
+Faza 02 NE uključuje još microstructure (orderbook/trades/micro-candles) – to dolazi u Fazi 3.
+Ovde je fokus na: lista simbola, meta podaci, kategorizacija, WS health.
+
+FAJLOVI KOJE OVA FAZA KREIRA ILI MENJA
+
+Novi fajlovi:
+
+src/connectors/bybitPublic.js
+src/market/universe.js
+src/market/symbolProfile.js
+
+Moguće proširenje postojećih fajlova:
+
+src/config/index.js (dodavanje parametara za universe i WS retry)
+src/monitoring/health.js (dodavanje marketData health informacija)
+web/routes/api.js (novi endpoint-i: /api/universe, /api/symbol/:symbol/basic)
+
+Novi JSON fajlovi u data/:
+
+data/system/universe.json (snapshot svih simbola)
+data/profiles/<symbol>.json (po jedan fajl po simbolu – stub struktura)
+
+MODUL: src/connectors/bybitPublic.js
+
+2.1 Svrha
+
+Ovaj modul je odgovoran za:
+
+REST komunikaciju sa Bybit public API-jem (lista simbola).
+
+WebSocket komunikaciju sa Bybit public stream-om.
+
+Interno održavanje statusa konekcije (za health).
+
+Emitovanje eventova koje drugi moduli koriste (u ovoj fazi minimalno ticker/heartbeat).
+
+2.2 Spoljašnji interfejs (šta drugi moduli koriste)
+
+Modul bybitPublic.js treba da eksportuje sledeće:
+
+funkcija initPublicConnection()
+
+Tip: funkcija bez parametara
+
+Povratna vrednost: void ili Promise<void> (implementacija može biti async, ali s aspekta specifikacije dovoljno je da se zna da nema rezultat koji se dalje koristi direktno)
+
+Svrha:
+
+uspostavlja WS konekciju prema Bybit public endpoint-u,
+
+podiže interne listenere,
+
+ažurira health status.
+
+funkcija fetchInstrumentsUSDTPerp()
+
+Tip: funkcija
+
+Parametri:
+
+nema parametre; koristi CONFIG.bybit.restBase interno
+
+Vraća: Promise<InstrumentListResult>
+
+InstrumentListResult (tip):
+
+objekat sa poljima:
+
+success: boolean
+
+fetchedAt: string (ISO datetime)
+
+symbols: array od Instrument objekata
+
+Instrument (tip objekta):
+
+symbol: string (npr. "BTCUSDT")
+
+baseAsset: string (npr. "BTC")
+
+quoteAsset: string ("USDT")
+
+contractType: string (npr. "LinearPerpetual")
+
+status: string (npr. "Trading", "Settled")
+
+tickSize: number
+
+minOrderQty: number
+
+lotSize: number
+
+maxLeverage: number (maksimalni leverage koji Bybit dozvoljava)
+
+raw: object (kompletan originalni Bybit response za ovaj simbol, radi debug-a)
+
+getter funkcija getWsStatus()
+
+Tip: funkcija
+
+Parametri: nema
+
+Vraća: objekat WsStatus
+WsStatus:
+
+connected: boolean
+
+lastConnectedAt: string (ISO) ili null
+
+lastMessageAt: string (ISO) ili null
+
+lastErrorAt: string (ISO) ili null
+
+lastErrorMessage: string ili null
+
+Event interfejs (minimalni stub u ovoj fazi)
+
+U ovoj fazi može se koristiti Node EventEmitter ili custom callback register.
+
+Bitno je da modul može da pozove npr:
+
+onPublicEvent(callback) – callback(data: PublicEvent)
+
+PublicEvent u Fazi 2 može biti samo "heartbeat" ili "ticker" stub.
+
+Struktura PublicEvent (sledeća faza će ga proširiti, za sada:
+
+type: string (npr. "ticker" ili "heartbeat")
+
+timestamp: string (ISO datetime)
+
+payload: object (tip zavisi od type, za sad može biti prazan ili jednostavan)
+
+2.3 Interno ponašanje WS konekcije
+
+Konektor se spaja na CONFIG.bybit.wsPublic (string).
+
+Pokušava reconnect sa exponential backoff-om.
+
+Svaki uspešan connect upisuje lastConnectedAt.
+
+Svaka poruka upisuje lastMessageAt.
+
+Svaka greška upisuje lastErrorAt i lastErrorMessage.
+
+WsStatus se koristi u health sistemu.
+
+MODUL: src/market/universe.js
+
+3.1 Svrha
+
+Universe modul održava listu svih linear USDT perpetual simbola, sa njihovim meta podacima i kategorizacijom.
+
+3.2 Struktura glavnog "universe" objekta
+
+Universe se u memoriji predstavlja kao:
+
+UniverseState (objekat) :
+
+fetchedAt: string (ISO datetime) – vreme poslednjeg uspešnog REST fetch-a sa Bybit-a
+
+symbols: objekat (mapa) gde je ključ string simbol (npr. "BTCUSDT"), a vrednost je SymbolMeta objekat
+
+stats: objekat sa agregatnim statistikama
+
+SymbolMeta (objekat):
+
+symbol: string (npr. "BTCUSDT")
+
+baseAsset: string (npr. "BTC")
+
+quoteAsset: string (uvek "USDT" u našem slučaju)
+
+contractType: string (npr. "LinearPerpetual")
+
+status: string (npr. "Trading", "Settled")
+
+category: string (Prime, Normal, Wild)
+
+tickSize: number
+
+minOrderQty: number
+
+lotSize: number
+
+maxLeverage: number
+
+isNewListing: boolean
+
+firstSeenAt: string (ISO datetime – kada je prvi put detektovan)
+
+lastUpdatedAt: string (ISO datetime – poslednji update meta podataka)
+
+UniverseStats (stats polje):
+
+totalSymbols: number
+
+primeCount: number
+
+normalCount: number
+
+wildCount: number
+
+lastUniverseUpdateAt: string (ISO datetime)
+
+3.3 Kategorizacija simbola
+
+Prilikom učitavanja:
+
+Prime:
+
+najlikvidniji simboli (npr. top 10–20 po volumenu, ili ručno definisan spisak u config-u).
+
+Odluka:
+
+Može postojati u CONFIG-u polje "primeSymbols": array<string>,
+
+Ako je symbol u primeSymbols → category = Prime.
+
+Wild:
+
+novi listing (isNewListing = true u nekom prozoru vremena),
+
+niski volumen (ako imamo info),
+
+potencijalno memecoin ili manje likvidan par.
+
+Kasnije se može dodatno definisati prema profilu.
+
+Normal:
+
+svi ostali koji nisu ni Prime ni Wild.
+
+U Fazi 2, pošto nemamo još istorijsku statistiku, kategorizacija se može zasnivati na:
+
+CONFIG.primeSymbols (ručna lista)
+
+svi ostali su Normal,
+
+tek dodati simboli se inicijalno označe kao Wild + isNewListing = true.
+
+3.4 Spoljašnji interfejs Universe modula
+
+Universe modul treba da eksportuje sledeće funkcije:
+
+initUniverse()
+
+Tip: funkcija
+
+Parametri: nema
+
+Povratna vrednost: Promise<void>
+
+Svrha:
+
+koristi bybitPublic.fetchInstrumentsUSDTPerp()
+
+puni UniverseState
+
+kategorije
+
+setuje fetchedAt i stats
+
+upisuje snapshot u data/system/universe.json
+
+refreshUniversePeriodically()
+
+Tip: funkcija
+
+Parametri: nema ili opcioni intervalMs (number)
+
+Povratna vrednost: void
+
+Svrha:
+
+u pozadini na npr. 15 sekundi ponavlja fetchInstrumentsUSDTPerp()
+
+detektuje nove simbole
+
+za nove simbole:
+
+dodaje ih u UniverseState.symbols
+
+setuje isNewListing = true
+
+setuje firstSeenAt = now
+
+setuje category = Wild
+
+update-uje existing simbole ako se promene meta podaci
+
+ažurira stats i snapshot fajl
+
+getUniverseSnapshot()
+
+Tip: funkcija
+
+Parametri: nema
+
+Povratna vrednost: objekat UniverseState (kopija ili readonly view)
+
+getSymbolMeta(symbol: string)
+
+Tip: funkcija
+
+Parametri:
+
+symbol: string
+
+Povratna vrednost:
+
+SymbolMeta objekat ili null ako ne postoji
+
+getSymbolsByCategory(category: string)
+
+Tip: funkcija
+
+Parametri:
+
+category: string (Prime, Normal, Wild)
+
+Povratna vrednost:
+
+array<string> (lista simbola iz te kategorije)
+
+3.5 JSON fajl: data/system/universe.json
+
+Struktura fajla:
+
+top-level objekat identičan UniverseState:
+
+Polja:
+
+fetchedAt: string
+
+symbols: objekat (mapa)
+
+ključ: symbol (string)
+
+vrednost: SymbolMeta objekat (kao gore)
+
+stats: UniverseStats objekat
+
+MODUL: src/market/symbolProfile.js
+
+4.1 Svrha
+
+SymbolProfile modul je stub u Fazi 2, ali definisano je šta će čuvati:
+
+osnovne informacije per simbol, koje će kasnije koristiti:
+
+risk engine,
+
+scoring engine,
+
+automatic adjustments.
+
+4.2 Struktura jednog SymbolProfile objekta
+
+SymbolProfile (po simbolu):
+
+symbol: string
+
+createdAt: string (ISO datetime)
+
+updatedAt: string (ISO datetime)
+
+Stub statistika (kasnije će se puniti):
+
+tradeCount: number (default 0)
+
+winCount: number (default 0)
+
+lossCount: number (default 0)
+
+avgMFE: number (default 0)
+
+avgMAE: number (default 0)
+
+avgSlippage: number (default 0)
+
+Osnovne preferencije (za kasnije):
+
+suggestedMaxLeverage: number ili null
+
+suggestedRiskPerTrade: number ili null
+
+disabled: boolean (po defaultu false – kasnije se može setovati true da blokira simbol)
+
+4.3 JSON fajl: data/profiles/<symbol>.json
+
+Za simbol BTCUSDT fajl bi se zvao:
+
+data/profiles/BTCUSDT.json
+
+Sadržaj:
+
+jedan JSON objekat identičan SymbolProfile strukturi gore.
+
+4.4 Spoljašnji interfejs symbolProfile modula
+
+Modul treba da eksportuje:
+
+loadProfile(symbol: string)
+
+Parametri:
+
+symbol: string
+
+Povratna vrednost: Promise<SymbolProfile>
+
+Ponašanje:
+
+ako fajl postoji → učita JSON i vrati SymbolProfile objekat
+
+ako fajl ne postoji → kreira novi default profile:
+
+symbol = prosleđeni simbol
+
+createdAt = now
+
+updatedAt = now
+
+sve brojčane vrednosti = 0
+
+suggestedMaxLeverage = null
+
+suggestedRiskPerTrade = null
+
+disabled = false
+
+snimi u data/profiles/<symbol>.json
+
+vrati taj objekat
+
+saveProfile(profile: SymbolProfile)
+
+Parametri:
+
+profile: objekat tipa SymbolProfile
+
+Povratna vrednost: Promise<void>
+
+Ponašanje:
+
+ažurira updatedAt = now
+
+upisuje u data/profiles/<symbol>.json
+
+getProfileSnapshot(symbol: string)
+
+Parametri:
+
+symbol: string
+
+Povratna vrednost:
+
+SymbolProfile (sinhrono, u memoriji), ili null ako nije učitan
+
+ako nije učitan, moduli treba da koriste loadProfile ako žele lazy-load.
+
+INTEGRACIJA SA CONFIG I HEALTH
+
+5.1 Dodatak u CONFIG (src/config/index.js)
+
+Mogu se dodati polja:
+
+under system:
+
+universeRefreshIntervalMs: number (npr. 15000)
+
+bybitWsReconnectDelayMs: number (bazni delay za WS reconnect)
+
+under custom:
+
+primeSymbols: array<string> (npr. ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"])
+
+Tipovi:
+
+primeSymbols:
+
+tip: array od stringova
+
+universeRefreshIntervalMs, bybitWsReconnectDelayMs:
+
+tip: number
+
+5.2 Dodatak u HealthStatus (src/monitoring/health.js)
+
+services.marketData dobija dodatne detalje:
+
+marketData:
+
+status: OK / INIT / DEGRADED / DOWN
+
+details: string (opciono)
+
+lastMessageAt: string (ISO) ili null
+
+wsConnected: boolean
+
+wsEndpoint: string
+
+Može se dodati sekcija universe pod HealthStatus.paths ili nova sekcija:
+
+universe:
+
+totalSymbols: number
+
+primeCount: number
+
+normalCount: number
+
+wildCount: number
+
+lastUniverseUpdateAt: string
+
+Sve ove vrednosti se popunjavaju na osnovu UniverseState i WsStatus.
+
+API ENDPOINT-I ZA DASHBOARD (web/routes/api.js)
+
+6.1 GET /api/universe
+
+Svrha:
+
+dashboard dobija overview svih simbola i kategorizacije.
+
+Zahteva login (requireAuth).
+
+Response JSON:
+
+Polja:
+
+fetchedAt: string (ISO)
+
+totalSymbols: number
+
+primeCount: number
+
+normalCount: number
+
+wildCount: number
+
+symbols: array<UniverseSymbolSummary>
+
+UniverseSymbolSummary objekat:
+
+symbol: string
+
+category: string (Prime / Normal / Wild)
+
+status: string (Trading / Settled / itd.)
+
+baseAsset: string
+
+quoteAsset: string
+
+isNewListing: boolean
+
+maxLeverage: number
+
+Napomena:
+
+Ovo je „skraćena“ lista – ne vraća sve meta podatke, samo relevantne za prikaz u tabeli.
+
+6.2 GET /api/symbol/:symbol/basic
+
+Svrha:
+
+dashboard dobija osnovne podatke za jedan simbol, i meta + profile stub.
+
+Parametar:
+
+:symbol → string (npr. "BTCUSDT")
+
+Response JSON polja:
+
+symbol: string
+
+meta: SymbolMeta objekat (kompletan kao u UniverseState.symbols[symbol])
+
+profile: SymbolProfile objekat (iz symbolProfile modula)
+
+Ako simbol ne postoji u Universe:
+
+vratiti HTTP 404 ili JSON sa error poljem, npr:
+
+{ "error": "Symbol not found" }
+
+6.3 GET /api/universe/categories
+
+Opcioni endpoint, ali koristan:
+
+Response JSON:
+
+totalSymbols: number
+
+prime: array<string>
+
+normal: array<string>
+
+wild: array<string>
+
+ŠTA DASHBOARD VIDI U FAZI 2
+
+Na osnovu ovih endpointa, dashboard može da prikaže:
+
+Global panel (dopunjen):
+
+broj totalnih simbola
+
+broj Prime / Normal / Wild
+
+status WS konekcije (Bybit public)
+
+Tabelu simbola:
+
+symbol
+
+category (Prime/Normal/Wild)
+
+status (Trading/...)
+
+isNewListing (ikonica npr. NEW)
+
+maxLeverage
+
+Detalj za jedan simbol:
+
+osnovni meta podaci (tickSize, minOrderQty, lotSize, maxLeverage, status, kada je prvi put viđen)
+
+osnovni profile statistiku (za sada sve 0, kasnije će imati prave vrednosti)
+
+info da li je simbol disabled u profile (za budući risk engine).
+
+TEST SCENARIJI
+
+Test 1 – REST fetchInstrumentsUSDTPerp:
+
+Pokrenuti modul i ručno pozvati fetchInstrumentsUSDTPerp().
+
+Očekuje se:
+
+success = true
+
+symbols = niz sa bar nekoliko desetina simbola
+
+svaki element ima symbol (string), status, tickSize, itd.
+
+Test 2 – initUniverse():
+
+Nakon initUniverse():
+
+UniverseState.symbols nije prazan
+
+stats.totalSymbols > 0
+
+primeCount odgovara broju simbola iz CONFIG.primeSymbols
+
+svi simboli iz primeSymbols postoje u UniverseState
+
+snapshot fajl data/system/universe.json postoji i ima smislen sadržaj.
+
+Test 3 – refreshUniversePeriodically():
+
+Namestiti kratki interval (npr. 5000ms) u test modu.
+
+Dodati log za dodavanje novog simbola (simulacija: ručno izmeniti snapshot JSON pa videti merge).
+
+Proveriti da se stats.lastUniverseUpdateAt menja.
+
+Test 4 – WS konekcija:
+
+Pozvati initPublicConnection().
+
+U health modulu:
+
+marketData.wsConnected = true
+
+lastMessageAt se ažurira kada stigne poruka.
+
+Test 5 – /api/universe:
+
+GET /api/universe iza logina.
+
+Očekuje se JSON sa poljima: fetchedAt, totalSymbols, primeCount, normalCount, wildCount, symbols (niz).
+
+Test 6 – /api/symbol/:symbol/basic:
+
+Pozvati za postojeći simbol, npr. BTCUSDT:
+
+dobija se meta + profile objekat.
+
+Pozvati za nepostojeći, npr. XYZFAKEUSDT:
+
+dobiti 404 ili error JSON.
+
+Test 7 – SymbolProfile stub:
+
+Pozvati loadProfile("BTCUSDT"):
+
+ako fajl ne postoji → kreira se default profile, snima u data/profiles/BTCUSDT.json, vraća objekat sa svim poljima.
+
+pozvati zatim loadProfile opet → treba da učita isti objekat sa istim vrednostima.
+
+FINALNI REZULTAT FAZE 02
+
+Nakon završetka Phase 02:
+
+Sistem zna tačno koji USDT perp simboli postoje na Bybit-u.
+
+Svaki simbol ima definisan SymbolMeta (meta, kategorija, status, tickSize, maxLeverage…).
+
+Universe se periodično osvežava (npr. svakih 15 sekundi).
+
+Novi listing-i se detektuju i označavaju isNewListing = true i category = Wild.
+
+Postoje osnovni SymbolProfile fajlovi za sve simbole koji se učitaju na zahtev.
+
+Health sistem prikazuje status Bybit WS konekcije i broj simbola.
+
+Dashboard može da prikaže kompletan spisak simbola, kategorizaciju i osnovne podatke.
+
+Sistem je spreman za Fazu 03, gde će se na ovaj universe nadograditi microstructure pipeline (orderbook, trades, candles).
+
+========================================
+KRAJ DOKUMENTA – PHASE 02

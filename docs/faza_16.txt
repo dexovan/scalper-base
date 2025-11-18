@@ -1,0 +1,724 @@
+========================================
+PHASE 16 – ALERTI, NOTIFIKACIJE & LJUDSKA KONTROLA
+(TELEGRAM / EMAIL / DASHBOARD ALERT CENTER)
+
+Ovom fazom tvoj sistem prestaje da bude „mute genije“ i dobija glas:
+
+kad je pump,
+
+kad risk poludi,
+
+kad execution zakaže,
+
+kad bot sam sebe isključi ili uđe u PANIC,
+
+→ ti dobijaš jasne, strukturisane notifikacije na Telegram (i po želji email), plus sve vidiš i kontrolišeš preko dashboarda.
+
+0. CILJ PHASE 16
+
+Uvesti centralni Alert Engine koji:
+
+sluša evente (pump, risk, regime, execution, health),
+
+odlučuje da li treba poslati alert,
+
+formatira poruku,
+
+šalje preko jednog ili više kanala (Telegram, email).
+
+Uvesti Alert konfiguraciju:
+
+koje tipove događaja želiš,
+
+na kojim nivoima (INFO / WARN / CRIT),
+
+koje kanale (Telegram / Email / samo Dashboard),
+
+rate limiting (da ne spamuje).
+
+Uvesti Dashboard Alert Center:
+
+lista nedavnih alert-a,
+
+filter po tipu / nivou / simbolu,
+
+podesivi alert settings (na nivou sistema i po korisniku).
+
+Uvesti Manual override preko alerta:
+
+klik u Telegram → otvori PANIC CLOSE / PAUSE trading (opciono – kasnije),
+
+u ovoj fazi minimum: alertovi su jednosmerni, a komande manualno radiš u dashboardu.
+
+1. FAJLOVI KOJE FAZA 16 UVODI / MENJA
+1.1 Novi fajlovi
+src/alerts/alertEngine.js
+src/alerts/alertConfig.js
+src/alerts/alertRouter.js
+src/alerts/channels/telegramChannel.js
+src/alerts/channels/emailChannel.js   (stub, opciono)
+src/alerts/alertTypes.js
+
+1.2 Novi data fajlovi
+data/alerts/alert_log.jsonl
+data/system/alert_config.json
+
+1.3 Izmene
+
+src/monitoring/health.js
+→ šalje evente alert engine-u kad status pređe u WARN/ERROR.
+
+src/risk/riskEngine.js
+→ emituje risk-related evente (daily loss, heat, slippage panic).
+
+src/regime/regimeEngine.js
+→ emituje pump/news/manipulation evente.
+
+src/execution/executionEngine.js
+→ emituje execution failure/PANIC evente.
+
+web/routes/api-dashboard.js
+→ dodaje Alert endpoints (listanje alert-a, update alert config).
+
+web/public/js/dashboard.js
+→ dodaje Alert Center UI.
+
+2. TIPOVI ALERTA – src/alerts/alertTypes.js
+2.1 AlertLevel (string)
+
+"INFO"
+
+"WARN"
+
+"CRIT"
+
+2.2 AlertCategory (string)
+
+"PUMP"
+
+"NEWS"
+
+"RISK"
+
+"EXECUTION"
+
+"HEALTH"
+
+"SYSTEM"
+
+2.3 AlertSource (string)
+
+"REGIME_ENGINE"
+
+"RISK_ENGINE"
+
+"EXECUTION_ENGINE"
+
+"HEALTH_MONITOR"
+
+"CONFIG_ENGINE"
+
+"BACKTEST_ENGINE"
+
+"REPLAY_ENGINE"
+
+2.4 AlertEvent (objekat – osnovna struktura)
+AlertEvent {
+  id: string,                 // generiše se (npr. UUID ili timestamp-based)
+  timestamp: string,          // ISO
+
+  level: "INFO" | "WARN" | "CRIT",
+  category: string,           // npr "RISK"
+  source: string,             // npr "RISK_ENGINE"
+  code: string,               // kratki kod: "DAILY_LOSS_LIMIT_HIT", "GLOBAL_PANIC"
+
+  message: string,            // kratak opis
+  details: object,            // dodatni podaci (symbol, vrednosti, thresholds)
+
+  // meta
+  symbol?: string | null,     // ako se odnosi na konkretan simbol
+  runMode: string,            // "SIM" | "DRY_RUN" | "LIVE" | "REPLAY"
+  acknowledged: boolean,      // da li je pregledan u dashboardu
+  channelsDispatched: string[] // npr ["TELEGRAM","DASHBOARD"]
+}
+
+
+Tipovi:
+
+id, timestamp, level, category, source, code, message, runMode → string
+
+details → object
+
+symbol → string ili null
+
+acknowledged → boolean
+
+channelsDispatched → array<string>
+
+3. ALERT CONFIG – src/alerts/alertConfig.js
+
+Config opisuje kada i kako šaljemo alert-e.
+
+3.1 Format data/system/alert_config.json
+AlertConfig {
+  global: {
+    enabled: boolean,
+    defaultChannels: string[],         // npr ["TELEGRAM"]
+    minLevel: "INFO" | "WARN" | "CRIT",
+    rateLimit: {
+      maxAlertsPerMinute: number,
+      maxAlertsPerHour: number
+    }
+  },
+
+  perCategory: {
+    [category: string]: {
+      enabled: boolean,
+      minLevel: "INFO" | "WARN" | "CRIT",
+      channels?: string[]              // override defaultChannels
+    }
+  },
+
+  // opcioni specifični filteri po kodu
+  perCode: {
+    [code: string]: {
+      enabled: boolean,
+      channels?: string[],
+      minLevel?: "INFO" | "WARN" | "CRIT"
+    }
+  }
+}
+
+
+Primer:
+
+{
+  "global": {
+    "enabled": true,
+    "defaultChannels": ["TELEGRAM"],
+    "minLevel": "WARN",
+    "rateLimit": {
+      "maxAlertsPerMinute": 10,
+      "maxAlertsPerHour": 200
+    }
+  },
+  "perCategory": {
+    "RISK": {
+      "enabled": true,
+      "minLevel": "WARN",
+      "channels": ["TELEGRAM"]
+    },
+    "PUMP": {
+      "enabled": true,
+      "minLevel": "INFO",
+      "channels": ["DASHBOARD"]
+    },
+    "EXECUTION": {
+      "enabled": true,
+      "minLevel": "WARN"
+    },
+    "HEALTH": {
+      "enabled": true,
+      "minLevel": "WARN"
+    }
+  },
+  "perCode": {
+    "DAILY_LOSS_LIMIT_HIT": {
+      "enabled": true,
+      "channels": ["TELEGRAM"],
+      "minLevel": "CRIT"
+    },
+    "GLOBAL_PANIC": {
+      "enabled": true,
+      "channels": ["TELEGRAM"],
+      "minLevel": "CRIT"
+    }
+  }
+}
+
+
+Tipovi:
+
+enabled → boolean
+
+defaultChannels, channels → array<string>
+
+minLevel → string iz skupa "INFO" | "WARN" | "CRIT"
+
+rateLimit.maxAlertsPerMinute, maxAlertsPerHour → number
+
+4. ALERT ENGINE – src/alerts/alertEngine.js
+4.1 Svrha
+
+prima AlertEvent iz bilo kog modula,
+
+proverava config,
+
+proverava rate limit,
+
+odlučuje koje kanale koristi,
+
+poziva alertRouter da ih pošalje,
+
+loguje alert u data/alerts/alert_log.jsonl,
+
+obaveštava dashboard (u memoriji se čuva poslednjih N alert-a).
+
+4.2 API – ulaz
+AlertEngine {
+  init(alertConfig: AlertConfig): void;
+  handleAlert(event: AlertEvent): Promise<void>;
+  getRecentAlerts(limit: number): AlertEvent[];
+  getConfig(): AlertConfig;
+  updateConfig(partialConfig: object): Promise<AlertConfig>;
+}
+
+4.3 Flow handleAlert:
+
+Ako alertConfig.global.enabled === false → exit (samo lokalni log ako želiš).
+
+Ako event.level < alertConfig.global.minLevel → discard.
+
+Proveri perCategory config:
+
+ako postoji perCategory[category] i enabled=false → discard.
+
+Proveri perCode config:
+
+ako postoji i enabled=false → discard.
+
+Rate limiting:
+
+broj alert-a u zadnjih 60 sec < maxAlertsPerMinute?
+
+broj alert-a u zadnjem satu < maxAlertsPerHour?
+
+ako ne → discard ili downgrade na DASHBOARD only.
+
+Odredi kanale:
+
+start: channels = alertConfig.global.defaultChannels
+
+ako postoji perCategory[category].channels → override
+
+ako postoji perCode[code].channels → override
+
+Pozovi alertRouter.dispatch(event, channels)
+
+Upis u data/alerts/alert_log.jsonl (JSON line)
+
+Dodaj event u in-memory listu recentAlerts (npr. max 500)
+
+5. ALERT ROUTER & CHANNELS
+5.1 alertRouter – src/alerts/alertRouter.js
+
+API:
+
+AlertRouter {
+  registerChannel(name: string, channelImpl: AlertChannel): void;
+  dispatch(event: AlertEvent, channels: string[]): Promise<void>;
+}
+
+
+AlertChannel interfejs:
+
+interface AlertChannel {
+  send(event: AlertEvent, formattedMessage: string): Promise<void>;
+}
+
+
+formattedMessage je već pripremljen tekst (render iz template-a).
+
+5.2 Telegram kanal – src/alerts/channels/telegramChannel.js
+5.2.1 Konfiguracija
+
+Env promenljive:
+
+TELEGRAM_BOT_TOKEN – string
+
+TELEGRAM_CHAT_ID – string (grupa ili privatni chat)
+
+Tip: string.
+
+5.2.2 Format poruke (text/plain)
+
+Primer:
+
+🚨 [CRIT][RISK] DAILY_LOSS_LIMIT_HIT
+
+Mode: LIVE
+Equity: 12,345.67 USDT
+Daily PnL: -7.2% (limit: 6.0%)
+
+Akcija: Sistem je prešao u RISK_OFF režim i blokirao nove pozicije.
+
+Time: 2025-11-18 14:23:45 UTC
+Source: RISK_ENGINE
+
+
+Za PUMP alert:
+
+🔥 [INFO][PUMP] PUMP_DETECTED
+
+Symbol: AIUSDT
+PumpIntensity: 0.87
+PumpState: PUMPING
+Regime: PUMP
+
+Napomena: Novi long entry blokiran dok traje PUMP režim.
+
+Time: ...
+
+
+Važno:
+
+bez klikanja linkova u ovoj fazi, samo čista poruka.
+
+svi podaci iz event.details se mapiraju u human-readable format.
+
+5.3 Email kanal – src/alerts/channels/emailChannel.js (stub)
+
+Sada može biti stub (npr. samo log u fajl) ili integracija sa SMTP (pozicioni stub):
+
+Config:
+
+EMAIL_SMTP_HOST (string)
+
+EMAIL_SMTP_PORT (number)
+
+EMAIL_SMTP_USER (string)
+
+EMAIL_SMTP_PASSWORD (string)
+
+ALERT_EMAIL_TO (string / array<string>)
+
+Ako ne postoji SMTP config → kanal se postavlja kao „disabled“.
+
+6. KAKO MODULI GENERIŠU ALERT EVENTE
+6.1 Risk Engine
+
+Primeri:
+
+DAILY_LOSS_LIMIT_HIT (CRIT, RISK):
+
+AlertEvent {
+  id,
+  timestamp,
+  level: "CRIT",
+  category: "RISK",
+  source: "RISK_ENGINE",
+  code: "DAILY_LOSS_LIMIT_HIT",
+  message: "Daily loss limit reached, trading locked.",
+  details: {
+    equity: number,
+    dailyPnlPct: number,
+    dailyLossLimitPct: number
+  },
+  symbol: null,
+  runMode: "LIVE",
+  acknowledged: false,
+  channelsDispatched: []
+}
+
+
+PORTFOLIO_HEAT_HIGH (WARN, RISK):
+
+kada portfolioHeatPct > 80% max heat.
+
+6.2 Regime Engine
+
+PUMP_DETECTED (INFO/WARN, PUMP):
+
+kada PumpState pređe u PUMPING određeni prag intensity.
+
+GLOBAL_PANIC (CRIT, SYSTEM):
+
+kad globalRegime = GLOBAL_PANIC.
+
+6.3 Execution Engine
+
+EXECUTION_FAILURE (WARN/CRIT, EXECUTION):
+
+niz fail-ovanih ordera zaredom / slippage eskalacija.
+
+PANIC_CLOSE_TRIGGERED (CRIT, EXECUTION):
+
+kada se okine panicCloseAll.
+
+6.4 Health Monitor
+
+SERVICE_DOWN (CRIT, HEALTH):
+
+npr. featureEngine.status=ERROR ili marketData.status=ERROR.
+
+SERVICE_WARN (WARN, HEALTH):
+
+npr. WS reconnect loop, prelazak u degraded mode.
+
+7. DASHBOARD – ALERT CENTER
+7.1 API endpoint-i
+GET /api/alerts/recent?limit=50
+
+Response:
+
+{
+  timestamp: string,
+  alerts: AlertEvent[]   // poslednjih N, sortiranih desc po timestampu
+}
+
+POST /api/alerts/acknowledge
+
+Body:
+
+{
+  "ids": ["ALERT_ID_1","ALERT_ID_2"]
+}
+
+
+Server:
+
+u memoriji i fajlu označi acknowledged=true za te id-jeve (u log arhivi to može da se re-loguje; minimalno u memoriji).
+
+Response:
+
+{
+  "success": boolean,
+  "updated": string[]
+}
+
+GET /api/alerts/config
+
+Response:
+
+AlertConfig
+
+POST /api/alerts/config
+
+Body:
+
+{
+  "global": {
+    "minLevel": "WARN"
+  },
+  "perCategory": {
+    "PUMP": {
+      "channels": ["DASHBOARD"]
+    }
+  }
+}
+
+
+Server:
+
+merge sa postojećim config-om, validira, snimi kao data/system/alert_config.json.
+
+7.2 UI – Alert Center (Phase 11 proširenje)
+
+U dashboard-u:
+
+ikona zvona 🔔 u header-u:
+
+badge sa brojem ne-ack alert-a (max 99).
+
+Klik → otvara „Alert Center“ panel:
+
+lista alert-a (table):
+
+Time
+
+Level (color-coded)
+
+Category
+
+Code
+
+Symbol (ako postoji)
+
+Message
+
+Status (ACK/NACK)
+
+filteri:
+
+Level: [INFO/WARN/CRIT] checkbox
+
+Category: multi-select
+
+Symbol: input
+
+akcije:
+
+„Mark all as read“ (acknowledge)
+
+ack pojedinačnih alert-a (checkbox + „Ack selected“)
+
+8. LOGGING ALERTA
+
+data/alerts/alert_log.jsonl
+
+Svaki AlertEvent se upisuje kao JSON line:
+
+{
+  "id": "20251118-142345-DAILY_LOSS_LIMIT_HIT",
+  "timestamp": "2025-11-18T14:23:45.123Z",
+  "level": "CRIT",
+  "category": "RISK",
+  "source": "RISK_ENGINE",
+  "code": "DAILY_LOSS_LIMIT_HIT",
+  "message": "Daily loss limit reached, trading locked.",
+  "details": {
+    "equity": 12847.50,
+    "dailyPnlPct": -7.2,
+    "dailyLossLimitPct": 6.0
+  },
+  "symbol": null,
+  "runMode": "LIVE",
+  "acknowledged": false,
+  "channelsDispatched": ["TELEGRAM"]
+}
+
+
+Retention:
+
+možeš koristiti postojeći retention sistem (Phase 12) i dodati alertsDays u config retention:
+
+CONFIG.retention.alertsDays = 30;
+
+
+Retention job briše alert logove starije od 30 dana (može rotiranje npr. alert-YYYY-MM-DD.jsonl, ali minimalno: jedan log fajl, ili dnevni fajlovi).
+
+9. HEALTH INTEGRACIJA ZA ALERT SISTEM
+
+U HealthSnapshot.services:
+
+alertEngine: {
+  status: "OK" | "WARN" | "ERROR",
+  lastUpdateAt: string,
+  message: string | null
+},
+telegramChannel: {
+  status: "OK" | "WARN" | "ERROR",
+  lastUpdateAt: string,
+  message: string | null
+}
+
+
+Primer:
+
+ako TELEGRAM_BOT_TOKEN nije postavljen → telegramChannel.status="ERROR", message="Missing TELEGRAM_BOT_TOKEN env".
+
+ako poslednji pokušaj slanja nije uspeo → WARN/ERROR.
+
+alertEngine.status="OK" ako prima alert-e bez fatalnih errora.
+
+10. TEST SCENARIJI ZA PHASE 16
+Test 1 – Basic alert creation
+
+Simuliraj DAILY_LOSS_LIMIT_HIT event u RiskEngine.
+
+Proveri da:
+
+AlertEvent se prosledi alertEngine-u.
+
+upisan je u data/alerts/alert_log.jsonl.
+
+pojavi se u /api/alerts/recent.
+
+Test 2 – Config filter (minLevel)
+
+Podesi global.minLevel="CRIT".
+
+Pošalji WARN alert.
+
+Očekivanje:
+
+alert se ne prosleđuje kanalima (može biti logovan ili ne – zavisi od dizajna, minimalno se može odbaciti).
+
+Test 3 – PerCategory override
+
+perCategory.PUMP.channels=["DASHBOARD"].
+
+PUMP_DETECTED event sa level INFO.
+
+Očekivanje:
+
+ne šalje se na Telegram (kanali = ["DASHBOARD"]),
+
+vidi se u Dashboard Alert Center-u.
+
+Test 4 – Rate limit
+
+maxAlertsPerMinute=3.
+
+Pošalji 5 CRIT alert-a u 10 sekundi.
+
+Očekivanje:
+
+samo 3 se šalju kroz kanale,
+
+ostali se discard ili loguju kao „rate limited“.
+
+Test 5 – Telegram integration
+
+Postavi ispravne TELEGRAM_BOT_TOKEN i TELEGRAM_CHAT_ID.
+
+Pošalji jedan CRIT alert.
+
+Proveri da poruka stigne na Telegram (ručno).
+
+Test 6 – Dashboard ack
+
+U UI klik „Mark as read“ za neki alert.
+
+/api/alerts/recent sada vraća acknowledged=true za taj id.
+
+Badge u header-u se smanjuje.
+
+Test 7 – Health alert
+
+Simuliraj da featureEngine padne (status=ERROR).
+
+Health monitor generiše SERVICE_DOWN alert.
+
+Telegram + dashboard obaveštenje.
+
+11. FINALNI REZULTAT PHASE 16
+
+Posle ove faze tvoj sistem:
+
+Više nije „mrtav ekran“ – ima glas koji ti javlja kritične stvari:
+
+kad pump eksplodira,
+
+kad risk ode u RISK_OFF / GLOBAL_PANIC,
+
+kad execution poludi (fail, slippage spike),
+
+kad servisi padnu.
+
+Imaš centralizovan Alert Engine sa:
+
+konfigurabilnim nivoima (INFO/WARN/CRIT),
+
+kategorijama,
+
+per-code override-ima,
+
+rate-limitom da ne pravi spam.
+
+Imaš Telegram kanal (i stub za email) koji te upozorava u realnom vremenu.
+
+Imaš Alert Center u dashboard-u:
+
+istorija alert-a,
+
+filtriranje,
+
+acknowledge,
+
+pregled šta se zaista dešavalo u sistemu.
+
+Uz ovo, tvoj AI Scalper postaje ne samo pametan i adaptivan, nego i transparentan, sa jasnim signalima kad god nešto bitno dešava – tako da ti ostaneš „u filmu“ čak i kad nisi za računarom.
+
+========================================
+KRAJ DOKUMENTA – PHASE 16

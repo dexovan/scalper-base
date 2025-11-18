@@ -1,0 +1,1308 @@
+========================================
+PHASE 10 – EXECUTION ENGINE (ORDER ROUTING, SIM/DRY/LIVE, SAFETY GUARDS)
+FINAL SPEC (TXT EDITION – DETALJNO I PRECIZNO)
+
+
+PREGLED
+
+
+
+Phase 10 je faza u kojoj sistem prvi put dobija realnu moć da:
+
+
+šalje naloge (u SIM, DRY-RUN i LIVE modu),
+
+
+prati statuse naloga (NEW / PARTIALLY_FILLED / FILLED / CANCELED / REJECTED),
+
+
+propagira evente ka:
+
+
+State Machine (Phase 07),
+
+
+Risk/Position Engine (Phase 08),
+
+
+TP/SL Engine (Phase 09),
+
+
+
+
+sprovodi bezbednosne provere pre svakog naloga:
+
+
+spread check,
+
+
+slippage check (entry vs market),
+
+
+regime & risk check (PUMP, MANIPULATED, NEWS, RISK_OFF, daily loss, portfolio heat),
+
+
+minimalni i maksimalni notional,
+
+
+rate limit / network error fallback,
+
+
+
+
+vodi detaljan order log u JSON Lines formatu,
+
+
+izlaže sve informacije preko API za dashboard i ručni „panic“ nadzor.
+
+
+Bitno:
+
+
+U SIM i DRY-RUN modu Execution Engine radi full logiku, ali nikad ne šalje naloge na Bybit.
+
+
+U LIVE modu koristi Bybit Private REST/WS konektor.
+
+
+Interfejs prema ostatku sistema (State Machine, TPSL, Risk) je isti u sva tri moda.
+
+
+
+
+
+FAJLOVI KOJE OVA FAZA KREIRA / MENJA
+
+
+
+Novi fajlovi:
+
+
+src/connectors/bybitPrivateRest.js
+
+
+src/execution/executionEngine.js
+
+
+src/execution/orderRouter.js
+
+
+src/execution/safetyGuards.js
+
+
+src/execution/simulatedExchange.js
+
+
+Izmene:
+
+
+src/state/stateMachine.js
+
+
+prima EXECUTION_* evente iz Execution Engine-a.
+
+
+
+
+src/risk/positionTracker.js
+
+
+već ima hook-ove za POSITION_OPENED / POSITION_CLOSED; sada ih dobija iz Execution Engine-a.
+
+
+
+
+src/monitoring/health.js
+
+
+dodaje services.executionEngine blok.
+
+
+
+
+web/routes/api.js
+
+
+novi endpoint-i za pregled naloga i panic kontrolu.
+
+
+
+
+Novi JSON fajlovi:
+
+
+data/orders/day-YYYY-MM-DD.json    (order log – JSON Lines)
+
+
+data/system/execution_snapshot.json (trenutni status engine-a)
+
+
+
+
+
+CONFIG – EXECUTION (CONFIG.execution)
+
+
+
+U src/config/index.js dodaje se sekcija:
+CONFIG.execution = {
+  mode: "SIM",                // "SIM" | "DRY_RUN" | "LIVE"
+  venue: "BYBIT_LINEAR_PERP", // za sada fiksno
+
+  // Exchange API (samo za LIVE/DRY_RUN, vrednosti iz env)
+  restBaseUrl: "https://api.bybit.com",       // ili testnet
+  wsPrivateUrl: "wss://stream.bybit.com/v5/private", // stub za kasnije
+
+  // Sigurnosni limiti
+  maxSlippagePct: 0.10,       // % razlike vs target entry (npr 0.10% = 0.001)
+  maxSpreadPct: 0.15,         // max dozvoljeni spread u % (bid/ask)
+  orderTimeoutMs: 120000,     // posle koliko ms se order smatra „expired“ i canceluje
+  maxRetryCount: 3,           // retry za network/5xx error
+
+  // Per-order limiti
+  minNotionalUsd: 5,          // minimalan notional po nalogu
+  maxNotionalUsd: 500,        // maksimalan notional po nalogu (može override po symbolu)
+
+  // Klijentski ID prefix
+  clientOrderIdPrefix: "AISCLP",
+
+  // Panic i auto-kill logika
+  panicCloseOnGlobalPanic: true,
+  safeModeOnNetworkErrors: true
+};
+
+Tipovi:
+
+
+mode, venue, restBaseUrl, wsPrivateUrl, clientOrderIdPrefix – string
+
+
+maxSlippagePct, maxSpreadPct, orderTimeoutMs, maxRetryCount, minNotionalUsd, maxNotionalUsd – number
+
+
+panicCloseOnGlobalPanic, safeModeOnNetworkErrors – boolean
+
+
+API ključevi NE idu u CONFIG, već u env promenljive:
+
+
+BYBIT_API_KEY – string
+
+
+BYBIT_API_SECRET – string
+
+
+BYBIT_ENV – string "MAINNET" ili "TESTNET"
+
+
+
+
+
+OSNOVNI TIPOVI – ORDERS & EXECUTION STATE
+
+
+
+3.1 OrderSide
+
+
+string, dozvoljene vrednosti:
+
+
+"BUY"
+
+
+"SELL"
+
+
+
+
+3.2 OrderType
+
+
+string, dozvoljene vrednosti:
+
+
+"LIMIT"
+
+
+"MARKET"
+
+
+"STOP_MARKET" (za SL)
+
+
+"TAKE_PROFIT_MARKET" (za TP)
+
+
+
+
+3.3 TimeInForce
+
+
+string, vrednosti:
+
+
+"GTC" – good till cancel
+
+
+"IOC" – immediate or cancel
+
+
+"FOK" – fill or kill
+
+
+"PostOnly" – maker only
+
+
+
+
+3.4 OrderStatus
+
+
+string, vrednosti:
+
+
+"NEW"
+
+
+"PARTIALLY_FILLED"
+
+
+"FILLED"
+
+
+"CANCELED"
+
+
+"REJECTED"
+
+
+"EXPIRED"
+
+
+
+
+3.5 Internal OrderRequest (što Execution Engine PRIMA)
+OrderRequest:
+{
+  symbol: string,              // npr "BTCUSDT"
+  side: "BUY" | "SELL",
+  type: "LIMIT" | "MARKET" | "STOP_MARKET" | "TAKE_PROFIT_MARKET",
+  timeInForce: "GTC" | "IOC" | "FOK" | "PostOnly",
+
+  // cene
+  price: number | null,        // za LIMIT / STOP / TP
+  triggerPrice?: number | null,// za STOP/TP, opcionalno
+
+  qty: number,                 // količina contracta/coin-a
+  reduceOnly: boolean,         // true za SL/TP ili closing naloge
+  closeOnTrigger?: boolean,    // specifično za Bybit SL/TP, opcionalno
+
+  // metadata
+  clientOrderId: string,       // generiše Execution Engine: npr AISCLP-<timestamp>-<rand>
+  source: string,              // "STATE_MACHINE", "TPSL_ENGINE", "MANUAL"
+  mode: "SIM" | "DRY_RUN" | "LIVE" // kopija iz CONFIG.execution.mode
+}
+
+3.6 Internal ExecutionOrder (šta se LOGUJE i prati)
+ExecutionOrder:
+{
+  symbol: string,
+  side: "BUY" | "SELL",
+  type: string,
+  timeInForce: string,
+  price: number | null,
+  triggerPrice: number | null,
+  qty: number,
+  reduceOnly: boolean,
+  clientOrderId: string,
+
+  // Exchange info (LIVE/DRY_RUN)
+  exchangeOrderId: string | null,
+  status: "NEW" | "PARTIALLY_FILLED" | "FILLED" | "CANCELED" | "REJECTED" | "EXPIRED",
+
+  // Fill info
+  filledQty: number,
+  avgFillPrice: number | null,
+
+  // Risk & context
+  notionalUsd: number,
+  createdAt: string,        // ISO
+  updatedAt: string,        // ISO
+  source: string,           // "STATE_MACHINE", "TPSL_ENGINE", "MANUAL"
+  mode: string,             // "SIM" | "DRY_RUN" | "LIVE"
+
+  // Errors
+  lastError: string | null
+}
+
+3.7 ExecutionEngineState (snapshot)
+{
+  mode: "SIM" | "DRY_RUN" | "LIVE",
+  safeMode: boolean,
+  pendingOrdersCount: number,
+  activeOrdersCount: number,
+  lastErrorAt: string | null,
+  lastErrorMessage: string | null
+}
+
+
+
+
+BYBIT PRIVATE REST KONEKTOR – src/connectors/bybitPrivateRest.js
+
+
+
+Svrha: jedan mali sloj koji govori „Bybit je ovde“.
+NE koristi se direktno iz state machine – koristi ga samo orderRouter.
+4.1 Funkcije (sve async, vraćaju Promise)
+
+
+placeOrder(orderRequest: OrderRequest): Promise<ExchangeOrderResponse>
+
+
+Ulaz:
+
+
+orderRequest: OrderRequest objekat.
+
+
+Izlaz – ExchangeOrderResponse:
+{
+  success: boolean,
+  errorCode: string | null,
+  errorMessage: string | null,
+
+  // Ako success:
+  data?: {
+    exchangeOrderId: string,
+    status: "NEW" | "PARTIALLY_FILLED" | "FILLED" | "CANCELED" | "REJECTED",
+    price: number | null,
+    qty: number,
+    filledQty: number,
+    avgFillPrice: number | null
+  }
+}
+
+
+
+cancelOrder(symbol: string, exchangeOrderId: string): Promise<ExchangeCancelResponse>
+
+
+getOpenOrders(symbol?: string): Promise<ExchangeOpenOrdersResponse>
+
+
+Stub: za LIVE će se napuniti Bybit BYBIT v5 API logikom, ali interfejs nipošto ne menjaš.
+Za SIM/DRY_RUN, ovi pozivi se ne koriste, jer simulaciju radi simulatedExchange.js.
+
+
+
+SAFETY GUARDS – src/execution/safetyGuards.js
+
+
+
+Pre svakog stvarnog slanja naloga (čak i u SIM modu, radi doslednosti) proveravamo:
+5.1 Funkcija: validateOrderRequest(orderRequest, marketSnapshot, riskSnapshot, regimeState): SafetyResult
+Ulaz:
+
+
+orderRequest: OrderRequest
+
+
+marketSnapshot: objekat sa poljima:
+
+
+bestBid: number | null
+
+
+bestAsk: number | null
+
+
+spreadPct: number | null (računat)
+
+
+lastPrice: number | null
+
+
+
+
+riskSnapshot: RiskSnapshot iz Phase 08:
+
+
+riskFlags: RiskFlags
+
+
+account: AccountState
+
+
+
+
+regimeState: RegimeState + GlobalRegime za taj simbol.
+
+
+Izlaz – SafetyResult:
+{
+  ok: boolean,
+  reasons: string[],      // ako !ok – lista razloga: ["SPREAD_TOO_WIDE", "HEAT_TOO_HIGH", ...]
+  warnings: string[],     // npr. ["NEAR_DAILY_LOSS_LIMIT"]
+  adjustedOrder?: OrderRequest // opcioni – ako guard odluči da prilagodi qty/price
+}
+
+5.2 Check liste:
+
+
+Spread check
+
+
+ako spreadPct !== null i spreadPct > CONFIG.execution.maxSpreadPct
+→ ok = false, reason: "SPREAD_TOO_WIDE"
+
+
+
+
+Slippage check (limit orders)
+
+
+za LONG LIMIT BUY:
+
+
+price ne sme biti previše iznad bestBid/bestAsk (po definisanoj toleranciji).
+
+
+
+
+
+
+Notional limits
+
+
+notionalUsd = (orderRequest.price || lastPrice) * qty
+
+
+ako notionalUsd < minNotionalUsd → ok=false, reason: "NOTIONAL_TOO_SMALL"
+
+
+ako notionalUsd > maxNotionalUsd → ok=false, "NOTIONAL_TOO_LARGE" ili ili smanji qty (adjustedOrder).
+
+
+
+
+Risk flags
+
+
+ako riskFlags.riskAllowNewPositions === false i reduceOnly === false
+→ ok=false "RISK_ENGINE_BLOCK_GLOBAL"
+
+
+ako LONG nalog a riskAllowNewLong === false → ok=false "RISK_ENGINE_BLOCK_LONG"
+
+
+ako SHORT nalog a riskAllowNewShort === false → ok=false "RISK_ENGINE_BLOCK_SHORT"
+
+
+
+
+Regime flags
+
+
+ako regimeState.current != "NORMAL" i reduceOnly === false
+→ ok=false "REGIME_BLOCK"
+
+
+
+
+Global regime
+
+
+ako globalRegime = "GLOBAL_PANIC" i reduceOnly === false
+→ ok=false "GLOBAL_PANIC_BLOCK"
+
+
+
+
+Ako ok === false, ExecutionEngine NE šalje nalog; generiše EXECUTION_ERROR event i loguje razlog.
+
+
+
+SIMULATED EXCHANGE – src/execution/simulatedExchange.js
+
+
+
+Svrha: u SIM i DRY_RUN modu, glumi berzu, ali:
+
+
+order matching radi lokalno (instant fill za market, logično fill za limit),
+
+
+PnL računi su identični onome što očekujemo.
+
+
+6.1 Interfejs
+Mora da implementira funkcije:
+
+
+placeOrderSim(orderRequest, marketSnapshot): SimOrderResult
+
+
+cancelOrderSim(simOrderId): SimCancelResult
+
+
+getOpenOrdersSim(symbol?): SimOpenOrdersResult
+
+
+SimOrderResult:
+{
+  success: boolean,
+  simOrderId: string | null,
+  status: "FILLED" | "PARTIALLY_FILLED" | "NEW",
+  filledQty: number,
+  avgFillPrice: number | null
+}
+
+Logika može biti jednostavna:
+
+
+Market order → odmah FILLED po bestBid/bestAsk, plus minimalni random slippage.
+
+
+Limit order:
+
+
+ako je cena „bolja“ od trenutne (npr. BUY limit iznad ask) → instant fill po ask.
+
+
+inače ostaje NEW, a onPriceUpdate može kasnije prepoznati match.
+
+
+
+
+U ovoj fazi SIM engine može biti „instant fill“ za 90% testova, dovoljno za validaciju.
+
+
+
+ORDER ROUTER – src/execution/orderRouter.js
+
+
+
+Svrha: centralna tačka koja zna:
+
+
+da li se radi o SIM/DRY/LIVE,
+
+
+da li treba koristiti simulatedExchange ili bybitPrivateRest,
+
+
+da loguje svaki nalog u data/orders/day-YYYY-MM-DD.json.
+
+
+7.1 Funkcije
+
+
+routeOrder(orderRequest, marketSnapshot, riskSnapshot, regimeState): Promise<ExecutionOrder>
+
+
+Ponašanje:
+
+
+poziva safetyGuards.validateOrderRequest(...)
+
+
+ako ok === false →
+
+
+kreira ExecutionOrder sa status="REJECTED", lastError = reasons.join(",")
+
+
+loguje u JSON
+
+
+vraća ExecutionOrder
+
+
+
+
+ako OK:
+
+
+ako mode = "SIM" ili "DRY_RUN":
+
+
+koristi simulatedExchange.placeOrderSim()
+
+
+
+
+ako mode = "LIVE":
+
+
+koristi bybitPrivateRest.placeOrder()
+
+
+
+
+
+
+kreira ExecutionOrder sa popunjenim poljima:
+
+
+exchangeOrderId = simOrderId ili real ID
+
+
+status, filledQty, avgFillPrice, itd.
+
+
+
+
+upiše ExecutionOrder u data/orders/day-YYYY-MM-DD.json kao JSON Line:
+
+
+{"timestamp":"...","symbol":"BTCUSDT","side":"BUY", ...}
+
+
+
+vraća ExecutionOrder.
+
+
+
+
+cancelOrder(symbol, exchangeOrSimOrderId): Promise<ExecutionOrder | null>
+
+
+
+
+loguje cancel akciju
+
+
+ažurira status u internom praćenju.
+
+
+
+
+getOpenOrders(symbol?): ExecutionOrder[]
+
+
+
+
+vraća trenutno znane aktivne ExecutionOrder-e (NEW, PARTIALLY_FILLED).
+
+
+
+
+
+EXECUTION ENGINE – src/execution/executionEngine.js
+
+
+
+Ovo je glavni modul koji:
+
+
+prihvata ORDER REQUEST događaje iz State Machine / TPSL / Manual API,
+
+
+koristi orderRouter,
+
+
+šalje nazad EXECUTION_* evente (u stateMachine i risk/position engine),
+
+
+održava ExecutionEngineState.
+
+
+8.1 Struktura
+ExecutionEngineState:
+
+
+mode: "SIM" | "DRY_RUN" | "LIVE"
+
+
+safeMode: boolean
+
+
+pendingOrders: Map<string, ExecutionOrder>  (key: clientOrderId)
+
+
+lastErrorAt: string | null
+
+
+lastErrorMessage: string | null
+
+
+8.2 Funkcije
+
+
+initExecutionEngine(config, mode)
+
+
+
+
+setuje state.mode
+
+
+safeMode = false
+
+
+prazni pendingOrders
+
+
+registruje se kao subscriber na događaje iz stateMachine (npr. ORDER_REQUEST event) – ili stateMachine eksplicitno poziva Execution Engine.
+
+
+
+
+submitOrder(request: OrderRequestInput): Promise<ExecutionOrder>
+
+
+OrderRequestInput (što dolazi sa višeg nivoa, npr. stateMachine):
+{
+  symbol: string,
+  side: "LONG" | "SHORT",
+  action: "OPEN" | "CLOSE" | "REVERSE",
+  qtyUsd?: number | null,        // može biti notional u USDT
+  qtyContracts?: number | null,  // alternativno
+  preferredType: "LIMIT" | "MARKET",
+  timeInForce?: string | null,
+  reduceOnly?: boolean | null,
+  source: string                 // "STATE_MACHINE", "TPSL_ENGINE", "MANUAL"
+}
+
+ExecutionEngine:
+
+
+pretvara side u "BUY" ili "SELL" u odnosu na akciju i postojeću poziciju.
+
+
+određuje real qty (uzimajući u obzir symbolMeta – minQty, step)
+
+
+određuje price (npr. iz EntryPlan-a, lastPrice ± offset)
+
+
+popunjava OrderRequest
+
+
+poziva orderRouter.routeOrder(...)
+
+
+upisuje ExecutionOrder u pendingOrders (ako nije odmah FILLED)
+
+
+šalje event:
+
+
+EXECUTION_ORDER_PLACED
+
+
+ili EXECUTION_ORDER_FILLED ako je odmah filled
+
+
+ili EXECUTION_ORDER_REJECTED ako safety/EXCHANGE odbiju.
+
+
+
+
+Event format (StateEvent):
+{
+  type: "EXECUTION_ORDER_PLACED" | "EXECUTION_ORDER_FILLED" | "EXECUTION_ORDER_REJECTED",
+  symbol: string,
+  timestamp: string,
+  payload: {
+    clientOrderId: string,
+    exchangeOrderId: string | null,
+    side: "BUY" | "SELL",
+    qty: number,
+    price: number | null,
+    avgFillPrice?: number | null,
+    status: string,
+    source: string,
+    mode: string,
+    error?: string | null
+  }
+}
+
+
+
+handleFillUpdate(orderUpdate)
+
+
+
+
+kada (u LIVE modu) dođe update sa Bybit (stub) ili u SIM modu kada simulacija fill-uje:
+
+
+ažurira ExecutionOrder status i filledQty
+
+
+ako je FILLED ili CANCELED ili REJECTED → uklanja iz pendingOrders
+
+
+generiše odgovarajući StateEvent:
+
+
+EXECUTION_POSITION_OPENED (za first fill koji otvara poziciju),
+
+
+EXECUTION_POSITION_CLOSED (za closing),
+
+
+plus intermediate EXECUTION_ORDER_PARTIALLY_FILLED ako treba.
+
+
+
+
+
+
+
+
+panicCloseAll(reason: string)
+
+
+
+
+setuje safeMode = true
+
+
+pronađe sve aktivne pozicije (iz risk/positionTracker)
+
+
+za svaku šalje CLOSE nalog (market, reduceOnly) preko submitOrder()
+
+
+loguje u execution_snapshot i orders log
+
+
+generiše event PANIC_CLOSE_TRIGGERED
+
+
+
+
+panicCloseSymbol(symbol: string, reason: string)
+
+
+
+
+isto kao gore, ali samo za dati simbol.
+
+
+
+
+getExecutionSnapshot()
+
+
+
+
+vraća ExecutionEngineState.
+
+
+
+
+
+JSON LOG – data/orders/day-YYYY-MM-DD.json
+
+
+
+Format: JSON Lines (svaki red jedan nalog ili update).
+Primer jedne linije:
+{
+  "timestamp": "2025-11-18T16:23:45.123Z",
+  "clientOrderId": "AISCLP-20251118-162345-00123",
+  "exchangeOrderId": "abcd-efgh-1234",
+  "symbol": "BTCUSDT",
+  "side": "BUY",
+  "type": "LIMIT",
+  "timeInForce": "PostOnly",
+  "price": 91234.5,
+  "qty": 0.01,
+  "reduceOnly": false,
+  "status": "FILLED",
+  "filledQty": 0.01,
+  "avgFillPrice": 91234.5,
+  "notionalUsd": 912.345,
+  "mode": "SIM",
+  "source": "STATE_MACHINE",
+  "lastError": null
+}
+
+Polja su identična ExecutionOrder strukturi + timestamp.
+
+
+
+SNAPSHOT – data/system/execution_snapshot.json
+
+
+
+Primer:
+{
+  "timestamp": "2025-11-18T16:30:00.000Z",
+  "mode": "SIM",
+  "safeMode": false,
+  "pendingOrdersCount": 2,
+  "activeOrdersCount": 3,
+  "lastErrorAt": null,
+  "lastErrorMessage": null
+}
+
+
+
+
+API ENDPOINT-I ZA EXECUTION / PANIC
+
+
+
+11.1 GET /api/execution/overview
+Response JSON:
+{
+  "timestamp": string,
+  "mode": string,
+  "safeMode": boolean,
+  "pendingOrdersCount": number,
+  "activeOrdersCount": number
+}
+
+11.2 GET /api/execution/orders?symbol=BTCUSDT&status=OPEN
+Query parametri:
+
+
+symbol (opciono) – filter po simbolu
+
+
+status (opciono) – "OPEN" | "ALL"
+
+
+Response:
+{
+  "timestamp": string,
+  "orders": ExecutionOrder[]
+}
+
+11.3 POST /api/execution/panic-close-all
+Body (JSON):
+{
+  "reason": "string opis, npr. manual panic na dashboardu"
+}
+
+Akcija:
+
+
+poziva executionEngine.panicCloseAll(reason)
+
+
+Response:
+{
+  "success": boolean,
+  "message": string
+}
+
+11.4 POST /api/execution/panic-close-symbol
+Body:
+{
+  "symbol": "BTCUSDT",
+  "reason": "User clicked panic close on symbol card"
+}
+
+Akcija:
+
+
+executionEngine.panicCloseSymbol(symbol, reason)
+
+
+11.5 POST /api/execution/cancel-orders
+Body:
+{
+  "symbol": "BTCUSDT",
+  "side": "LONG" | "SHORT" | "BOTH"
+}
+
+
+
+pronalazi pending orders za taj simbol (i po side-u, ako bitno)
+
+
+šalje cancel zahteve
+
+
+vraća broj otkazanih naloga.
+
+
+
+
+
+DASHBOARD – POSLE PHASE 10
+
+
+
+Dashboard dobija potpuni Execution sloj:
+
+
+Execution panel:
+
+
+
+
+Mode: SIM / DRY_RUN / LIVE
+
+
+SafeMode: ON/OFF
+
+
+Pending orders: N
+
+
+Active orders: N
+
+
+
+
+Orders table:
+
+
+Kolone:
+
+
+Time
+
+
+Symbol
+
+
+Side (BUY/SELL)
+
+
+Type (LIMIT/MARKET/STOP/TP)
+
+
+Price
+
+
+Qty
+
+
+Status
+
+
+Source (AI / Manual / TPSL)
+
+
+
+
+Per-symbol control:
+
+
+
+
+dugme „Panic Close“ po simbolu → POST /api/execution/panic-close-symbol
+
+
+lista aktivnih naloga za taj simbol
+
+
+
+
+Global Panic:
+
+
+
+
+veliko dugme „PANIC CLOSE ALL“
+
+
+vizuelna potvrda kada se safeMode uključi
+
+
+integracija sa globalRegime GLOBAL_PANIC + RiskEngine riskForceCloseAll
+
+
+Sve se loguje, tako da svaka ručna intervencija ima trag (reason string).
+
+
+
+TEST SCENARIJI
+
+
+
+Test 1 – SIM order happy path:
+
+
+Mode = SIM
+
+
+submitOrder: LONG, MARKET, qty=10 USDT notional
+
+
+simulatedExchange odmah FILLS
+
+
+očekivano:
+
+
+ExecutionOrder.status="FILLED"
+
+
+risk/positionTracker dobije POSITION_OPENED
+
+
+trade se pojavi u positions API
+
+
+
+
+Test 2 – Spread preširok:
+
+
+spreadPct > maxSpreadPct
+
+
+submitOrder → safetyGuards ok=false
+
+
+očekivano:
+
+
+ExecutionOrder.status="REJECTED"
+
+
+lastError sadrži "SPREAD_TOO_WIDE"
+
+
+nema promene u positionTracker-u
+
+
+
+
+Test 3 – Daily loss block:
+
+
+RiskEngine.signal: riskAllowNewPositions=false
+
+
+submitOrder za otvaranje nove pozicije
+
+
+očekivano:
+
+
+REJECTED, reason "RISK_ENGINE_BLOCK_GLOBAL"
+
+
+
+
+Test 4 – Regime PUMP block:
+
+
+regimeState.current="PUMP"
+
+
+order reduceOnly=false
+
+
+očekivano: REJECTED "REGIME_BLOCK"
+
+
+Test 5 – Panic close:
+
+
+otvorene 2 pozicije, po 1 nalog
+
+
+POST /api/execution/panic-close-all
+
+
+engine šalje CLOSE MARKET reduceOnly
+
+
+posle fill-a:
+
+
+sve pozicije = closed
+
+
+stateMachine prelazi u FLAT/COOLDOWN stanja
+
+
+log upisani u orders + events
+
+
+
+
+Test 6 – Order log file:
+
+
+nakon testova proveriti data/orders/day-YYYY-MM-DD.json
+
+
+svaka linija validan JSON, ExecutionOrder polja korektna.
+
+
+Test 7 – Execution snapshot:
+
+
+pozvati /api/execution/overview
+
+
+vrednosti mode/pendingOrdersCount/activeOrdersCount se poklapaju sa internim stanjem.
+
+
+
+
+
+FINALNI REZULTAT FAZE 10
+
+
+
+Kada je Phase 10 završena:
+
+
+Tvoj AI Scalper ima robustan Execution sloj koji je potpuno odvojen od strategije.
+
+
+Možeš da radiš u:
+
+
+SIM modu (virtualni nalozi, lokalni fill-ovi),
+
+
+DRY_RUN modu (realni feed, ali bez realnih naloga – kasnije integracija),
+
+
+LIVE modu (sa Bybit-om).
+
+
+
+
+Pre svakog naloga rade se:
+
+
+Spread check,
+
+
+Slippage check,
+
+
+Notional limits check,
+
+
+RiskEngine & RegimeEngine check.
+
+
+
+
+Sve je logovano u data/orders/ i data/system/execution_snapshot.json.
+
+
+Dashboard dobija:
+
+
+pregled naloga,
+
+
+globalni execution status,
+
+
+panic kontrole po simbolu i globalno.
+
+
+
+
+Ovo je ključni sloj između „AI odlučuje“ i „ljudi/gomila u orderbooku“ – i napravljen je da bude maksimalno bezbedan, transparentan i testabilan.
+========================================
+KRAJ DOKUMENTA – PHASE 10

@@ -1,0 +1,495 @@
+0. Cilj sistema (sa svim novim stvarima)
+Tvoj sistem treba da:
+1.	Skenira ceo Bybit linear USDT perp u realnom vremenu.
+2.	Za svaki simbol razume:
+o	orderbook strukturu (imbalance, zidovi, spoofing),
+o	trade flow (ko napada, ko brani),
+o	volatilnost i pumping/pump&dump faze,
+o	uticaj news/sentimenta,
+o	realan fee-first profit uz leverage.
+3.	Donosi odluke:
+o	da li je simbol:
+	normalan (scalp dozvoljen),
+	u pump modu (specijalni režim),
+	manipulisan spoofingom (izbegavati / smanjiti risk),
+	news-driven (oprez ili posebna logika).
+4.	Upravljа pozicijama:
+o	entries, SL/TP, break-even,
+o	nerealizovan PnL, portfolio risk.
+5.	Sve čuva u JSON fajlovima, sa automatskim brisanjem starog (>24h).
+6.	Ima dashboard gde vidiš:
+o	pump signale,
+o	spoof signale,
+o	news flagove,
+o	sve pozicije, rizik, PnL.
+________________________________________
+1. Data izvori i konektori
+1.1 Bybit konektor (REST + WebSocket)
+•	Market data:
+o	instruments (lista simbola, leverage, tickSize, minQty),
+o	orderbook (depth),
+o	public trades (tick/tape),
+o	klines (1s/3s/5s/15s).
+•	Account/Trading:
+o	balance/equity,
+o	open positions,
+o	open orders,
+o	trade history,
+o	post/modify/cancel orderi.
+1.2 News & Sentiment konektor
+Ne kodiramo još, ali planiramo modul koji može da se nakači na:
+•	Bybit announcements / listing news,
+•	generičke crypto news (npr. simbol-based: BTC, ETH, PIGGY, itd.),
+•	možda kasnije X/Twitter sentiment, trending tickers.
+Izlaz modula:
+•	NewsImpactScore(symbol, t),
+•	NewsEventFlags(symbol) – npr. NEW_LISTING, MAJOR_ANNOUNCEMENT, AIRDROP, DELSTING_RISK.
+________________________________________
+2. Universe simbola (bez rupa + brza detekcija novih)
+2.1 Start
+•	Na startu: jedan REST call → svi USDT linear perp simboli.
+2.2 Ažuriranje (bez propuštanja)
+•	Svakih npr. 15 sekundi:
+o	proveriti da li se pojavljuju novi simboli.
+o	ako novi → odmah dodati u sistem kao WILD + NEWS-LISTING flag.
+2.3 Kategorije simbola
+•	Prime – top po 24h volumu i dubini (BTC, ETH, SOL…)
+•	Normal – stabilni altovi (regularni scalping)
+•	Wild – novi listing, niski volume ali visoka micro-vola, memecoini, pump-kandidati
+Svaki simbol ima:
+•	Category (Prime/Normal/Wild),
+•	Profile (statistika iz istorije),
+•	RegimeState (Normal/Pump/Manipulated/NewsDriven/Cooldown).
+________________________________________
+3. Storage: JSON + Retention
+3.1 Struktura
+Folder data/:
+•	data/orderbook/<symbol>.json
+•	data/trades/<symbol>.json
+•	data/metrics/<symbol>.json
+•	data/trades_log/day-YYYY-MM-DD.json (executed trades, PnL)
+•	data/events/<symbol>.json (pump/news/spoof događaji)
+Svaki fajl je append-only ili rolling buffer.
+3.2 Retention job (svakih 24h)
+•	skenira data/,
+•	briše JSON fajlove/starije zapise:
+o	evente, book snapshot-e, trade logove starije od 24h (ili čuva samo daily summary),
+•	ostavlja samo:
+o	poslednja 24h microstructure istorije,
+o	agregirane statistike (per-symbol profile).
+________________________________________
+4. Real-time Data Pipelines (microstructure pipeline)
+4.1 Orderbook stream
+Za svaki simbol:
+•	držimo trenutni orderbook snapshot (bids/asks),
+•	različit depth po kategoriji:
+o	Prime: top 50–100 nivoa,
+o	Normal: top 50,
+o	Wild: top 20 (dovoljno za pumping).
+4.2 Trade stream (tape)
+•	ring buffer poslednjih npr. 1000–2000 trejdova:
+o	time, price, qty, isBuyerMaker,
+o	side (agresivni kupac/prodavac).
+4.3 Micro-candles
+•	1s, 3s, 5s, 15s sveće:
+o	OHLC, volume, delta volume (buy/sell).
+Sve to se periodično upisuje u JSON (sa pruningom staruga).
+________________________________________
+5. Feature Engine – sa pumping, spoofing i news aware logikom
+5.1 Orderbook Imbalance
+•	TOB imbalance (level1),
+•	depth imbalance u zonama (0–0.05%, 0.05–0.15%, 0.15–0.5%),
+•	ImbLongScore, ImbShortScore.
+5.2 Wall & Spoof Engine
+Za svaki potential wall:
+•	definisan kao nivo gde size >> proseka u zoni,
+•	pratimo:
+o	size,
+o	poziciju,
+o	trajanje,
+o	broj testova,
+o	koliko se refill-uje vs koliko se topi.
+Na osnovu ponašanja:
+•	ABSORBING:
+o	mnogo agresivnih naloga protiv zida,
+o	cena ne probija,
+o	zid se obnavlja → pravi support/resistance.
+•	SPOOFING (lažni orderi):
+o	nivo se pojavljuje velik → sklanja se čim cena priđe,
+o	order add/cancel ratio ekstremno visok,
+o	zid stalno „iskače i nestaje“ u istom području.
+Iz ovoga dobijamo:
+•	WallSupportScore, WallResistanceScore,
+•	SpoofingScore (što veći → više manipulacije → penal za signale).
+5.3 Pumping & Anomaly Engine
+Ovo uvodiš sada:
+Cilj: prepoznati faze:
+•	PrePump (akumulacija),
+•	Pumping (vertical move),
+•	Blowoff top,
+•	Dump,
+•	Cooldown.
+Koristi:
+•	price change % u zadnjih 5s / 15s / 60s,
+•	volume spike u odnosu na svoj nedavni prosek,
+•	trade-per-second rate,
+•	orderbook thinning (prazan book tokom spike-a),
+•	visok SpoofingScore + visoka vola = verovatan „manipulative pump“.
+Izlaz:
+•	PumpState(symbol) ∈ {NONE, PREPUMP, PUMPING, BLOWOFF, DUMP, COOLDOWN},
+•	PumpIntensityScore.
+Kako utiče na trejdove:
+•	Ako PUMPING ili BLOWOFF:
+o	zabraniti nove long ulaze,
+o	dozvoliti samo vrlo kontrolisane kontra scalpe (ako uopšte).
+•	Ako PREPUMP:
+o	oprezno, smanjen size, poseban režim.
+•	Ako DUMP/COOLDOWN:
+o	moguće scalping okruženje, ali sa manjim leverage-om.
+5.4 Trade Flow & Delta
+Kao ranije:
+•	AggBuy vs AggSell,
+•	DeltaVol,
+•	DeltaRatio,
+•	streak nivo (koliko sekundi dominira jedna strana).
+5.5 Volatility Engine
+•	micro ATR (1s/3s),
+•	intraminute range,
+•	VolatilityScore,
+•	VolatilityExplosionFlag (kad odjednom skoči).
+5.6 Fee & Leverage Engine (integrisano)
+•	minimalni pomak u % da pokrije fee + buffer → MinMoveForProfit,
+•	per-symbol LiqSafetyScore (koliko je entry daleko od liq price na izabranom leverage-u).
+5.7 News & Sentiment Engine
+Uzima podatke iz news konektora:
+Per symbol:
+•	NewsImpactScore (0–100),
+•	NewsType (listing, hack, airdrop, partnership, delisting, regulatory…),
+•	NewsTime.
+Uticaj:
+•	ako NewsImpactScore visok:
+o	sistem može da:
+	privremeno pređe u NEWS_REGIME za taj simbol:
+	smanji leverage,
+	poveća minimalnu udaljenost SL-a (da ne pogine na šumu),
+	ili potpuno zabrani trejdovanje tih par minuta ako je rizik visok (npr. hack, FUD).
+________________________________________
+6. Regime Engine (per simbol + global)
+6.1 Per-symbol Regime
+Na osnovu:
+•	PumpState,
+•	SpoofingScore,
+•	NewsImpactScore,
+•	VolatilityScore.
+Definišemo:
+•	RegimeState(symbol) ∈ {NORMAL, PUMP, MANIPULATED, NEWS_DRIVEN, COOLDOWN}
+Primeri:
+•	PUMP → PumpState PUMPING/BLOWOFF + vola explosion.
+•	MANIPULATED → visok SpoofingScore, puno lažnih zidova, nepotpuno izvršavanje naloga.
+•	NEWS_DRIVEN → visok NewsImpactScore.
+6.2 Global Market Regime (nije must, ali je jako dobro)
+Na osnovu:
+•	BTC/ETH vola,
+•	cross-market correlation,
+•	veliki šok (dump celog tržišta).
+Stanja:
+•	GLOBAL_NORMAL,
+•	GLOBAL_RISK_OFF (dump, high vola, FUD),
+•	GLOBAL_PANIC (ne otvaraj nove pozicije, samo štiti equity).
+________________________________________
+7. Scoring & Signal Engine (sa svim faktorima)
+Za svaki simbol i smer:
+•	BaseScalpScoreLong/Short (iz orderbooka, flow-a, fee, leverage).
+•	korekcije:
+o	ako PumpState=PUMPING ⇒ jako smanji score za long i generalno risk,
+o	ako SpoofingScore visok ⇒ penal, ili zabrani trading,
+o	ako NewsImpactScore visok:
+	u zavisnosti od tipa news-a: ili zabrana, ili specijalni mod,
+o	ako RegimeState = MANIPULATED ⇒ disable scalping.
+Na kraju:
+•	FinalScalpScoreLong,
+•	FinalScalpScoreShort.
+Threshold-i:
+•	watch_threshold,
+•	arm_threshold.
+Samo ako je RegimeState = NORMAL ili COOLDOWN_DONE i FinalScalpScore dovoljno visok → signal ide u state mašinu.
+________________________________________
+8. State mašina po simbolu (uz pumping/news)
+Stanja, uz Regime:
+1.	FLAT
+2.	WATCHING_LONG / WATCHING_SHORT
+3.	ARMED_LONG / ARMED_SHORT
+4.	ORDER_PLACED
+5.	IN_POSITION
+6.	MANAGING
+7.	EXITED
+8.	COOLDOWN
+9.	BLOCKED_REGIME (PUMP/MANIPULATED/NEWS_HIGH_RISK)
+Prelazi (primer):
+•	FLAT → WATCHING_LONG:
+o	FinalScalpScoreLong > watch_threshold
+o	RegimeState in {NORMAL}.
+•	WATCHING_LONG → ARMED_LONG:
+o	dodatno:
+	wall apsorpcija dobra,
+	delta flow ok,
+	nema fresh harmful news,
+	PumpState != PUMPING/BLOWOFF.
+•	bilo koji state → BLOCKED_REGIME:
+o	ako RegimeState pređe u PUMP/MANIPULATED/NEWS_HIGH_RISK
+o	akcija: cancel pending orders, ne otvarati nove.
+________________________________________
+9. Risk & Portfolio Engine (sa nerealizovanim PnL i real-time heatom)
+9.1 Per-trade risk
+Kao pre:
+•	risk per trade (R) = % account-a,
+•	position size računa se iz distance entry → SL, leverage, fee.
+9.2 Unrealized PnL / Live gubitak
+•	svaki trade ima:
+o	unrealizedPnL,
+o	maxFavorableExcursion (MFE),
+o	maxAdverseExcursion (MAE).
+Risk engine gleda ne samo realized PnL, već i:
+•	koliko se potencijalno može izgubiti ako svi SL-ovi uđu odmah:
+o	portfolio_heat = sum(risk_per_position).
+Ako:
+•	portfolio_heat > heat_limit ili
+•	unrealized_drawdown > unrealized_limit,
+→ blokira nove trejdove, možda zatvara najrizičnije.
+9.3 Daily loss & news/pump integracija
+•	Ako npr. u PUMP ili NEWS režimu u kratkom vremenu dobiješ više gubitaka:
+o	posebni limiti (striktiji),
+o	prelazak sistema u RISK_OFF.
+________________________________________
+10. TP/SL, Break-even & Fee-first logika (sa pumpingom)
+10.1 Fee-first
+•	TP1 nikad ispod MinMoveForProfit (iz fee modula).
+10.2 Break-even trigger (nerealizovan PnL)
+•	kad unrealizedPnL >= Fee_total * (1 + bufferK):
+o	SL pomera se na:
+	entry + fee+buffer (long),
+	entry - fee-buffer (short).
+10.3 Pump aware TP/SL
+•	Ako PumpState pređe u BLOWOFF:
+o	može se agressively uzeti profit (skratiti TP2),
+o	ili pomeriti trailing SL malo bliže.
+•	Ako je MANIPULATED/NEWS:
+o	SL možda treba da bude širi (ili uopšte ne trejduješ).
+________________________________________
+11. Execution Engine + zaštite
+•	Maker-preferred entry, fallback na taker ako scenario zahteva hitno.
+•	Auto cancel:
+o	ako book/flow/news promene sliku pre fill-a.
+•	Pre izvršenja proveriti:
+o	da li je RegimeState i dalje dozvoljen,
+o	da li portfolio heat dozvoljava još jednu poziciju.
+Kill switch:
+•	mreža/API problemi,
+•	ekstremni spread,
+•	ekstremna vola globalno,
+•	ručno preko dashboarda.
+________________________________________
+12. Dashboard (sa pumping, spoofing, news)
+Dashboard treba da ti da instant sliku svega:
+12.1 Global panel
+•	Equity, balance,
+•	total Unrealized/Realized PnL,
+•	portfolio heat,
+•	global regime (NORMAL / RISK_OFF / PANIC).
+12.2 Hot list
+Za svaki simbol:
+•	category (Prime/Normal/Wild),
+•	RegimeState,
+•	PumpState + PumpIntensity,
+•	SpoofingScore,
+•	NewsImpactScore (+ tip news-a),
+•	FinalScalpScoreLong/Short,
+•	current state (FLAT/WATCHING/IN_POSITION…).
+Boje i ikone:
+•	plamen 🔥 za pump,
+•	sirena 🚨 za high NewsImpact,
+•	maska 🎭 za spoofing.
+12.3 Active trades
+•	symbol, side, size, leverage,
+•	entry, liq dist,
+•	SL/TP1/TP2,
+•	unrealized PnL, R,
+•	break-even status (pre ili posle).
+12.4 Symbol detail view
+•	orderbook heatmap,
+•	označeni zidovi i spoof nivoa,
+•	micro-candles,
+•	delta flow graf,
+•	news timeline (eventi).
+________________________________________
+13. Logging, JSON arhiva & replay
+•	svaki signal, state-change, trade, news-event, pump-event upisuje se u JSON.
+•	kasnije možeš:
+o	“replay” jednog sata trading-a,
+o	trenirati ML modele na realnim microstructure + news podacima.
+________________________________________
+14. Redosled implementacije (praktično)
+1.	Bybit konektor + JSON storage + retention (osnova).
+2.	Orderbook + trade stream + micro candles.
+3.	Feature Engine: imbalance, walls, spoofing, flow, vola, fee, leverage.
+4.	Pump & Regime Engine.
+5.	News & Sentiment stub (čak i ako prvo ručno feeduješ events).
+6.	Scoring & Signal engine (FinalScalpScore uz Regime).
+7.	State mašina po simbolu.
+8.	Risk & portfolio engine (sa unrealized PnL).
+9.	TP/SL + break-even fee-first engine.
+10.	Execution engine (+ basic safety).
+11.	Dashboard backend + frontend (korak po korak).
+12.	Logging + replay.
+15. Infrastruktura & deployment
+Cilj: minimizuješ probleme interneta, latency-a i „proces ne sme da stane“.
+15.1 Gde engine radi
+•	Trading engine se NE vrti na kućnom PC, već:
+o	na VPS-u/serverskoj mašini u regionu blizu Bybit data-centra (npr. Singapur / Tokio).
+•	Tvoj PC u Švedskoj:
+o	koristiš samo za dashboard (browser) + admin.
+15.2 Razdvajanje procesa
+Minimalno 3 procesa / servisa:
+1.	Market Data Service
+o	WS konekcija na Bybit public,
+o	održava orderbook i trade stream,
+o	pušta evente dalje (npr. preko Redis publish/sub).
+2.	Strategy & Risk Service
+o	Feature engine (5),
+o	Regime (6),
+o	Scoring (7),
+o	State machine (8),
+o	Risk/Portfolio (9).
+3.	Execution Service
+o	Priča sa Bybit private WS/REST,
+o	Slanje/cancel/modify ordera,
+o	Sync realnih pozicija.
+Po želji još dva:
+4.	Storage/Logging Service – asinhrono piše JSON.
+5.	Dashboard Backend – servira API za frontend, ne blokira strategiju.
+15.3 Supervisor i autorestart
+•	Svi servisi pokrenuti preko:
+o	pm2 ili systemd (ili docker + restart policies).
+•	Ako neki proces padne:
+o	automatski se restartuje,
+o	centralni „health monitor“ vidi šta se desilo.
+15.4 Health-check & Heartbeat
+•	Svaki servis šalje heartbeat (npr. svake 2–5s):
+o	u Redis / DB / health endpoint.
+•	Strategy servis:
+o	ako ne dobije market data heartbeat → ne otvara nove trejdove.
+•	Execution servis:
+o	ako izgubi Bybit private WS → prebaci se u „SAFE MODE“ (ne otvara nove pozicije, po potrebi zatvara postojeće).
+________________________________________
+16. SIM / LIVE / DRY-RUN režimi & testiranje
+Plan sada ima logove i replay, ali treba jasno da razlikujemo modove rada.
+16.1 Režimi
+1.	SIM (Simulation / Paper trading)
+o	sve iste odluke kao LIVE,
+o	ali orderi/pnl se računaju lokalno,
+o	NIŠTA se ne šalje na Bybit kao realni order.
+2.	DRY-RUN LIVE DATA
+o	koristiš real-time feed sa Bybit-a,
+o	ali i dalje ne šalješ prave naloge,
+o	super za testiranje latency-tolerant logike.
+3.	LIVE
+o	Execution service šalje naloge na Bybit,
+o	risk engine i kill switch u fullu.
+Mode mora biti:
+•	globalno vidljiv (dashboard),
+•	zaštićen (ne može slučajno iz SIM u LIVE jednim klikom bez potvrde).
+16.2 Backtest & Replay engine
+Na osnovu sekcije 13 (JSON logovi):
+•	Replay modul:
+o	možeš „pustiti“ sat vremena istorije kao da je live,
+o	Strategy radi kao da je live,
+o	Execution šalje virtuelne naloge.
+Cilj:
+•	testiraš logiku bez rizika,
+•	menjaš thresholds, vidiš kako utiče.
+________________________________________
+17. Konfiguracija, parametri & auto-učene profile
+Plan već pominje Profile(symbol) ali da to zaokružimo.
+17.1 Centralni config sistem
+•	Glavni modul konfiguracije (npr. config.json + env varijable) sadrži:
+o	globalne parametre:
+	risk per trade,
+	max portfolio heat,
+	daily loss limit,
+	watch/arm thresholds,
+	default fee assumptions, itd.
+o	per-category parametre (Prime/Normal/Wild),
+o	per-symbol override (ako želiš posebnu logiku za npr. BTCUSDT).
+Konfig mora biti:
+•	učitljiv bez restartovanja celog sistema (hot reload),
+•	verzionisan (znaš koja verzija je bila aktivna kad).
+17.2 Per-symbol „learning loop“
+Na osnovu logova:
+•	za svaki simbol:
+o	uspeh/pad strategije,
+o	average MFE/MAE,
+o	koliko često skače u pump režim,
+o	koliko često spoofa.
+Iz toga:
+•	automatski prilagođavaš:
+o	max leverage,
+o	SL/TP distance,
+o	skor težine (npr. za neki simbol je orderbook manje pouzdan, pa se više oslonimo na flow).
+To može početi kao ručni proces (analiziraš JSON), kasnije:
+•	mali modul „SymbolProfileUpdater“ koji periodično (npr. jednom dnevno) apdejtuje profile na osnovu istorije.
+________________________________________
+18. Latency & Slippage adaptacija (realnost sistema)
+Tvoja strategija je microstructure, ali ipak *nije* HFT u kolokejšen racku.
+Moramo:
+1.	explicitan latency buffer u entry/TP/SL logici,
+2.	adaptaciju slippage-a iz stvarnih trejdova.
+18.1 Latency buffer u planiranju naloga
+Kad:
+•	engine izračuna entry, SL, TP1/TP2,
+dodaje:
+•	minimalan safe buffer u % koji kompenzuje:
+o	network latency,
+o	Bybit matching delay,
+o	prelet kroz nivo zbog market ordera.
+To se može držati u config-u:
+•	latency_price_buffer_pct (npr. 0.02–0.05%).
+18.2 Slippage monitor
+Za svaki REALAN trade:
+•	uporediš:
+o	planirani entry/exit level,
+o	stvarni fill price,
+•	računaš slippage u % i u USDT.
+Ako:
+•	prosečni slippage po simbolu / kategoriji raste,
+•	ili eksplodira u određenom dobu dana / režimu,
+onda:
+•	povećavaš MinMoveForProfit,
+•	menjaš SL/TP kako bi i dalje imao pozitivan expectancy,
+•	moguće čak i isključuješ simbol kad slippage + spread postanu preveliki.
+Na taj način, sistem se uči iz sopstvenih rana.
+________________________________________
+19. Operativni monitoring, alerti & ljudska kontrola
+Da ne bude „pusti ga pa se nadaj“.
+19.1 Metrics & alerti
+Metrici koje vredi imati:
+•	broj otvorenih pozicija,
+•	portfolio heat,
+•	latency WS/REST (ping),
+•	broj errora / retry pokušaja prema Bybit-u,
+•	max drawdown u toku dana.
+Alerti (npr. Telegram / email / Discord):
+•	kad sistem pređe u:
+o	GLOBAL_RISK_OFF,
+o	GLOBAL_PANIC,
+o	BLOCKED_REGIME za ključne simbole (BTC, ETH),
+•	kad dnevni loss limit skoro bude pogođen,
+•	kad slippage pređe prag.
+19.2 Manual override / panic kontrole
+Sa dashboarda:
+•	dugme:
+o	„PANIC CLOSE“ – zatvori sve otvorene pozicije (market),
+o	„PAUSE TRADING“ – ne otvaraj nove pozicije, ali upravljaj postojećim,
+o	„BLACKLIST SYMBOL“ – odmah prebacuje simbol u stanje „manualno blokiran“.
+Sve to se loguje, da kasnije znaš zašto su odluke bile drugačije tog dana.
+
+

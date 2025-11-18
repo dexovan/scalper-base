@@ -1,0 +1,227 @@
+PHASE 01 – CONFIG, PATHS & HEALTH
+FINAL SPECIFICATION (TXT EDITION)
+
+PREGLED
+
+Phase 01 postavlja osnovne module i folder strukturu projekta.
+Cilj je da obezbedi:
+
+univerzalne putanje koje rade isto na Windows i Linux,
+
+centralni config objekat sa svim parametrima,
+
+health modul koji opisuje stanje servisa,
+
+API endpoint koji dashboard koristi za prikaz statusa,
+
+inicijalne foldere u data/ koji se automatski kreiraju.
+
+Ovo je osnova za sve sledeće faze.
+
+FAJLOVI KOJE OVA FAZA KREIRA
+
+Ova faza kreira sledeće fajlove:
+
+src/config/paths.js
+src/config/index.js
+src/monitoring/health.js
+web/routes/api.js
+
+Ažurira sledeći fajl (dodaje API rutu):
+
+web/server.js
+
+Automatski kreira sledeće foldere:
+
+data/system
+data/system/logs
+data/profiles
+data/tmp
+
+MODUL: src/config/paths.js
+
+Svrha:
+Ovaj modul određuje apsolutne putanje projekta, bez obzira na operativni sistem.
+
+Exportovane vrednosti (sve string):
+
+PROJECT_ROOT
+DATA_DIR
+SYSTEM_DIR
+LOG_DIR
+PROFILES_DIR
+TMP_DIR
+
+Kriterijumi:
+
+sve vrednosti moraju biti apsolutne putanje,
+
+ne smeju počinjati sa file://,
+
+folderi se kreiraju automatski ako ne postoje.
+
+MODUL: src/config/index.js
+
+Svrha:
+Centralni konfiguracioni objekat koji koriste svi servisi.
+
+CONFIG objekat sadrži sledeće sekcije:
+
+mode
+Tip: string
+Dozvoljene vrednosti: SIM, DRY_RUN, LIVE
+
+risk (object)
+riskPerTrade: number
+maxPortfolioHeat: number
+dailyLossLimit: number
+unrealizedLimit: number
+
+scoring (object)
+watchThreshold: number
+armThreshold: number
+
+latency (object)
+latencyPriceBufferPct: number
+
+fees (object)
+maker: number
+taker: number
+
+bybit (object)
+restBase: string
+wsPublic: string
+wsPrivate: string
+apiKey: string (opciono)
+apiSecret: string (opciono)
+
+system (object)
+retentionIntervalMs: number
+healthUpdateIntervalMs: number
+
+MODUL: src/monitoring/health.js
+
+Svrha:
+Drži globalni HealthStatus objekat koji prikazuje stanje servisa, putanja, i environment-a.
+
+HealthStatus struktura:
+
+mode
+Tip: string
+Vrednosti: SIM, DRY_RUN, LIVE
+
+services (object)
+web: ServiceHealth
+marketData: ServiceHealth
+strategy: ServiceHealth
+execution: ServiceHealth
+
+env (object)
+nodeVersion: string
+platform: string
+uptimeSeconds: number
+
+paths (object)
+projectRootOk: boolean
+dataDirOk: boolean
+logDirOk: boolean
+profilesDirOk: boolean
+
+timestamps (object)
+lastUpdate: string (ISO datetime format)
+
+ServiceHealth struktura:
+status: string (OK, INIT, DEGRADED, DOWN)
+details: string (opciono)
+lastMessageAt: string (opciono)
+
+MODUL: web/routes/api.js
+
+Svrha:
+Servira backend API rute koje dashboard koristi.
+
+U ovoj fazi postoji samo jedna ruta:
+
+GET /api/health
+
+Ova ruta vraća kompletan HealthStatus objekat.
+Ova ruta zahteva login (requireAuth).
+
+IZMENJEN FAJL: web/server.js
+
+Izmene:
+
+Uvozi se api router
+
+Registruje se ruta: app.use("/api", requireAuth, apiRouter)
+
+DASHBOARD PRIKAZ (ŠTA SE OČEKUJE)
+
+Dashboard će iz /api/health prikazati:
+
+MODE (SIM / DRY_RUN / LIVE)
+
+Web status
+
+MarketData status
+
+Strategy status
+
+Execution status
+
+Node verzija
+
+Platforma (linux, win32)
+
+Uptime u sekundama
+
+Timestamp poslednjeg update-a
+
+Status svih pathova (OK/NOT OK)
+
+Dashboard će osvežavati podatke svakih 5–10 sekundi.
+
+TEST SCENARIJI
+
+Test 1 – Paths test
+
+U paths.js logovati PROJECT_ROOT i DATA_DIR
+
+Očekuje se apsolutna putanja
+
+Ne sme biti relativna
+
+Ne sme početi sa file://
+
+Test 2 – Health endpoint
+
+Pozvati GET /api/health
+
+marketData, strategy i execution treba da budu INIT
+
+web treba da bude OK
+
+Test 3 – Dashboard prikaz
+
+Dashboard mora prikazati PRAVE vrednosti, ne placeholder.
+
+FINALNI REZULTAT FAZE 01
+
+Kada je Phase 01 završena:
+
+putanje su apsolutne i iste na Windows i Linux
+
+kreirani su svi folderi
+
+CONFIG objekat postoji i koristi se globalno
+
+health sistem radi
+
+/api/health API radi
+
+dashboard prikazuje stvarne informacije
+
+sistem je spreman za Phase 02 (Bybit konektori)
+
+========================================
+KRAJ DOKUMENTA

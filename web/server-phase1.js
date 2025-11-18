@@ -1,12 +1,14 @@
-﻿import express from "express";
+import express from "express";
 import session from "express-session";
 import path from "path";
 import authRoutes from "./routes/auth.js";
-import { requireAuth } from "./auth/middleware.js";
 import apiRoutes from "./routes/api.js";
+import { requireAuth } from "./auth/middleware.js";
 import { createDB } from "./auth/auth.js";
 import paths from "../src/config/paths.js";
 import { initHealth } from "../src/monitoring/health.js";
+
+const app = express();
 
 // ✅ TEST 1 - Paths Test (FAZA 1)
 console.log("\n🧪 FAZA 1 - PATHS TEST:");
@@ -28,8 +30,7 @@ console.log("✔ No file protocol:", !hasFileProtocol(paths.PROJECT_ROOT) && !ha
 console.log("✔ No relative paths:", !isRelativePath(paths.PROJECT_ROOT) && !isRelativePath(paths.DATA_DIR));
 console.log("✅ Paths test complete!\n");
 
-const app = express();
-
+// Express setup
 app.set("view engine", "ejs");
 app.set("views", "./web/views");
 app.use(express.static("./web/public"));
@@ -43,22 +44,22 @@ app.use(
   })
 );
 
-// Initialize DB and Health (FAZA 1)
+// Initialize DB
 const db = await createDB();
+
+// Initialize Health Monitoring (FAZA 1)
 initHealth();
-console.log("✅ Phase 1 Health Monitoring initialized!\n");
 
-// login routes
+// Routes
 app.use(authRoutes);
-
-// API routes (FAZA 1)
 app.use("/api", apiRoutes);
 
-// protected dashboard
+// Protected dashboard
 app.get("/", requireAuth, (req, res) => {
-  res.send("Dashboard  logged in as " + req.session.user.username);
+  res.send("✅ PHASE 1 Dashboard - logged in as " + req.session.user.username);
 });
 
 app.listen(8080, () => {
-  console.log("Dashboard running at http://0.0.0.0:8080");
+  console.log("🚀 PHASE 1 Server running at http://0.0.0.0:8080");
+  console.log("🏥 Health API: http://0.0.0.0:8080/api/health");
 });

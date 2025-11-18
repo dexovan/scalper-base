@@ -1,0 +1,1079 @@
+========================================
+PHASE 04 – FEATURE ENGINE (ORDERBOOK, WALLS, SPOOFING, FLOW, VOLATILITY, FEE/LEVERAGE, PUMP PRE-SIGNAL)
+FINAL SPEC (TXT EDITION – VEOMA DETALJNO)
+
+PREGLED
+
+Phase 04 je trenutak kada tvoj sistem prestaje da bude samo „data collector“ i postaje „inteligentan observer“.
+Na osnovu microstructure podataka iz Phase 03, sada uvodimo:
+
+Orderbook Imbalance signale (koja strana dominira, za koje zone).
+
+Walls signale (veliki zidovi kao support/resistance).
+
+Spoofing signale (lažni zidovi koji nestaju kad cena priđe).
+
+Trade Flow & Delta signale (ko napada tržište – kupci ili prodavci).
+
+Volatility signale (micro ATR, eksplozije volatilnosti).
+
+Fee & Leverage engine signale (minMoveForProfit, liq safety).
+
+Pump pre-signale (brzi price/volume spike indikatori, ali još ne full PumpState/Regime – to ide u sledećoj fazi).
+
+Cilj Phase 04:
+
+Da definisemo tačnu strukturu feature objekata po simbolu.
+
+Da ih računa Feature Engine na osnovu microstructure stanja.
+
+Da ih upisujemo u data/metrics/<symbol>.json kao snapshot.
+
+Da ih dashboard može da čita preko API endpoint-a i prikazuje raw feature vrednosti.
+
+Ovo je osnovni input za sledeće faze: Regime Engine, Scoring Engine i State mašinu.
+
+FAJLOVI KOJE OVA FAZA KREIRA ILI MENJA
+
+Novi fajlovi (modularni pristup):
+
+src/features/orderbookImbalance.js
+src/features/wallsSpoofing.js
+src/features/flowDelta.js
+src/features/volatilityEngine.js
+src/features/feeLeverageEngine.js
+src/features/pumpPreSignals.js
+src/features/featureEngine.js
+
+Izmene postojećih fajlova:
+
+src/market/microstructure.js (dodavanje helper funkcija za feature engine)
+src/storage/jsonStore.js (dodavanje podrške za "metrics" tip fajla)
+src/monitoring/health.js (dodavanje featureEngine health info)
+web/routes/api.js (novi endpoint /api/symbol/:symbol/features i opcioni /api/features/overview)
+
+Novi JSON fajlovi u data/:
+
+data/metrics/<symbol>.json (per-symbol metrics snapshot – agregovani feature-i)
+
+GLAVNA KONCEPTUALNA STRUKTURA – FEATURE STATE
+
+2.1 U memoriji (in-memory)
+
+Za svaki simbol postoji FeatureState objekat.
+
+FeatureState (po simbolu):
+
+symbol: string
+
+lastUpdateAt: string (ISO datetime – kada su feature-i zadnji put izračunati)
+
+imbalance: ImbalanceFeatures
+
+walls: WallFeatures
+
+spoofing: SpoofingFeatures
+
+flow: FlowFeatures
+
+volatility: VolatilityFeatures
+
+feeLeverage: FeeLeverageFeatures
+
+pumpSignals: PumpSignalsFeatures
+
+2.2 Definicije pod-objekata:
+
+ImbalanceFeatures (orderbookImbalance.js):
+
+tobImbalance: number (TOB = top of book, -1.0 do +1.0)
+
+zoneImbalanceShortTerm: number (imbalance u najbližoj zoni, -1.0 do +1.0)
+
+zoneImbalanceMidTerm: number (sledeća zona)
+
+zoneImbalanceFarTerm: number (dalja zona)
+
+imbalancedSide: string ("BUY", "SELL", "NONE")
+
+confidence: number (0.0 do 1.0, koliko je stabilna slika)
+
+WallsFeatures (wallsSpoofing.js):
+
+hasBidWall: boolean
+
+bidWallPrice: number ili null
+
+bidWallSize: number ili null
+
+bidWallStrength: number (0.0 do 1.0, normalizovana snaga zida)
+
+hasAskWall: boolean
+
+askWallPrice: number ili null
+
+askWallSize: number ili null
+
+askWallStrength: number (0.0 do 1.0)
+
+absorbingSupportScore: number (0.0 do 1.0, koliko je verovatno da je bid zid „pravi support“)
+
+absorbingResistanceScore: number (0.0 do 1.0)
+
+SpoofingFeatures (wallsSpoofing.js):
+
+spoofingScore: number (0.0 do 1.0 – viša vrednost = više spoof signala)
+
+recentSpoofEvents: number (koliko spoof pattern-a u npr. poslednjih 60 sekundi)
+
+spoofOnBidSide: boolean
+
+spoofOnAskSide: boolean
+
+FlowFeatures (flowDelta.js):
+
+buyVolume1s: number (kupovni volumen u poslednjih 1s)
+
+sellVolume1s: number (prodajni volumen u poslednjih 1s)
+
+deltaVolume1s: number (buyVolume1s - sellVolume1s)
+
+buyVolume5s: number
+
+sellVolume5s: number
+
+deltaVolume5s: number
+
+buyVolume15s: number
+
+sellVolume15s: number
+
+deltaVolume15s: number
+
+deltaRatio1s: number (deltaVolume1s / (buy+sell + epsilon))
+
+deltaRatio5s: number
+
+deltaRatio15s: number
+
+currentDominantSide: string ("BUY", "SELL", "NONE")
+
+dominanceStreakSeconds: number (koliko sekundi dominira isti side)
+
+VolatilityFeatures (volatilityEngine.js):
+
+atr1s: number (micro ATR baziran na 1s candles)
+
+atr5s: number (micro ATR baziran na 5s candles)
+
+atr15s: number (micro ATR baziran na 15s candles)
+
+volatilityScore: number (0.0 do 1.0 – normalizovan indikator volatilnosti)
+
+explosionFlag: boolean (true ako je dešava „vola explosion“)
+
+explosionStrength: number (0.0 do 1.0, opcioni indikator jačine)
+
+FeeLeverageFeatures (feeLeverageEngine.js):
+
+assumedMakerFeeRate: number (npr. 0.0002)
+
+assumedTakerFeeRate: number (npr. 0.00055)
+
+minMoveForProfitMaker: number (minimalni % pomak cene da pokrije maker fee + buffer)
+
+minMoveForProfitTaker: number (minimalni % pomak cene za taker scenario)
+
+defaultLeverage: number (npr. 5x, iz config-a ili symbolProfile-a)
+
+liqSafetyScore: number (0.0 do 1.0 – koliko je simbol „bezbedan“ s obzirom na volatilnost i leverage)
+
+PumpSignalsFeatures (pumpPreSignals.js):
+
+priceChange5sPct: number (promena cene u poslednjih 5 sekundi u %)
+
+priceChange15sPct: number (promena u 15 sekundi u %)
+
+priceChange60sPct: number (promena u 60 sekundi u %)
+
+volumeSpike5s: number (odnos trenutnog volumena u 5s vs prosečan 5s volume u nekom prozoru)
+
+volumeSpike15s: number
+
+tradesPerSecond5s: number
+
+tradesPerSecond15s: number
+
+orderbookThinScore: number (0.0 do 1.0 – koliko je knjiga tanka tokom spike-a)
+
+pumpLikelihoodScore: number (0.0 do 1.0 – heuristika da li ulazimo u „pumpy“ režim)
+
+VAŽNO: PumpSignalsFeatures još NE definiše finalno stanje PREPUMP/PUMPING/BLOWOFF – to radi sledeća faza (Regime & Pump Engine). Ovde su samo „nisko-nivo“ signali.
+
+MODUL: src/features/orderbookImbalance.js
+
+3.1 Svrha
+
+Na osnovu trenutnog orderbook snapshot-a iz microstructure modula, izračunava:
+
+top-of-book imbalance
+
+zone imbalance u tri zone dubine
+
+stranu koja dominira (kupci/prodavci)
+
+confidence nivo
+
+3.2 Ulazni podaci
+
+Funkcija očekuje da microstructure modul može da pruži sledeće:
+
+OrderbookSummary za simbol:
+
+OrderbookSummary (dobijeno iz microstructure.getOrderbookSummary(symbol, depthLimit)):
+
+bids: array<OrderbookLevel>
+
+asks: array<OrderbookLevel>
+
+bestBid: number ili null
+
+bestAsk: number ili null
+
+spread: number ili null
+
+lastUpdateAt: string (ISO)
+
+OrderbookLevel:
+
+price: number
+
+qty: number
+
+3.3 Funkcija koju modul eksportuje
+
+calculateImbalance(symbol, orderbookSummary)
+
+Parametri:
+
+symbol: string
+
+orderbookSummary: objekat tipa OrderbookSummary
+
+Povratna vrednost:
+
+objekat ImbalanceFeatures
+
+ImbalanceFeatures polja i tipovi:
+
+tobImbalance: number
+
+zoneImbalanceShortTerm: number
+
+zoneImbalanceMidTerm: number
+
+zoneImbalanceFarTerm: number
+
+imbalancedSide: string ("BUY" | "SELL" | "NONE")
+
+confidence: number
+
+3.4 Konceptualni algoritam (opis, ne kod)
+
+TOB imbalance:
+
+uzeti qty na bestBid i bestAsk:
+
+qBid = qty na prvom nivou bids (ako postoji, inače 0)
+
+qAsk = qty na prvom nivou asks (ako postoji, inače 0)
+
+ako qBid + qAsk == 0 → tobImbalance = 0
+
+inače: tobImbalance = (qBid - qAsk) / (qBid + qAsk)
+
+domen: [-1, +1]
+
+Zone definicije (u odnosu na mid price):
+
+midPrice = (bestBid + bestAsk) / 2
+
+zoneShortTerm: nivo cene u opsegu 0% – 0.05% od mid-a
+
+zoneMidTerm: 0.05% – 0.15%
+
+zoneFarTerm: 0.15% – 0.5%
+
+Za svaku zonu:
+
+sumBidZone = suma qty za sve bid nivoe čija je cena u definisanom range-u,
+
+sumAskZone = suma qty za sve ask nivoe u tom range-u,
+
+zoneImbalance = (sumBidZone - sumAskZone) / (sumBidZone + sumAskZone + epsilon)
+
+imbalancedSide:
+
+ako tobImbalance > neki threshold (npr 0.2) → "BUY"
+
+ako tobImbalance < -threshold → "SELL"
+
+inače "NONE"
+
+confidence:
+
+heuristika bazirana na:
+
+da li su sve tri zone konzistentne (npr. sve tri pokazuju isti smer)
+
+ukupan volume u zonama (više volume → veća confidence)
+
+vrednost 0.0 do 1.0.
+
+MODUL: src/features/wallsSpoofing.js
+
+4.1 Svrha
+
+Detekcija:
+
+velikih zidova na bid/ask strani,
+
+razlikovanje „pravi zid“ (absorbing) vs „spoof zid“ (pojavi se i nestaje).
+
+4.2 Ulazni podaci
+
+Ponovo koristi OrderbookSummary iz microstructure modula, ali uz mogućnost pristupa:
+
+trenutnom orderbook snapshot-u,
+
+istoriji orderbook snapshot-a (ili barem istoriji detektovanih zidova) u poslednjih X sekundi.
+
+4.3 Funkcije koje modul eksportuje
+
+detectWalls(symbol, orderbookSummary)
+
+Parametri:
+
+symbol: string
+
+orderbookSummary: OrderbookSummary
+
+Vraća:
+
+WallFeatures objekat
+
+updateSpoofingState(symbol, currentWalls, previousWallsHistory)
+
+Parametri:
+
+symbol: string
+
+currentWalls: WallFeatures
+
+previousWallsHistory: niz WallFeatures ili custom struktura od poslednjih N merenja
+
+Vraća:
+
+SpoofingFeatures objekat
+
+4.4 WallFeatures struktura
+
+Polja:
+
+hasBidWall: boolean
+
+bidWallPrice: number ili null
+
+bidWallSize: number ili null
+
+bidWallStrength: number
+
+hasAskWall: boolean
+
+askWallPrice: number ili null
+
+askWallSize: number ili null
+
+askWallStrength: number
+
+absorbingSupportScore: number
+
+absorbingResistanceScore: number
+
+Tipovi:
+
+boolean za hasBidWall/hasAskWall
+
+number ili null za price/size
+
+number (0.0–1.0) za strength i absorbing scores
+
+4.5 SpoofingFeatures struktura
+
+Polja:
+
+spoofingScore: number (0.0–1.0)
+
+recentSpoofEvents: number
+
+spoofOnBidSide: boolean
+
+spoofOnAskSide: boolean
+
+4.6 Koncept algoritma
+
+Zid se definiše kao nivo gde je qty mnogo veći od proseka qty u okolnim nivoima (npr. > K puta prosečnog volumena).
+
+Snaga zida = normalizovana vrednost (npr. zidQty / ukupniVolumeZona).
+
+Absorbing score raste ako:
+
+mnogo agresivnih naloga udara u taj nivo,
+
+cena ne probija nivo,
+
+zid se obnavlja.
+
+Spoof se detektuje ako:
+
+zid se pojavi daleko od cene ili vrlo blizu,
+
+čim cena priđe, nalog nestane,
+
+high add/cancel ratio.
+
+Na osnovu istorije (hist zidova u npr. poslednjih 30–60 sekundi) broje se spoof događaji.
+
+MODUL: src/features/flowDelta.js
+
+5.1 Svrha
+
+Analiza „ko napada“ tržište:
+
+kupci (BUY agresor) vs prodavci (SELL agresor),
+
+delta volumen,
+
+dominacija jedne strane kroz vreme (streak).
+
+5.2 Ulazni podaci
+
+Koristi trade listu iz microstructure:
+
+array<TradeTick> — rezultat getRecentTrades(symbol, limit) ili internog buffer-a.
+
+TradeTick:
+
+tradeId: string ili number
+
+time: string (ISO datetime)
+
+price: number
+
+qty: number
+
+side: string ("BUY" ili "SELL")
+
+5.3 Funkcija koju modul eksportuje
+
+calculateFlowFeatures(symbol, tradeBuffer)
+
+Parametri:
+
+symbol: string
+
+tradeBuffer: array<TradeTick>
+
+Vraća:
+
+FlowFeatures objekat
+
+5.4 FlowFeatures polja
+
+Prethodno definisano, sumirano:
+
+buyVolume1s, sellVolume1s, deltaVolume1s
+
+buyVolume5s, sellVolume5s, deltaVolume5s
+
+buyVolume15s, sellVolume15s, deltaVolume15s
+
+deltaRatio1s, deltaRatio5s, deltaRatio15s
+
+currentDominantSide
+
+dominanceStreakSeconds
+
+Svi volume i deltaVolume su number.
+deltaRatio su number u intervalu od -1.0 do +1.0 (ali može i van, u zavisnosti od normalizacije).
+currentDominantSide je string: "BUY", "SELL" ili "NONE".
+dominanceStreakSeconds je number (koliko sekundi traje dominacija).
+
+MODUL: src/features/volatilityEngine.js
+
+6.1 Svrha
+
+Računa micro ATR i volatile stanje simbola.
+
+6.2 Ulazni podaci
+
+Koristi micro-candles iz microstructure:
+
+getCandles(symbol, timeframe, limit) za timeframove „1s“, „5s“, „15s“.
+
+Candle:
+
+openTime: string
+
+closeTime: string ili null
+
+open: number
+
+high: number
+
+low: number
+
+close: number
+
+volume: number
+
+buyVolume: number
+
+sellVolume: number
+
+6.3 Funkcija koju modul eksportuje
+
+calculateVolatilityFeatures(symbol, candlesByTimeframe)
+
+Parametri:
+
+symbol: string
+
+candlesByTimeframe: objekat gde su ključevi string ("1s","5s","15s"), a vrednost je array<Candle>
+
+Vraća:
+
+VolatilityFeatures objekat
+
+6.4 VolatilityFeatures polja
+
+atr1s: number
+
+atr5s: number
+
+atr15s: number
+
+volatilityScore: number (0.0–1.0)
+
+explosionFlag: boolean
+
+explosionStrength: number (0.0–1.0)
+
+6.5 Osnovni ATR algoritam (po timeframe-u)
+
+ATR ~ prosečna vrednost (high - low) u N sveća (npr. N=14).
+VolatilityScore ~ mapiranje ATR vrednosti u raspon 0–1, u odnosu na istorijski ATR (nije nužno u ovoj fazi, može se normalizovati prema recent max/min vrednostima).
+ExplosionFlag = true ako je ATR znatno veći od svog nedavnog proseka (npr. > K puta).
+
+MODUL: src/features/feeLeverageEngine.js
+
+7.1 Svrha
+
+Računa:
+
+minimalni pomak cene potreban da pokrije fee…
+
+„bezbednost“ simbola s obzirom na volatilnost i leverage (liqSafetyScore).
+
+7.2 Ulazni podaci
+
+Koristi:
+
+CONFIG.fees.maker, CONFIG.fees.taker
+
+defaultLeverage iz CONFIG ili SymbolProfile (ako postoji)
+
+VolatilityFeatures (npr. atr5s)
+
+Takođe može da koristi info iz Universe (npr. maxLeverage simbola).
+
+7.3 Funkcija koju modul eksportuje
+
+calculateFeeLeverageFeatures(symbol, volatilityFeatures, symbolMeta, symbolProfile, globalConfig)
+
+Parametri:
+
+symbol: string
+
+volatilityFeatures: VolatilityFeatures objekat
+
+symbolMeta: SymbolMeta (iz Universe – sadrži maxLeverage, itd.)
+
+symbolProfile: SymbolProfile (iz Phase 2, stub, može sadržati suggestedMaxLeverage)
+
+globalConfig: CONFIG objekat
+
+Vraća:
+
+FeeLeverageFeatures objekat
+
+7.4 FeeLeverageFeatures polja
+
+assumedMakerFeeRate: number
+
+assumedTakerFeeRate: number
+
+minMoveForProfitMaker: number
+(u procentima, npr. 0.001 = 0.1%, očekivani minimalni move da pokrije entry i exit, 2 × makerFee + buffer)
+
+minMoveForProfitTaker: number
+(taker entry + taker exit + buffer)
+
+defaultLeverage: number
+
+liqSafetyScore: number (0.0–1.0)
+
+7.5 Konceptualna logika
+
+assumedMakerFeeRate = CONFIG.fees.maker
+
+assumedTakerFeeRate = CONFIG.fees.taker
+
+minimalni move for profit:
+
+long: cena treba da poraste toliko da PnL pokrije fee (broker+exchange).
+
+defaultLeverage:
+
+koristi se symbolProfile.suggestedMaxLeverage ako postoji, inače min(CONFIG default, symbolMeta.maxLeverage).
+
+liqSafetyScore:
+
+uzima u obzir defaultLeverage i atr5s / atr15s
+
+veći leverage + visoka volatilnost → niži score.
+
+MODUL: src/features/pumpPreSignals.js
+
+8.1 Svrha
+
+Računa sirove signale koji ukazuju na potencijalnu pump situaciju:
+
+price spikes
+
+volume spikes
+
+trades-per-second
+
+"orderbook thinning"
+
+8.2 Ulazni podaci
+
+micro-candles (Candle) za 5s i 15s interval
+
+recent trades (TradeTick) u poslednjih 5s i 15s
+
+informacija iz orderbook-a: dubina u određenim zonama
+
+8.3 Funkcija koju modul eksportuje
+
+calculatePumpSignals(symbol, candles5s, candles15s, tradesBuffer, orderbookSummary)
+
+Parametri:
+
+symbol: string
+
+candles5s: array<Candle>
+
+candles15s: array<Candle>
+
+tradesBuffer: array<TradeTick>
+
+orderbookSummary: OrderbookSummary
+
+Vraća:
+
+PumpSignalsFeatures objekat
+
+8.4 PumpSignalsFeatures polja
+
+Već definisano:
+
+priceChange5sPct: number
+
+priceChange15sPct: number
+
+priceChange60sPct: number
+
+volumeSpike5s: number
+
+volumeSpike15s: number
+
+tradesPerSecond5s: number
+
+tradesPerSecond15s: number
+
+orderbookThinScore: number (0.0–1.0)
+
+pumpLikelihoodScore: number (0.0–1.0)
+
+8.5 Primer heuristika
+
+priceChange5sPct = (close sada - close pre 5s) / close pre 5s * 100
+
+volumeSpike5s = currentVolume5s / avgVolume5s (npr. prosek poslednjih 20 intervala)
+
+tradesPerSecond5s = broj trejdova u 5s / 5
+
+orderbookThinScore:
+
+meri koliko je mal volumen u blizini cene u odnosu na istorijski prosek; tanka knjiga = lakše pumpanje.
+
+pumpLikelihoodScore:
+
+funkcija od priceChange + volumeSpike + orderbookThinScore;
+
+npr. ako je priceChange5sPct jako pozitivan, volumeSpike5s >> 1.0, orderbookThinScore visok → pumpLikelihoodScore blizu 1.0.
+
+MODUL: src/features/featureEngine.js
+
+9.1 Svrha
+
+Koordinira sve pojedinačne feature module:
+
+hvata microstructure state za simbol,
+
+poziva:
+
+orderbookImbalance
+
+wallsSpoofing
+
+flowDelta
+
+volatilityEngine
+
+feeLeverageEngine
+
+pumpPreSignals
+
+sastavlja FeatureState objekat
+
+upisuje snapshot u data/metrics/<symbol>.json
+
+omogućava API-u da to vrati dashboard-u.
+
+9.2 Interna globalna struktura
+
+FeatureEngineState:
+
+symbols: mapa
+
+ključ: string (symbol)
+
+vrednost: FeatureState (kao u sekciji 2)
+
+9.3 Funkcije koje modul eksportuje
+
+initFeatureEngine()
+
+Parametri: nema
+
+Povratna vrednost: Promise<void> ili void
+
+Svrha:
+
+postavlja prazne FeatureState strukture,
+
+povezuje se sa microstructure modulom,
+
+može pokrenuti periodičan update loop (npr. na 1s, 2s, 5s).
+
+updateFeaturesForSymbol(symbol: string)
+
+Parametri:
+
+symbol: string
+
+Povratna vrednost: void
+
+Ponašanje:
+
+povlači trenutne podatke iz microstructure:
+
+orderbookSummary
+
+recent trades
+
+candles po timeframe-ovima
+
+povlači symbolMeta iz Universe
+
+povlači symbolProfile iz symbolProfile modula
+
+poziva pojedinačne feature module:
+
+calculateImbalance
+
+detectWalls + updateSpoofingState
+
+calculateFlowFeatures
+
+calculateVolatilityFeatures
+
+calculateFeeLeverageFeatures
+
+calculatePumpSignals
+
+sklapa FeatureState objekat
+
+ažurira FeatureEngineState.symbols[symbol]
+
+upisuje ga u data/metrics/<symbol>.json koristeći jsonStore.writeSnapshot("metrics", symbol, featureStateSnapshot)
+
+updateAllFeatures()
+
+Parametri: nema
+
+Povratna vrednost: void
+
+Ponašanje:
+
+loop kroz sve simbole iz Universe (npr. Prime + Normal, Wild po potrebi)
+
+poziva updateFeaturesForSymbol za svaki simbol
+
+može raditi u batch-u (npr. ograničiti broj simbola po ciklusu da CPU ne pregori)
+
+getFeatureState(symbol: string)
+
+Parametri:
+
+symbol: string
+
+Povratna vrednost:
+
+FeatureState objekat ili null
+
+9.4 JSON fajl: data/metrics/<symbol>.json
+
+Format:
+
+Jedan FeatureState snapshot:
+
+symbol: string
+
+lastUpdateAt: string (ISO)
+
+imbalance: ImbalanceFeatures objekat
+
+walls: WallFeatures objekat
+
+spoofing: SpoofingFeatures objekat
+
+flow: FlowFeatures objekat
+
+volatility: VolatilityFeatures objekat
+
+feeLeverage: FeeLeverageFeatures objekat
+
+pumpSignals: PumpSignalsFeatures objekat
+
+INTEGRACIJA SA HEALTH I API
+
+10.1 Health (src/monitoring/health.js)
+
+Dodati u services:
+
+services.featureEngine:
+
+status: string ("OK", "INIT", "DEGRADED", "DOWN")
+
+lastUpdateAt: string (ISO)
+
+symbolsUpdatedLastCycle: number
+
+updateIntervalMs: number
+
+10.2 API – web/routes/api.js
+
+Novi endpoint:
+
+GET /api/symbol/:symbol/features
+
+Zahteva login (requireAuth)
+
+Parametri:
+
+:symbol → string
+
+Response JSON:
+
+symbol: string
+
+lastUpdateAt: string
+
+imbalance: ImbalanceFeatures
+
+walls: WallFeatures
+
+spoofing: SpoofingFeatures
+
+flow: FlowFeatures
+
+volatility: VolatilityFeatures
+
+feeLeverage: FeeLeverageFeatures
+
+pumpSignals: PumpSignalsFeatures
+
+Opcioni endpoint:
+
+GET /api/features/overview
+
+Vraća agregat (za hotlist / debugging):
+
+per symbol:
+
+symbol
+
+key metrics only (npr. imbalance.tobImbalance, spoofingScore, volatilityScore, pumpLikelihoodScore)
+
+može se koristiti kasnije za pre-filter signale.
+
+ŠTA DASHBOARD MOŽE DA PRIKAŽE POSLE PHASE 04
+
+U Fazi 4 dashboard može da prikaže:
+
+Per symbol detail:
+
+imbalance (tobImbalance i zonal imbalance, imbalancedSide, confidence)
+
+zidove (hasBidWall, bidWallPrice, bidWallStrength itd.)
+
+spoofingScore i broj recent spoof događaja
+
+flow metrics (delta 1s/5s/15s, dominant side, streak)
+
+volatilityScore i explosionFlag
+
+minMoveForProfitMaker/Taker
+
+pumpLikelihoodScore
+
+Jednostavnu „Feature Heatmap“ tabelu:
+
+simbol
+
+imbalancedSide (BUY/SELL/NONE)
+
+spoofingScore
+
+volatilityScore
+
+pumpLikelihoodScore
+
+To će kasnije hraniti Scoring Engine i Regime Engine.
+
+TEST SCENARIJI
+
+Test 1 – Imbalance:
+
+Simulirati orderbook gde je bid volume znatno veći od ask.
+
+calculateImbalance treba da da tobImbalance > 0, imbalancedSide="BUY", confidence > 0.5 (uz podesive threshold-e).
+
+Test 2 – Walls:
+
+Kreirati orderbook sa jednim izuzetno velikim bid nivoom.
+
+detectWalls treba da:
+
+hasBidWall = true
+
+bidWallPrice postavljen
+
+bidWallStrength visoka vrednost.
+
+Test 3 – Spoofing:
+
+Simulirati sequence:
+
+veliki zid se pojavi daleko od cene,
+
+zatim nestane kada cena prilazi.
+
+updateSpoofingState treba da povećava spoofingScore i recentSpoofEvents.
+
+Test 4 – FlowDelta:
+
+Napraviti niz trade-ova gde su svi BUY u poslednjih npr. 5s.
+
+deltaVolume5s treba > 0,
+
+currentDominantSide="BUY",
+
+dominanceStreakSeconds > 0.
+
+Test 5 – Volatility:
+
+Napraviti candles sa naglim rastom high-low raspona.
+
+calculateVolatilityFeatures treba da označi explosionFlag=true i volatilityScore visok.
+
+Test 6 – Fee/Leverage:
+
+Uporediti minMoveForProfitMaker/Taker sa ručnim obračunom (na osnovu fee stopa).
+
+Test 7 – PumpSignals:
+
+Simulirati scenario sa velikim priceChange5sPct i volumeSpike5s.
+
+pumpLikelihoodScore treba da bude visok.
+
+Test 8 – FeatureEngine integracija:
+
+Nakon initMicrostructure + initFeatureEngine + feed-ovanih WS eventova:
+
+updateAllFeatures treba da popuni FeatureEngineState.symbols sa više simbola.
+
+data/metrics/<symbol>.json fajlovi treba da postoje.
+
+GET /api/symbol/BTCUSDT/features treba da vraća kompletan FeatureState.
+
+FINALNI REZULTAT FAZE 04
+
+Kada završiš Phase 04:
+
+Tvoj sistem više nije „samo“ microstructure logger, već računa konkretne signale za svaki simbol u realnom vremenu.
+
+Za svaki simbol postoji FeatureState sa:
+
+orderbook imbalance signalima,
+
+walls i spoofing indikatorima,
+
+trade flow/delta signalima,
+
+volatilnost signalima,
+
+fee/leverage signalima,
+
+pump pre-signalima.
+
+Svi ti feature-i su dostupni:
+
+u memoriji (FeatureEngineState),
+
+na disku u data/metrics/<symbol>.json,
+
+preko API /api/symbol/:symbol/features za dashboard.
+
+Ova faza je baza za sledeće dve najbitnije faze:
+
+Regime Engine (per-symbol i global režimi: NORMAL, PUMP, MANIPULATED, NEWS_DRIVEN, COOLDOWN),
+
+Scoring & Signal Engine (FinalScalpScoreLong/Short).
+
+========================================
+KRAJ DOKUMENTA – PHASE 04

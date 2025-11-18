@@ -1,0 +1,504 @@
+========================================
+PHASE 09 – TP/SL ENGINE, BREAK-EVEN, TRAILING & FEE-FIRST PROFITABILITY
+(FINAL SPEC – VEOMA DETALJNO I PRECIZNO)
+
+Ovo je jedna od najkritičnijih faza tvog celog AI Scalper sistema.
+TP/SL Engine kontroliše celu logiku izlaza, break-even, fee-first računicu, trailing, pump aware behavior, override prema riziku i svim sub-modovima koje smo definisali.
+
+Ovaj modul je srce upravljanja pozicijama – on direktno odlučuje:
+
+Kada treba pomeriti SL?
+
+Kada treba zaključati minimalni profit?
+
+Kada treba uzeti TP1, TP2?
+
+Kada treba ubrzati TP2 zbog pump/blowoff?
+
+Kada treba "panic exit" zbog spoof manipulacije?
+
+Kako uračunati FEE FIRST i nikad ne dozvoliti da TP1 bude ispod koristi?
+
+Kako koristiti microstructure i volatility informacije da bi trailing bio pametan?
+
+Kako se ponašati u PRE-PUMP, PUMP, BLOWOFF, DUMP fazama?
+
+Kada je stop preblizu i postoji rizik od lažnog wicka?
+
+Koliko trailing treba biti agresivan kada postoji volume exhaustion?
+
+OPŠTI CILJ PHASE 09
+
+TP/SL sistem mora da obezbedi da:
+
+Bot NIKAD ne zatvara poziciju u minus zbog fee-a (fee-first profitabilnost).
+
+Break-even se aktivira automatski kada UnrealizedPnL pokrije:
+
+entry fee + exit fee + buffer.
+
+Trailing SL mora biti pametno vođen
+
+kroz orderbook microstructure,
+
+kroz pump i blowoff detekciju,
+
+kroz volatility behaviour.
+
+TP1/TP2 logika mora biti dinamička, ne fiksna.
+
+Logika MORA funkcionisati u SIM, DRY_RUN i LIVE modu identično.
+
+Sve akcije se upisuju u JSON (trade execution log, state machine istorija, TP/SL prilagođavanja).
+
+SVE mora biti dostupno dashboard-u – korisnik uvek mora da vidi:
+
+entry price,
+
+minimalni BE-level,
+
+TP1, TP2,
+
+trailing SL,
+
+distance do liq,
+
+fee-level threshold,
+
+pump-override odluke.
+
+FAJLOVI KOJE OVA FAZA DODAJE / MENJA
+
+Novi fajlovi:
+
+src/execution/tpslEngine.js
+src/execution/tpslPlanner.js
+src/execution/trailingEngine.js
+
+Izmene u:
+
+src/state/stateMachine.js
+src/risk/positionTracker.js
+src/scoring/scoringEngine.js
+web/routes/api.js
+src/monitoring/health.js
+
+JSON lokacije:
+
+data/system/tpsl_snapshot.json
+data/positions/<symbol>.json (automatski update)
+
+KONFIGURACIJA (CONFIG.TPSL)
+
+Dodaje se sekcija u src/config/index.js:
+
+CONFIG.tpsl:
+
+tp1Factor: number (npr. 0.35 – 0.45% u zavisnosti od vola)
+
+tp2Factor: number
+
+breakEvenBufferPct: number (0.015–0.03%)
+
+trailingActivationPct: number (0.2%–0.3%)
+
+trailingDistancePct: number (0.08%–0.12%)
+
+pumpTightenFactor: number (multiplikator 0.5–0.7 kada PumpState = BLOWOFF)
+
+spoofingProtectionDistancePct: number (uvećava SL distancu kada spoofing visok)
+
+highVolatilityFactor: number (ako vola > thresh, trailingDistance *= factor)
+
+minimalTickSizeSafety: number (broj tick-ova najbližih entry-u koje SL nikad ne sme preći)
+
+Svi parametri su BROJEVI, izraženi kao procenat kretanja cene, ne kao trailing pipovi.
+
+OSNOVNE DEFINICIJE KOJE ENGINE KORISTI
+
+3.1 Fee-first minimalni pomak
+Za bilo koju poziciju:
+
+MinMoveForProfit = (makerEntryFee + makerExitFee) * safetyFactor
+
+safetyFactor = 1.10–1.30 (10–30% buffer)
+
+3.2 Break-even zona:
+
+breakEvenLevelLong = entryPrice + MinMoveForProfit
+breakEvenLevelShort = entryPrice - MinMoveForProfit
+
+3.3 TP1 i TP2 dinamički:
+
+Najbolja praksa:
+
+TP1 distance = max(tp1Factor%, MinMoveForProfit + minimalExtra%)
+
+TP2 distance = max(tp2Factor%, TP1Dist * 2)
+
+3.4 Trailing zona:
+
+Aktivira se tek kada:
+
+unrealizedPnLPct >= trailingActivationPct
+
+Distance trailing SL:
+
+if long → SL = currentPrice - trailingDistancePct
+
+if short → SL = currentPrice + trailingDistancePct
+
+STRUKTURA PODATAKA – TPSLSTATE
+
+tpslState (per simbol):
+
+{
+"symbol": string,
+"side": "LONG" | "SHORT",
+"entryPrice": number,
+"tp1Price": number,
+"tp2Price": number,
+"stopLossPrice": number,
+"breakEvenPrice": number,
+"trailingActive": boolean,
+"trailingDistancePct": number,
+"lastUpdateAt": string,
+"pumpOverrideApplied": boolean,
+"spoofingOverrideApplied": boolean,
+"volatilityOverrideApplied": boolean
+}
+
+MODUL: src/execution/tpslPlanner.js
+
+Ovaj modul SE NE BAVI izvršenjem, već PLANIRA:
+
+TP1
+
+TP2
+
+SL
+
+break-even
+
+minimalne distance
+
+5.1 Funkcija: planInitialTPSL(position, features, regimeState)
+
+Ulaz:
+
+position: PositionState
+features: FeatureState
+regimeState: RegimeState
+
+Tipovi:
+
+position: objekat kao u Phase 8
+
+features: objekat iz Phase 4
+
+regimeState: objekat iz Phase 5
+
+Izlaz:
+
+TPSLPlan:
+
+{
+tp1Price: number,
+tp2Price: number,
+stopLossPrice: number,
+breakEvenPrice: number,
+trailingActiveInitially: boolean
+}
+
+Logika:
+
+izračunaj fee-first minimalni pomak
+
+postavi TP1 = entryPrice ± max(tp1Factor, fee-first-buffer)
+
+TP2 = entryPrice ± (TP1Distance*2)
+
+SL = entryPrice ∓ (defaultRiskFactor%)
+
+breakEvenPrice = entryPrice ± MinMoveForProfit
+
+Uzmite u obzir pump regime:
+
+Ako PumpState = PREPUMP → uvećaj TP1/TP2 distance za 10–20%
+
+Ako PumpState = BLOWOFF → skrati TP2, aktiviraj trailing odmah
+
+Ako spoofingScore visok → SL se udaljava dodatnih spoofingProtectionDistancePct
+
+Ako volatilityScore visok → trailingDistancePct *= highVolatilityFactor
+
+MODUL: src/execution/tpslEngine.js
+
+Glavni modul za upravljanje i dinamiku TP/SL.
+
+6.1 Funkcije:
+
+onPositionOpened(position)
+
+poziva tpslPlanner.planInitialTPSL,
+
+upisuje tpslState,
+
+emituje TPSL_INITIALIZED event u stateMachine.
+
+onPriceUpdate(position, currentPrice, features, regimeState)
+
+ažurira:
+
+break-even
+
+trailing
+
+dynamic TP2
+
+SL override usled spoof/pump/volatility štitnika
+
+checkStopLossHit
+
+checkTakeProfitHit
+
+adjustTrailingStop
+
+applyPumpOverride
+
+applySpoofingProtection
+
+applyVolatilityProtection
+
+BREAK-EVEN LOGIKA (CORE)
+
+Sve kreće od:
+
+unrealizedPnL >= MinMoveForProfit + buffer
+
+Ako uslov zadovoljen:
+
+breakEven hitaju ENTRANCE:
+
+Za long:
+stopLoss = breakEvenPrice
+Za short:
+stopLoss = breakEvenPrice
+
+breakEven mora biti:
+
+entryPrice za LONG
+
+< entryPrice za SHORT
+
+Ako break-even aktiviran:
+
+trailingActive = TRUE
+
+zapis u tpslState.breakEvenActivatedAt
+
+TRAILING ENGINE – src/execution/trailingEngine.js
+
+Ulaz:
+
+position: PositionState
+
+tpslState
+
+featureState
+
+regimeState
+
+currentPrice
+
+Izlaz:
+
+updated SL (ako treba)
+
+8.1 Aktivira se tek kada:
+
+unrealizedPnLPct >= CONFIG.tpsl.trailingActivationPct
+
+8.2 Formula:
+
+Ako long:
+
+newSL = currentPrice - trailingDistancePct
+stopLossPrice = max(stopLossPrice, newSL)
+
+Ako short:
+
+newSL = currentPrice + trailingDistancePct
+stopLossPrice = min(stopLossPrice, newSL)
+
+8.3 Pump override:
+
+Ako PumpState = BLOWOFF:
+
+trailingDistancePct *= pumpTightenFactor
+
+SL se približava odmah
+
+TP2 se pomera bliže
+
+Razlog:
+
+BLOWOFF nakon pumpa = najčešće "peak → dump" scenario.
+
+8.4 Spoof override:
+
+Ako spoofingScore > threshold:
+
+trailingDistancePct *= 1.3
+
+SL se malo udaljava da izbegne wickove
+
+8.5 Volatility override:
+
+Ako volatilityScore > threshold:
+
+trailingDistancePct *= highVolatilityFactor
+
+TP1 / TP2 LOGIKA
+
+9.1 Kada TP1 pogodi:
+
+zatvara se 30–50% pozicije
+
+SL se odmah pomera na break-evenPrice
+
+trailing se aktivira
+
+TP2 se koriguje prema PumpState-u
+
+9.2 Kada TP2 pogodi:
+
+zatvara se preostali deo pozicije
+
+pozicija prelazi u CLOSED
+
+tpslState se arhivira
+
+STANJE PRELAZA (EVENTI)
+
+TPSL Engine šalje evente:
+
+TPSL_INITIALIZED
+TPSL_BREAK_EVEN_TRIGGERED
+TPSL_TRAILING_ACTIVATED
+TPSL_TRAILING_ADJUSTED
+TPSL_TP1_HIT
+TPSL_TP2_HIT
+TPSL_SL_HIT
+TPSL_EXIT
+
+StateMachine hvata ove događaje i menja stanje pozicije.
+
+JSON SNAPSHOT
+
+data/system/tpsl_snapshot.json
+
+{
+"timestamp": "2025-11-18T15:41:00.000Z",
+"symbol": "AI16ZUSDT",
+"side": "LONG",
+"entryPrice": 0.12345,
+"tp1Price": 0.12410,
+"tp2Price": 0.12490,
+"stopLossPrice": 0.12330,
+"breakEvenPrice": 0.12352,
+"trailingActive": true,
+"trailingDistancePct": 0.10,
+"pumpOverrideApplied": false,
+"spoofingOverrideApplied": true,
+"volatilityOverrideApplied": false
+}
+
+API ENDPOINTS
+
+GET /api/tpsl/:symbol
+
+Response:
+
+{
+symbol,
+tp1Price,
+tp2Price,
+stopLossPrice,
+breakEvenPrice,
+trailingActive,
+trailingDistancePct,
+pumpOverrideApplied,
+spoofingOverrideApplied,
+volatilityOverrideApplied
+}
+
+GET /api/tpsl/overview
+
+Response: lista svih aktivnih TPSL state-ova.
+
+DASHBOARD PRIKAZ POSLE PHASE 09
+
+Dashboard sada može prikazati:
+
+TP1 / TP2 distance (USDT + %)
+
+dynamic SL
+
+current break-even
+
+trailing status
+
+override status (pump/spoof/vol)
+
+live MFE / MAE iz Phase 8
+
+triangular visualization:
+Entry → BE → TP1 → TP2
+
+TEST SCENARIJI
+
+Test 1 – Break-even:
+Entry 100
+MinMoveForProfit = 0.15% = 0.15
+Cena poraste na 100.20
+→ breakEvenPrice = 100.15
+
+Test 2 – TP1 hit:
+tp1Price = 100.30
+cena pređe 100.30
+→ pola pozicije zatvoreno
+→ SL = breakEvenPrice
+→ trailing = TRUE
+
+Test 3 – Pump override:
+PumpState = BLOWOFF
+→ trailingDistancePct *= pumpTightenFactor
+→ TP2 bliže postavljen
+
+Test 4 – Spoof override:
+SCORE = 0.8
+→ trailingDistance = širi
+
+Test 5 – TP2 hit → pozicija zatvorena.
+
+FINALNI REZULTAT FAZE 09
+
+Posle ove faze:
+
+Tvoj sistem NE MOŽE zatvoriti TP1 ispod fee-first profita
+
+Break-even je automatski i savršeno precizan
+
+Trailing radi kao HFT-style: pametan, dinamičan, microstructure aware
+
+Pump/BLOWOFF override daje brutalnu prednost
+
+Spoof-aware SL smanjuje wick gubitke
+
+Sve se upisuje u JSON i servira dashboard-u
+
+Ovo je profesionalni TP/SL engine kakav koriste napredni scalping sistemi.
+
+========================================
+KRAJ DOKUMENTA – PHASE 09

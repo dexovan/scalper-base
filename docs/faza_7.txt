@@ -1,0 +1,1413 @@
+========================================
+PHASE 07 – STATE MACHINE PO SIMBOLU
+(ŽIVOTNI CIKLUS TREJDA: FLAT → WATCHING → ARMED → ORDER → IN_POSITION → MANAGING → EXITED/COOLDOWN)
+FINAL SPEC (TXT EDITION – DETALJNO)
+
+
+PREGLED
+
+
+Phase 07 uvodi PER-SYMBOL STATE MACHINE koja upravlja kompletnim životnim ciklusom jednog trejd scenarija.
+Do sada imamo:
+
+
+Phase 02: Universe + SymbolMeta + Profile
+
+
+Phase 03: Microstructure (orderbook, trades, micro-candles)
+
+
+Phase 04: Feature Engine (imbalance, spoof, flow, vola, fee, pump pre-signali)
+
+
+Phase 05: Regime Engine (NORMAL/PUMP/MANIPULATED/NEWS/COOLDOWN, global regime)
+
+
+Phase 06: Scoring Engine (Base/FinalScalpScore Long/Short + WATCH/ARM signali)
+
+
+Sada Phase 07 uvodi:
+
+
+state machine po simbolu
+
+
+definisane state-ove (FLAT, WATCHING, ARMED, ORDER_PLACED, IN_POSITION, MANAGING, EXITED, COOLDOWN, BLOCKED_REGIME)
+
+
+precizna pravila prelaza
+
+
+centralni objekat „SymbolStateContext“ koji pamti sve što je bitno za aktivni trade scenario
+
+
+interfejs prema Execution Engine-u (koji dolazi kasnije, ali state machine zna šta od njega očekuje)
+
+
+logiku kada NEMA pravo da otvara novi scenario (risk, regime, scoring blokovi)
+
+
+VAŽNO: Phase 07 NE šalje još realne naloge na berzu (to je Phase 11),
+ali definisano je TAČNO šta i kako će Execution modul dobiti kao input kasnije.
+
+
+
+FAJLOVI KOJE OVA FAZA KREIRA ILI MENJA
+
+
+
+Novi fajlovi:
+src/state/stateMachine.js
+src/state/stateModel.js
+src/state/stateEvents.js
+Izmene:
+src/scoring/scoringEngine.js       (dodaje hook „pushSignalToStateMachine“)
+src/monitoring/health.js           (dodaje stateMachine health info)
+web/routes/api.js                  (dodaje /api/symbol/:symbol/state i /api/states/overview)
+data/events/<symbol>.json          (state-change event log, JSON Lines)
+
+
+
+GORE LEVEL KONCEPT – ŠTA RADI STATE MACHINE
+
+
+
+Po SIMBOLU:
+
+
+prati scoring signale (WATCH/ARM za LONG/SHORT) iz Phase 06
+
+
+proverava režime (Phase 05)
+
+
+proverava globalno stanje i kasnije risk engine
+
+
+odlučuje:
+
+
+kada da krene scenario za LONG ili SHORT (ulazni kandidat)
+
+
+kada da pređe iz WATCHING u ARMED (spreman da postavi entry)
+
+
+kada da zamrzne scenario (regime blok, risk blok, global panic)
+
+
+kada da prosledi Execution modul-u „order plan“ (entry/SL/TP)
+
+
+kada je pozicija otvorena, kako da pređe u IN_POSITION i MANAGING
+
+
+kada da završi scenario (EXITED)
+
+
+kada da uvede COOLDOWN
+
+
+
+
+Vodi računa da:
+
+
+po simbolu nemaš 5 paralelnih scenarija (po defaultu maximum 1 aktivni scenario po simbolu).
+
+
+istovremeno može da postoji scenario za LONG ili SHORT,
+ali u početku je najjednostavnije dozvoliti SAMO JEDAN scenario per simbol u datom trenutku.
+
+
+
+
+
+DEFINICIJA STATE-OVA
+
+
+
+State machine radi na nivou:
+SymbolTradeState (trenutno stanje za jedan simbol).
+3.1 Sva stanja (enumeracija)
+Valid states:
+
+
+"FLAT"
+
+
+"WATCHING_LONG"
+
+
+"WATCHING_SHORT"
+
+
+"ARMED_LONG"
+
+
+"ARMED_SHORT"
+
+
+"ORDER_PLACED_LONG"
+
+
+"ORDER_PLACED_SHORT"
+
+
+"IN_POSITION_LONG"
+
+
+"IN_POSITION_SHORT"
+
+
+"MANAGING_LONG"
+
+
+"MANAGING_SHORT"
+
+
+"EXITED"
+
+
+"COOLDOWN"
+
+
+"BLOCKED_REGIME"
+
+
+Opcioni specijalni state:
+
+
+"PAUSED_MANUAL" (ručno pauziranje, nije obavezno u ovoj fazi, ali dobra ideja za kasnije)
+
+
+3.2 Simbolički opis
+FLAT
+
+
+nema aktivnog scenarija, nema otvorenih pozicija nad ovim state machine kontekstom (pozicije mogu postojati na berzi, ali u idealnom svetu su usklađene).
+
+
+WATCHING_LONG / WATCHING_SHORT
+
+
+sistem „posmatra“ simbol jer je FinalScalpScore prešao WATCH prag za dati smer,
+
+
+traži dodatne potvrde pre prelaska u ARMED.
+
+
+ARMED_LONG / ARMED_SHORT
+
+
+smer je izabran, scoring i features su dovoljni
+
+
+definisani su osnovni ulazni parametri (entry zone, initial SL distance, minMoveForProfit)
+
+
+scenario je spreman da generiše ORDER plan, ali Execution ga još nije izvršio (ili se čeka fine-tuning).
+
+
+ORDER_PLACED_LONG / ORDER_PLACED_SHORT
+
+
+limit/stop order je poslat Execution modulu (SIM/DRY/LIVE),
+
+
+čeka se fill (ili cancel ako se tržište promeni).
+
+
+IN_POSITION_LONG / IN_POSITION_SHORT
+
+
+pozicija je otvorena i potvrđena od Execution modula,
+
+
+entryPrice i size su poznati,
+
+
+prelazi se u MANAGING fazu.
+
+
+MANAGING_LONG / MANAGING_SHORT
+
+
+pozicija je aktivna i sistem aktivno upravlja TP/SL/trailing/auto-reentry (u budućim fazama).
+
+
+EXITED
+
+
+scenario je završen (pozicija zatvorena, ili scenario otkazan),
+
+
+eventualno se zadržava kratko radi logova, posle prelazi u FLAT ili COOLDOWN.
+
+
+COOLDOWN
+
+
+specifično, simbol posle jakog eventa (pump, dump, heavy loss) ne sme odmah ponovo da otvara scenario.
+
+
+postoji cooldownTimeout, posle koga prelazi u FLAT.
+
+
+BLOCKED_REGIME
+
+
+simbol je pod block-om zbog RegimeState (PUMP, MANIPULATED, NEWS_DRIVEN, COOLDOWN) ili GlobalRegime (RISK_OFF, PANIC).
+
+
+u ovom stanju se ne otvaraju novi scenariji čak i ako scoring signal postoji.
+
+
+
+
+
+KONTEKST – SYMBOL STATE CONTEXT
+
+
+
+Po simbolu postoji objekat:
+SymbolStateContext:
+
+
+symbol: string
+
+
+currentState: string (jedna od gore navedenih)
+
+
+lastStateChangeAt: string (ISO datetime)
+
+
+lastStateChangeReason: string
+
+
+activeSide: string ili null
+
+
+"LONG", "SHORT" ili null
+
+
+
+
+signalSnapshot:
+
+
+lastScoreUpdateAt: string
+
+
+lastFinalScoreLong: number
+
+
+lastFinalScoreShort: number
+
+
+lastSignalLong: string ("NONE"/"WATCH"/"ARM")
+
+
+lastSignalShort: string
+
+
+
+
+regimeSnapshot:
+
+
+symbolRegime: string
+
+
+globalRegime: string
+
+
+cooldownActive: boolean
+
+
+cooldownEndsAt: string ili null
+
+
+
+
+riskSnapshot (stub u ovoj fazi):
+
+
+riskAllowNewPositions: boolean
+
+
+riskAllowNewLong: boolean
+
+
+riskAllowNewShort: boolean
+
+
+
+
+entryPlan: EntryPlan ili null
+
+
+positionContext: PositionContext ili null
+
+
+4.1 EntryPlan struktura
+EntryPlan:
+
+
+side: string ("LONG" ili "SHORT")
+
+
+plannedAt: string (ISO datetime)
+
+
+validUntil: string (ISO, rok do kog je plan validan)
+
+
+entryZone:
+
+
+priceMin: number
+
+
+priceMax: number
+
+
+
+
+idealEntryPrice: number
+
+
+maxSlippagePct: number
+
+
+initialStopLoss: number (price) ili null (ako se računa kasnije)
+
+
+initialTakeProfit1: number ili null
+
+
+initialTakeProfit2: number ili null
+
+
+qty: number (planirana količina)
+
+
+leverage: number
+
+
+mode: string ("SIM", "DRY_RUN", "LIVE") – preuzeto iz CONFIG.mode
+
+
+4.2 PositionContext struktura
+PositionContext:
+
+
+positionId: string ili number (interni ID ili Bybit ID)
+
+
+side: string ("LONG" ili "SHORT")
+
+
+openedAt: string (ISO datetime)
+
+
+entryPrice: number
+
+
+qty: number
+
+
+leverage: number
+
+
+stopLoss: number ili null
+
+
+takeProfit1: number ili null
+
+
+takeProfit2: number ili null
+
+
+lastPnlUpdateAt: string ili null
+
+
+unrealizedPnl: number ili null
+
+
+realizedPnl: number ili null
+
+
+stateFlags:
+
+
+isBreakEvenSet: boolean
+
+
+isTp1Hit: boolean
+
+
+isTp2Hit: boolean
+
+
+
+
+
+
+
+TIPOVI DOGAĐAJA – STATE EVENTS
+
+
+
+Modul src/state/stateEvents.js definiše tipove događaja koje state machine procesira.
+5.1 Kategorije događaja
+EventType (string):
+
+
+"SCORING_UPDATE"
+
+
+"REGIME_UPDATE"
+
+
+"RISK_UPDATE"
+
+
+"TIME_TICK"
+
+
+"EXECUTION_ORDER_PLACED"
+
+
+"EXECUTION_ORDER_FILLED"
+
+
+"EXECUTION_ORDER_CANCELLED"
+
+
+"EXECUTION_POSITION_OPENED"
+
+
+"EXECUTION_POSITION_CLOSED"
+
+
+"MANUAL_OVERRIDE"
+
+
+5.2 Struktura generičkog događaja
+StateEvent:
+
+
+type: string (jedna od vrednosti EventType)
+
+
+symbol: string
+
+
+timestamp: string (ISO datetime)
+
+
+payload: object (zavisno od type-a)
+
+
+5.3 SCORING_UPDATE payload
+payload:
+
+
+finalScoreLong: number
+
+
+finalScoreShort: number
+
+
+signalLong: string ("NONE"/"WATCH"/"ARM")
+
+
+signalShort: string
+
+
+fromScoringEngine: boolean (za internu kontrolu)
+
+
+5.4 REGIME_UPDATE payload
+payload:
+
+
+symbolRegime: string ("NORMAL","PUMP","MANIPULATED","NEWS_DRIVEN","COOLDOWN")
+
+
+globalRegime: string ("GLOBAL_NORMAL","GLOBAL_RISK_OFF","GLOBAL_PANIC")
+
+
+cooldownActive: boolean
+
+
+cooldownEndsAt: string ili null
+
+
+5.5 RISK_UPDATE payload (stub za sada)
+payload:
+
+
+riskAllowNewPositions: boolean
+
+
+riskAllowNewLong: boolean
+
+
+riskAllowNewShort: boolean
+
+
+5.6 TIME_TICK payload
+payload:
+
+
+now: string (ISO)
+
+
+Koristi se za proveru timeout-a (entrant plan validUntil, cooldown, stale order, itd.)
+5.7 EXECUTION_ORDER_PLACED payload (kasnija faza – planirano)
+payload:
+
+
+side: string
+
+
+orderId: string
+
+
+entryPrice: number
+
+
+qty: number
+
+
+5.8 EXECUTION_ORDER_FILLED payload
+payload:
+
+
+orderId: string
+
+
+avgFillPrice: number
+
+
+qtyFilled: number
+
+
+5.9 EXECUTION_POSITION_OPENED payload
+payload:
+
+
+positionId: string
+
+
+side: string
+
+
+entryPrice: number
+
+
+qty: number
+
+
+leverage: number
+
+
+5.10 EXECUTION_POSITION_CLOSED payload
+payload:
+
+
+positionId: string
+
+
+realizedPnl: number
+
+
+5.11 MANUAL_OVERRIDE payload
+payload:
+
+
+action: string ("FORCE_EXIT","FORCE_CANCEL_SCENARIO","FORCE_COOLDOWN","FORCE_FLAT")
+
+
+reason: string
+
+
+
+
+
+MODUL: src/state/stateModel.js
+
+
+
+6.1 Svrha
+Definiše sve dozvoljene tranzicije i pravila (state machine tabela):
+
+
+iz kog state-a → u koji state → na osnovu kog događaja i uslova.
+
+
+6.2 Dozvoljeni prelazi (visok nivo)
+Iz FLAT:
+
+
+na WATCHING_LONG ako signalLong = "WATCH" i allowed
+
+
+na WATCHING_SHORT ako signalShort = "WATCH" i allowed
+
+
+na ARMED_LONG direktno ako signalLong = "ARM" i allowed
+
+
+na ARMED_SHORT direktno ako signalShort = "ARM" i allowed
+
+
+na BLOCKED_REGIME ako symbolRegime nije "NORMAL" ili global je RISK_OFF/PANIC
+
+
+Iz WATCHING_LONG:
+
+
+na ARMED_LONG ako signalLong = "ARM" i allowed
+
+
+nazad na FLAT ako signalLong = "NONE" ili scoring padne ispod minScoreToConsider
+
+
+na BLOCKED_REGIME ako regime/global blokrola
+
+
+WATCHING_SHORT – analogno.
+Iz ARMED_LONG:
+
+
+na ORDER_PLACED_LONG kada Execution dobije nalog da postavi order (Phase 11)
+
+
+nazad na WATCHING_LONG ili FLAT ako:
+
+
+score padne,
+
+
+regime postane nepovoljan,
+
+
+risk blokira
+
+
+
+
+ARMED_SHORT – analogno.
+Iz ORDER_PLACED_LONG:
+
+
+na IN_POSITION_LONG / MANAGING_LONG kada order potpuno ispunjen i Execution šalje EXECUTION_POSITION_OPENED
+
+
+nazad na FLAT ako order CANCELLED ili istekne validUntil
+
+
+na BLOCKED_REGIME ako dođe do drastčne promene režima i sistem odluči OTKAŽI scenario
+
+
+Iz IN_POSITION_LONG:
+
+
+na MANAGING_LONG (obično trenutno)
+
+
+eventualni prelaz ako se koristi različita granularnost (IN_POSITION = SAMO nastanak, MANAGING = sve posle)
+
+
+Iz MANAGING_LONG:
+
+
+na EXITED kada EXECUTION_POSITION_CLOSED
+
+
+eventualno na COOLDOWN ako scenario završava sa jakom volom/pump (npr. zbog PumpState)
+
+
+na BLOCKED_REGIME u slučaju izuzetka (error, panic, ručni override, itd.)
+
+
+EXITED:
+
+
+prelazi u COOLDOWN ako je definisan cooldown posle trejda
+
+
+ili direktno u FLAT
+
+
+COOLDOWN:
+
+
+ostaje dok TIME_TICK i now < cooldownEndsAt
+
+
+kad now >= cooldownEndsAt → FLAT
+
+
+BLOCKED_REGIME:
+
+
+ostaje u tom stanju dok symbolRegime ili globalRegime ne dozvoli dalje
+
+
+kad se režim normalizuje → FLAT
+
+
+6.3 Funkcija „canTransition(fromState, toState, event)“
+stateModel.js treba da izveze utility funkcije:
+
+
+canTransition(currentState, eventType) → lista mogućih nextState
+
+
+applyTransition(context, event) → novi context sa izmenjenim currentState i lastStateChange* poljima
+
+
+Tipovi:
+
+
+currentState: string
+
+
+eventType: string
+
+
+event: StateEvent
+
+
+context: SymbolStateContext
+
+
+
+
+MODUL: src/state/stateMachine.js
+
+
+
+7.1 Svrha
+Glavni orkestrator:
+
+
+drži mapu svih SymbolStateContext objekata,
+
+
+prima event-e (od scoring, regime, risk, execution, manual override),
+
+
+koristi stateModel za prelaze,
+
+
+piše state-change event-e u data/events/<symbol>.json (JSON Lines),
+
+
+exposing API za dashboard.
+
+
+7.2 Struktura u memoriji
+StateMachineState:
+
+
+perSymbol: mapa
+
+
+ključ: symbol
+
+
+vrednost: SymbolStateContext
+
+
+
+
+7.3 Funkcije koje modul eksportuje
+
+
+initStateMachine()
+
+
+
+
+kreira prazne kontekte za sve simbole iz Universe (default FLAT)
+
+
+podesi lastStateChangeAt = now, lastStateChangeReason = "INIT"
+
+
+
+
+handleEvent(event: StateEvent)
+
+
+
+
+pronalazi context = perSymbol[event.symbol]
+
+
+ako ne postoji → kreira novi default FLAT
+
+
+poziva stateModel.applyTransition(context, event)
+
+
+ako se state promenio:
+
+
+upisuje event u data/events/<symbol>.json
+
+
+update lastStateChangeAt, lastStateChangeReason
+
+
+
+
+čuva context nazad
+
+
+
+
+tick(now)
+
+
+
+
+kreira TIME_TICK event za svaki simbol ili globalno
+
+
+koristi se za proveru timeout-a (cooldown, entryPlan.validUntil itd.)
+
+
+
+
+getSymbolState(symbol)
+
+
+
+
+vraća SymbolStateContext ili null
+
+
+
+
+getStatesOverview()
+
+
+
+
+vraća array sa minimalnim prikazom:
+
+
+symbol
+
+
+currentState
+
+
+activeSide
+
+
+lastStateChangeAt
+
+
+regimeSnapshot.currentRegime
+
+
+regimeSnapshot.globalRegime
+
+
+
+
+7.4 Kada scoringEngine šalje događaj
+ScoringEngine, pri updateScoreForSymbol(symbol), nakon što izračuna ScoreState, treba da generiše SCORING_UPDATE event:
+
+
+type: "SCORING_UPDATE"
+
+
+symbol: symbol
+
+
+timestamp: now
+
+
+payload: finalScoreLong, finalScoreShort, signalLong, signalShort
+
+
+StateMachine.handleEvent() koristi to da:
+
+
+ako currentState = FLAT i signalLong="WATCH" → može preći u WATCHING_LONG
+
+
+itd.
+
+
+7.5 Kada RegimeEngine šalje događaj
+RegimeEngine, nakon updateSymbolRegime(symbol), generiše REGIME_UPDATE event:
+
+
+type: "REGIME_UPDATE"
+
+
+payload: symbolRegime, globalRegime, cooldownActive, cooldownEndsAt
+
+
+Ovaj event može:
+
+
+prebaciti state u BLOCKED_REGIME
+
+
+prebaciti u COOLDOWN
+
+
+vratiti iz BLOCKED_REGIME u FLAT
+
+
+7.6 Kada RiskEngine (kasnije) šalje događaj
+RISK_UPDATE event može:
+
+
+sprečiti prelazak u WATCH/ARM
+
+
+resetovati scenario ako portfolioHeat pređe limit.
+
+
+7.7 Kada Execution modul šaIje događaje (kasnije faze)
+EXECUTION_* event-i pomeraju state:
+
+
+ORDER_PLACED → ORDER_PLACED_*
+
+
+POSITION_OPENED → IN_POSITION_* / MANAGING_*
+
+
+POSITION_CLOSED → EXITED
+
+
+
+
+
+JSON LOGOVI – data/events/<symbol>.json
+
+
+
+Format: JSON Lines (svaki red jedan događaj).
+Jedna linija:
+{
+"timestamp": "2025-11-18T10:02:33.123Z",
+"symbol": "BTCUSDT",
+"fromState": "WATCHING_LONG",
+"toState": "ARMED_LONG",
+"eventType": "SCORING_UPDATE",
+"reason": "FinalScoreLong >= armThreshold",
+"extra": {
+"finalScoreLong": 82.5,
+"signalLong": "ARM"
+}
+}
+Polja:
+
+
+timestamp: string
+
+
+symbol: string
+
+
+fromState: string
+
+
+toState: string
+
+
+eventType: string
+
+
+reason: string
+
+
+extra: object (proizvoljni metapodaci)
+
+
+Tipovi:
+
+
+timestamp: string
+
+
+symbol, fromState, toState, eventType, reason: string
+
+
+extra: object
+
+
+
+
+
+API ENDPOINT-I ZA STATE MACHINE
+
+
+
+9.1 GET /api/symbol/:symbol/state
+Response JSON:
+
+
+symbol: string
+
+
+currentState: string
+
+
+activeSide: string ili null
+
+
+lastStateChangeAt: string
+
+
+lastStateChangeReason: string
+
+
+regimeSnapshot:
+
+
+symbolRegime: string
+
+
+globalRegime: string
+
+
+cooldownActive: boolean
+
+
+cooldownEndsAt: string ili null
+
+
+
+
+signalSnapshot:
+
+
+lastFinalScoreLong: number
+
+
+lastFinalScoreShort: number
+
+
+lastSignalLong: string
+
+
+lastSignalShort: string
+
+
+
+
+9.2 GET /api/states/overview
+Response JSON:
+
+
+timestamp: string
+
+
+globalRegime: string
+
+
+entries: array objekata:
+
+
+StateOverviewEntry:
+
+
+symbol: string
+
+
+currentState: string
+
+
+activeSide: string ili null
+
+
+regime: string (symbolRegime)
+
+
+globalRegime: string
+
+
+lastStateChangeAt: string
+
+
+9.3 GET /api/symbol/:symbol/events?limit=N
+Opcioni endpoint za debug:
+
+
+vraća poslednjih N event logova iz data/events/<symbol>.json (parsiranih)
+
+
+služi za vizuelno debugovanje state machine odluka.
+
+
+
+
+
+DASHBOARD – POSLE PHASE 07
+
+
+
+Dashboard dobija:
+
+
+STATE COLUMN u hotlist tabeli:
+
+
+
+
+uz scoring i regime, sada vidi currentState (FLAT/WATCHING/ARMED/IN_POSITION/MANAGING/COOLDOWN/BLOCKED_REGIME).
+
+
+
+
+STATE DETAIL VIEW za simbol:
+
+
+
+
+timeline poslednjih state promena (iz events log-a)
+
+
+vizualno: „kada je ušao u WATCH“, „kada je ušao u ARMED“, „kada je scenario otkazan“.
+
+
+
+
+INDICATORI:
+
+
+
+
+U listi simbola boje:
+
+
+FLAT – neutral
+
+
+WATCHING – žuto
+
+
+ARMED – narandžasto
+
+
+ORDER_PLACED – plavo (čeka fill)
+
+
+IN_POSITION/MANAGING – zeleno
+
+
+COOLDOWN/BLOCKED – sivo/crveno
+
+
+
+
+Ovo daje jasnu sliku: ne samo score, već i fazu lifecycla.
+
+
+
+TEST SCENARIJI
+
+
+
+Test 1 – WATCHING LONG:
+
+
+Simulirati SCORING_UPDATE gde:
+
+
+finalScoreLong = 50
+
+
+signalLong = "WATCH"
+
+
+regime NORMAL, global NORMAL
+
+
+
+
+Početno stanje FLAT
+
+
+Očekivano: stateMachine → WATCHING_LONG
+
+
+Test 2 – ARMED LONG iz WATCHING:
+
+
+SCORING_UPDATE:
+
+
+finalScoreLong = 80
+
+
+signalLong = "ARM"
+
+
+
+
+currentState = WATCHING_LONG
+
+
+Očekivano: prelaz u ARMED_LONG
+
+
+Test 3 – Cancel scenario zbog scoring drop:
+
+
+currentState = WATCHING_LONG
+
+
+SCORING_UPDATE:
+
+
+finalScoreLong = 5
+
+
+signalLong = "NONE"
+
+
+
+
+Očekivano: prelaz u FLAT
+
+
+Test 4 – BLOCKED_REGIME:
+
+
+currentState = WATCHING_LONG
+
+
+REGIME_UPDATE:
+
+
+symbolRegime = "PUMP"
+
+
+
+
+Očekivano: prelaz u BLOCKED_REGIME
+
+
+Test 5 – COOLDOWN:
+
+
+currentState = MANAGING_LONG
+
+
+EXECUTION_POSITION_CLOSED, scenario završen, definisan cooldownDuration
+
+
+Očekivano: prelaz u EXITED → COOLDOWN
+
+
+TIME_TICK nakon cooldownEndsAt → prelaz u FLAT
+
+
+Test 6 – Global PANIC:
+
+
+bilo koji state osim FLAT/COOLDOWN
+
+
+REGIME_UPDATE: globalRegime = "GLOBAL_PANIC"
+
+
+Očekivano: state → BLOCKED_REGIME (ili specijalni PANIC state, ako kasnije uvedemo)
+
+
+Test 7 – Event log:
+
+
+nakon niza prelaza proveriti data/events/<symbol>.json
+
+
+sve linije imaju ispravne fromState/toState i reason.
+
+
+
+
+
+FINALNI REZULTAT FAZE 07
+
+
+
+Kada je Phase 07 gotova:
+
+
+Svaki simbol ima svoj kontekst (SymbolStateContext) sa jasno definisanim state-om i side-om.
+
+
+Sistema zna da li je simbol:
+
+
+potpuno FLAT,
+
+
+samo posmatran (WATCHING),
+
+
+ozbiljan kandidat (ARMED),
+
+
+već ima postavljen order,
+
+
+u poziciji,
+
+
+u aktivnom menadžmentu,
+
+
+u cooldown-u,
+
+
+blokiran zbog režima ili globalnog rizika.
+
+
+
+
+Sve promene stanja se loguju u data/events/<symbol>.json kao JSON Lines.
+
+
+Dashboard po prvi put može da prikaže kompletan lifecycle jednog trejd scenarija.
+
+
+State machine čini jasnu „kičmu“ sistema na koju će se u sledećim fazama nakačiti:
+
+
+TP/SL planner,
+
+
+Execution Engine,
+
+
+Auto-ReEntry,
+
+
+Risk Engine,
+
+
+Replay/Backtest.
+
+
+
+
+Phase 07 je osnov za to da sistem radi „kao ozbiljan trejder“ – sa disciplinom i striktnim pravilima, umesto da samo juri score.
+========================================
+KRAJ DOKUMENTA – PHASE 07

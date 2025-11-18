@@ -1,0 +1,1045 @@
+========================================
+PHASE 12 – LOGGING, JSON ARHIVA & REPLAY ENGINE
+(FINAL SPEC – VEOMA DETALJNO I PRECIZNO)
+Ova faza je „crna kutija + vremeplov“ tvog sistema.
+Sve što se desi u LIVE / SIM režimu mora:
+
+
+da se zabeleži (logovi),
+
+
+da se organizuje (arhiva + retention),
+
+
+da se može pustiti ponovo (replay), kao da je live.
+
+
+Bićeš u stanju da:
+
+
+uzmeš 1 sat tradinga i pustiš ga ponovo kroz engine,
+
+
+menjaš parametre (thresholds, risk, TP/SL) i vidiš šta bi bilo,
+
+
+koristiš iste logove kao dataset za ML / analitiku.
+
+
+
+0. CILJ PHASE 12
+
+
+Uvesti standardizovan logging sloj (jedan sistem, svi moduli)
+
+
+Definisati tačne JSON formate za:
+
+
+state events,
+
+
+trade log,
+
+
+order log,
+
+
+risk snapshot,
+
+
+TPSL snapshot,
+
+
+scoring snapshot,
+
+
+regime snapshot,
+
+
+feature snapshot (po želji).
+
+
+
+
+Napraviti retention (čišćenje starih fajlova + kompaktne „summary“ fajlove).
+
+
+Napraviti Replay Engine koji može:
+
+
+da uzme određeni vremenski interval (npr. 2025-11-18 10:00–11:00),
+
+
+da čita logove,
+
+
+da emituje evente u sistem kao da su live.
+
+
+
+
+
+1. FAJLOVI KOJE OVA FAZA UVODI / MENJA
+1.1 Novi fajlovi
+src/logging/logger.js
+src/logging/streams.js
+src/logging/retention.js
+src/replay/replayEngine.js
+src/replay/replaySessionStore.js
+
+1.2 Izmene
+
+
+src/state/stateMachine.js
+→ koristi centralni logger za state change log, umesto hand-made zapisa.
+
+
+src/risk/positionTracker.js
+→ koristi centralni logger za trade log.
+
+
+src/execution/orderRouter.js
+→ koristi centralni logger za order log.
+
+
+src/monitoring/health.js
+→ dodaje health info za logging + replay.
+
+
+web/routes/api.js ili novi web/routes/api-replay.js
+→ API endpoint-i za replay sessions.
+
+
+web/routes/api-dashboard.js
+→ opcionalno: doda info o dostupnim replay sesijama.
+
+
+1.3 Struktura data/ direktorijuma (finalno posle Phase 12)
+data/
+  system/
+    users.db
+    health_snapshot.json
+    risk_snapshot.json
+    tpsl_snapshot.json
+    execution_snapshot.json
+    replay_sessions.json
+  orderbook/
+    <symbol>.json              // rolling snapshot, ako koristimo
+  trades/
+    <symbol>.json              // raw tape (može biti ograničeno)
+  metrics/
+    <symbol>.json              // feature/scoring metrics (po želji)
+  events/
+    <symbol>.jsonl             // state change event log (JSON Lines)
+  trades_log/
+    day-YYYY-MM-DD.jsonl       // zatvoreni trejdovi (trade log)
+  orders/
+    day-YYYY-MM-DD.jsonl       // svi poslati nalozi (order log)
+  replay/
+    sessions/
+      <sessionId>/
+        manifest.json
+        events.jsonl           // unified events za replay
+        meta.json              // (opciono) dodatne info
+
+
+Napomena: .jsonl znači JSON Lines – svaki red jedan JSON objekat.
+
+
+2. CENTRALNI LOGGER – src/logging/logger.js
+2.1 Svrha
+Jedna centralna tačka preko koje svi moduli loguju:
+
+
+stateMachine → state events
+
+
+risk/positionTracker → trade log
+
+
+execution → order log
+
+
+risk engine → risk snapshot
+
+
+TPSL engine → tpsl snapshot
+
+
+health → health snapshot
+
+
+replay → session manifest/log
+
+
+2.2 Tipovi log streamova
+Enum (string):
+
+
+"STATE_EVENT"
+
+
+"TRADE_LOG"
+
+
+"ORDER_LOG"
+
+
+"RISK_SNAPSHOT"
+
+
+"TPSL_SNAPSHOT"
+
+
+"EXECUTION_SNAPSHOT"
+
+
+"REPLAY_SESSION_MANIFEST"
+
+
+"REPLAY_EVENTS"
+
+
+"HEALTH_SNAPSHOT"
+
+
+2.3 Logger API
+// Glavni objekat
+Logger {
+  logStateEvent(symbol: string, event: StateEvent): Promise<void>;
+  logTrade(tradeRecord: TradeLogRecord): Promise<void>;
+  logOrder(orderRecord: OrderLogRecord): Promise<void>;
+  writeRiskSnapshot(snapshot: RiskSnapshot): Promise<void>;
+  writeTpslSnapshot(snapshot: TpslSnapshot): Promise<void>;
+  writeExecutionSnapshot(snapshot: ExecutionSnapshot): Promise<void>;
+  writeHealthSnapshot(snapshot: HealthSnapshot): Promise<void>;
+
+  // Replay specifično
+  writeReplayManifest(sessionId: string, manifest: ReplayManifest): Promise<void>;
+  appendReplayEvent(sessionId: string, replayEvent: ReplayEvent): Promise<void>;
+}
+
+Sve funkcije:
+
+
+parametri su plain JS objekti,
+
+
+vraćaju Promise<void> (async I/O).
+
+
+2.4 Implementacija – gde piše fajlove
+StateEvent log:
+
+
+Path: data/events/<symbol>.jsonl
+
+
+Svaki event = jedan red (string JSON + newline).
+
+
+Trade log:
+
+
+Path: data/trades_log/day-YYYY-MM-DD.jsonl
+
+
+YYYY-MM-DD je datum tradeRecord.dateKey ili iz timestamp.
+
+
+Order log:
+
+
+Path: data/orders/day-YYYY-MM-DD.jsonl
+
+
+Risk/TPSL/Execution/Health snapshot:
+
+
+Path (overwrite, ne append):
+
+
+data/system/risk_snapshot.json
+
+
+data/system/tpsl_snapshot.json
+
+
+data/system/execution_snapshot.json
+
+
+data/system/health_snapshot.json
+
+
+
+
+Replay:
+
+
+Manifest: data/replay/sessions/<sessionId>/manifest.json
+
+
+Events:   data/replay/sessions/<sessionId>/events.jsonl
+
+
+Ako folder ne postoji:
+
+
+logger kreira: fs.mkdirSync(..., { recursive: true }).
+
+
+
+3. STRUKTURE LOG OBJEKATA
+Sve strukture su plain JS objekti (bez metoda), a na disku JSON zapisi.
+3.1 StateEvent (Phase 07)
+StateEvent {
+  timestamp: string,       // ISO
+  symbol: string,
+  fromState: string,
+  toState: string,
+  eventType: string,       // "SCORING_UPDATE", "REGIME_UPDATE", "RISK_UPDATE", ...
+  reason: string,
+  extra: object            // bilo šta dodatno: score, regime, risk flags...
+}
+
+Tipovi:
+
+
+timestamp, symbol, fromState, toState, eventType, reason → string
+
+
+extra → object (može biti prazna {})
+
+
+3.2 TradeLogRecord (Phase 08)
+TradeLogRecord {
+  timestamp: string,        // kada je trade zatvoren
+  dateKey: string,          // "YYYY-MM-DD"
+  symbol: string,
+  side: "LONG" | "SHORT",
+  entryPrice: number,
+  closePrice: number,
+  qty: number,
+  leverage: number,
+  realizedPnl: number,
+  mfe: number,
+  mae: number,
+  durationSeconds: number,
+  mode: "SIM" | "DRY_RUN" | "LIVE"
+}
+
+Tipovi: sve brojčano → number, ostalo → string.
+3.3 OrderLogRecord (Phase 10)
+OrderLogRecord {
+  timestamp: string,
+  clientOrderId: string,
+  exchangeOrderId: string | null,
+  symbol: string,
+  side: "BUY" | "SELL",
+  type: string,             // "LIMIT", "MARKET", "STOP_MARKET"...
+  timeInForce: string,
+  price: number | null,
+  triggerPrice: number | null,
+  qty: number,
+  reduceOnly: boolean,
+  status: string,           // "NEW", "FILLED", "CANCELED"...
+  filledQty: number,
+  avgFillPrice: number | null,
+  notionalUsd: number,
+  mode: "SIM" | "DRY_RUN" | "LIVE",
+  source: string,           // "STATE_MACHINE", "TPSL_ENGINE", "MANUAL"
+  lastError: string | null
+}
+
+3.4 RiskSnapshot (Phase 08)
+RiskSnapshot {
+  timestamp: string,
+  account: AccountState,
+  dailyStats: DailyRiskStats,
+  riskFlags: RiskFlags
+}
+
+AccountState, DailyRiskStats, RiskFlags su već definisani u Phase 08 (sve plain objekti sa string/number/bool).
+3.5 TpslSnapshot (Phase 09)
+TpslSnapshot {
+  timestamp: string,
+  symbol: string,
+  side: "LONG" | "SHORT",
+  entryPrice: number,
+  tp1Price: number,
+  tp2Price: number,
+  stopLossPrice: number,
+  breakEvenPrice: number,
+  trailingActive: boolean,
+  trailingDistancePct: number,
+  pumpOverrideApplied: boolean,
+  spoofingOverrideApplied: boolean,
+  volatilityOverrideApplied: boolean
+}
+
+3.6 ExecutionSnapshot (Phase 10)
+ExecutionSnapshot {
+  timestamp: string,
+  mode: "SIM" | "DRY_RUN" | "LIVE",
+  safeMode: boolean,
+  pendingOrdersCount: number,
+  activeOrdersCount: number,
+  lastErrorAt: string | null,
+  lastErrorMessage: string | null
+}
+
+3.7 HealthSnapshot (Phase 01 + 11)
+HealthSnapshot {
+  timestamp: string,
+  services: {
+    [serviceName: string]: {
+      status: "OK" | "WARN" | "ERROR",
+      lastUpdateAt: string,
+      message: string | null
+    }
+  }
+}
+
+services je object čiji su ključevi stringovi ("config", "marketData", "featureEngine", itd.).
+
+4. STREAMS & RETENTION – src/logging/streams.js i src/logging/retention.js
+4.1 streams.js – tehnički sloj za pisanje fajlova
+Glavna ideja:
+
+
+Imamo jedan stream per fajl (per dan/per simbol),
+
+
+Pišemo append-om (bez ručnog fs.open/close svaki put),
+
+
+Auto flush posle svake linije.
+
+
+API (interno, logger koristi):
+FileStreamManager {
+  appendLine(filePath: string, line: string): Promise<void>;
+  writeJson(filePath: string, object: any): Promise<void>; // overwrite
+}
+
+
+
+appendLine → dodaje liniju sa \n.
+
+
+writeJson → JSON.stringify(object, null, 2) i upisuje (overwrite).
+
+
+4.2 retention.js – čišćenje starih logova
+4.2.1 Konfiguracija retention-a (CONFIG.retention)
+Dodaje se u config:
+CONFIG.retention = {
+  tradesLogDays: 30,          // koliko dana trade log čuvamo
+  ordersLogDays: 30,
+  eventsDays: 7,              // state events per simbol
+  replaySessionsDays: 30,     // čuvanje replay sesija
+  rawMarketDataHours: 24      // npr. orderbook/trades <symbol>.json
+};
+
+Tipovi: svi su number (celi, u danima/satima).
+4.2.2 Retention job
+Funkcija:
+runRetentionJob(now: Date | string): Promise<RetentionReport>
+
+RetentionReport:
+{
+  timestamp: string,
+  deletedFiles: string[],
+  keptFiles: string[],
+  errors: { file: string, error: string }[]
+}
+
+Ponašanje:
+
+
+enumeriše fajlove u:
+
+
+data/trades_log/
+
+
+data/orders/
+
+
+data/events/
+
+
+data/replay/sessions/
+
+
+data/orderbook/, data/trades/ ako treba
+
+
+
+
+parse-uje datume iz naziva (npr. day-YYYY-MM-DD.jsonl)
+
+
+ako je starije od threshold-a → fs.unlinkSync / unlink (async).
+
+
+Za data/events/<symbol>.jsonl:
+
+
+može se koristiti timestamp iz poslednje linije ili velicina fajla > limit
+
+
+minimalna verzija: ako fajl stariji od N dana prema mtime → obrisati (ili rotirati).
+
+
+CRON:
+
+
+ili Linux cron (dnevno)
+
+
+ili internal scheduler (npr. setInterval u main procesu) jednom u 24h.
+
+
+
+5. REPLAY ENGINE – src/replay/replayEngine.js
+5.1 Svrha
+
+
+Uzima logove iz prošlosti,
+
+
+Pravi „session“ → data/replay/sessions/<sessionId>/events.jsonl,
+
+
+Emulira tok događaja kao da je live:
+
+
+SCORING_UPDATE
+
+
+REGIME_UPDATE
+
+
+RISK_UPDATE
+
+
+EXECUTION_*
+
+
+STATE_EVENT (opciono kao izlaz, ne kao ulaz)
+
+
+plus (opciono) raw market data (trades/orderbook).
+
+
+
+
+Cilj: REPLAY MODE gde:
+
+
+connector-i prema Bybit-u NE rade,
+
+
+umesto njih, replayEngine šalje evente modulima.
+
+
+5.2 ReplayEvent format
+ReplayEvent {
+  timestamp: string,         // originalni timestamp
+  type: string,              // "MARKET_TRADE", "MARKET_BOOK", "FEATURE_SNAPSHOT", "SCORING_UPDATE", ...
+  symbol?: string | null,    // ako je simbol-specifično
+  payload: object            // zavisi od type-a
+}
+
+Tipovi:
+
+
+timestamp → string (ISO)
+
+
+type → string
+
+
+symbol → string ili null
+
+
+payload → object
+
+
+5.3 ReplaySession manifest
+Path: data/replay/sessions/<sessionId>/manifest.json
+ReplayManifest {
+  sessionId: string,
+  createdAt: string,
+  createdBy: string,            // "MANUAL" | "AUTO" | "TEST"
+  sourceDateRange: {
+    from: string,               // ISO
+    to: string                  // ISO
+  },
+  symbols: string[],            // npr ["BTCUSDT","AIUSDT"]
+  eventTypes: string[],         // koje vrste su ubačene
+  speedFactor: number,          // npr 1.0 = real time, 10.0 = 10x brže
+  notes: string | null
+}
+
+5.4 ReplaySessionStore – src/replay/replaySessionStore.js
+Drži info o postojećim sesijama:
+ReplaySessionStore {
+  listSessions(): Promise<ReplayManifest[]>;
+  getSession(sessionId: string): Promise<ReplayManifest | null>;
+  saveSession(manifest: ReplayManifest): Promise<void>;
+}
+
+Interno čita replay_sessions.json u data/system/ ili jednostavno scan data/replay/sessions/ i učitava manifest.json iz svakog foldera.
+
+6. KREIRANJE REPLAY SESIJE (OFFLINE BUILD)
+Funkcija:
+buildReplaySession(options: BuildReplayOptions): Promise<ReplayManifest>
+
+BuildReplayOptions:
+{
+  sessionId?: string | null,        // ako je null → generiši
+  from: string,                     // ISO datetime
+  to: string,                       // ISO datetime
+  symbols: string[],                // lista simbola
+  includeTypes: string[],           // npr ["SCORING_UPDATE","REGIME_UPDATE","RISK_UPDATE"]
+  maxEvents?: number | null         // zaštita od giga fajla
+}
+
+Ponašanje:
+
+
+Generiše sessionId ako nije zadato (npr. 2025-11-18T10-11-BTCUSDT-AIUSDT).
+
+
+Kreira folder data/replay/sessions/<sessionId>/.
+
+
+Kreira prazan events.jsonl.
+
+
+Čita:
+
+
+data/events/<symbol>.jsonl → filtrira evente u vremenskom rasponu
+
+
+data/trades_log/day-YYYY-MM-DD.jsonl (ako je potrebno)
+
+
+data/orders/day-YYYY-MM-DD.jsonl (ako želimo da vidimo execution)
+
+
+(opciono) data/metrics/<symbol>.json ako želimo snapshot-e
+
+
+
+
+Svaki relevantni log pretvara u ReplayEvent:
+Prim. SCORING_UPDATE:
+{
+  timestamp: event.timestamp,
+  type: "SCORING_UPDATE",
+  symbol: event.symbol,
+  payload: { ... } // original event.extra/scoring info
+}
+
+
+
+Sortira sve evente po timestamp.
+
+
+Ako maxEvents nije null → truncuje posle maxEvents.
+
+
+Upisuje u events.jsonl red po red.
+
+
+Generiše i piše manifest.json.
+
+
+
+7. POKRETANJE REPLAYA
+ReplayEngine radi u posebnom modu:
+7.1 Replay mode u CONFIG-u
+U CONFIG.mode (ili posebno polje):
+CONFIG.runMode = "LIVE" | "REPLAY";
+
+
+
+Ako REPLAY →
+
+
+NE pokrećeš realne Bybit konektore,
+
+
+pokrećeš replayEngine.runSession(sessionId, options).
+
+
+
+
+7.2 API ReplayEngine
+ReplayEngine {
+  loadSession(sessionId: string): Promise<ReplayManifest>;
+  runSession(sessionId: string, options?: RunReplayOptions): Promise<void>;
+  stop(): void;
+  getStatus(): ReplayStatus;
+}
+
+RunReplayOptions:
+{
+  speedFactor?: number,          // override manifest.speedFactor
+  loop?: boolean,                // da li se ponavlja od početka
+  injectMode?: "SCORING_ONLY" | "FULL_DECISION", // minimalno: SCORING_ONLY
+}
+
+ReplayStatus:
+{
+  sessionId: string | null,
+  running: boolean,
+  currentEventIndex: number,
+  totalEvents: number,
+  startedAt: string | null,
+  lastEventTimestamp: string | null
+}
+
+7.3 Kako se event-i „emituju“
+ReplayEngine čita events.jsonl:
+
+
+svaki red parse-uje u ReplayEvent,
+
+
+sort > već je sortiran,
+
+
+preračuna delay između event-ova:
+
+
+deltaReal = timestamp[i] - timestamp[i-1]
+
+
+deltaReplay = deltaReal / speedFactor
+
+
+
+
+koristi setTimeout/loop da pošalje dalje:
+
+
+Za svaki ReplayEvent:
+
+
+ako type počinje sa SCORING, REGIME, RISK, EXECUTION →
+
+
+kreira odgovarajući StateEvent (kao da dolazi iz real-time pipeline-a)
+
+
+pozove stateMachine.handleEvent(event)
+
+
+ako je potrebno → pozove riskEngine.on... itd.
+
+
+
+
+Minimalna verzija (SCORING_ONLY):
+
+
+emituje samo SCORING_UPDATE i eventualno REGIME_UPDATE
+
+
+scoringEngine se NE koristi; Replay u ovom modu testira SAmo state machine i execution reakcije na već spremne scoring signale.
+
+
+Naprednija verzija (FULL_DECISION):
+
+
+umesto emisije SCORING_UPDATE, pušta raw market evente (trades, orderbook) u microstructure pipeline i scoringEngine on-the-fly računa signale.
+
+
+Ovo je teže (više CPU), ali moćnije; može ostati za kasniju verziju.
+
+
+
+8. API ZA REPLAY (web/routes/api-replay.js)
+8.1 GET /api/replay/sessions
+Response JSON:
+{
+  timestamp: string,
+  sessions: ReplayManifest[]
+}
+
+8.2 GET /api/replay/sessions/:sessionId
+Response:
+ReplayManifest | { error: string }
+
+8.3 POST /api/replay/sessions (pravljenje nove sesije)
+Body (JSON):
+{
+  "from": "2025-11-18T10:00:00Z",
+  "to": "2025-11-18T11:00:00Z",
+  "symbols": ["BTCUSDT","AIUSDT"],
+  "includeTypes": ["SCORING_UPDATE","REGIME_UPDATE","RISK_UPDATE"],
+  "maxEvents": 50000,
+  "sessionId": null,
+  "notes": "BTC+AI scalp test"
+}
+
+Server:
+
+
+poziva buildReplaySession(options)
+
+
+vraća ReplayManifest.
+
+
+8.4 POST /api/replay/run
+Body:
+{
+  "sessionId": "2025-11-18T10-11-BTCUSDT-AIUSDT",
+  "speedFactor": 4.0,
+  "injectMode": "SCORING_ONLY"
+}
+
+Server:
+
+
+poziva replayEngine.runSession(...)
+
+
+vraća:
+
+
+{
+  success: boolean,
+  message: string
+}
+
+8.5 POST /api/replay/stop
+Stopira replay:
+Response:
+{
+  success: boolean,
+  message: string
+}
+
+8.6 GET /api/replay/status
+Response:
+ReplayStatus
+
+
+9. DASHBOARD INTEGRACIJA (Phase 11 + 12)
+U dashboard dodajemo:
+9.1 Replay panel (može u „Logs & Events“ tabu)
+
+
+Lista dostupnih sesija (GET /api/replay/sessions)
+
+
+Kolone:
+
+
+sessionId
+
+
+date range
+
+
+symbols
+
+
+totalEvents (ako hoćeš, manifest može imati to polje)
+
+
+speedFactor
+
+
+
+
+Dugmad:
+
+
+„Run“
+
+
+„Stop“
+
+
+„Load into detail“ (da vidiš šta sadrži)
+
+
+
+
+9.2 Status indikator
+Na global overview panelu:
+
+
+Ako CONFIG.runMode="REPLAY" ili replayEngine.getStatus().running === true:
+
+
+badge: REPLAY MODE (crno-ljubičasti)
+
+
+info: koji sessionId, speedFactor
+
+
+
+
+Ovo jasno razlikuje „pravi trading“ od „test/training režima“.
+
+10. TEST SCENARIJI ZA PHASE 12
+Test 1 – Centralni logger
+
+
+Pozvati logStateEvent() za neki simbol.
+
+
+Proveriti da data/events/<symbol>.jsonl postoji i ima validnu JSON liniju.
+
+
+Test 2 – Trade log + retention
+
+
+Simulirati nekoliko zatvorenih trejdova, generisati 2 dana backdated logova.
+
+
+Podesiti CONFIG.retention.tradesLogDays=1.
+
+
+Pokrenuti runRetentionJob.
+
+
+Proveriti da je fajl stariji od 1 dana obrisan, noviji ostao.
+
+
+Test 3 – Order log
+
+
+Slati par simuliranih naloga preko Execution Engine-a u SIM modu.
+
+
+Proveriti data/orders/day-YYYY-MM-DD.jsonl – svaki nalog upisan.
+
+
+Test 4 – Build replay session
+
+
+from i to postaviti unutar dana gde imaš logova.
+
+
+buildReplaySession vrati manifest.
+
+
+Proveriti:
+
+
+data/replay/sessions/<sessionId>/events.jsonl postoji,
+
+
+manifest.json ima tačne simbole, date-range, eventTypes.
+
+
+
+
+Test 5 – Run replay SCORING_ONLY
+
+
+Pokrenuti sistem u CONFIG.runMode="REPLAY".
+
+
+POST /api/replay/run sa jednom sesijom.
+
+
+StateMachine treba da dobija SCORING_UPDATE evente.
+
+
+Dashboard hotlist treba da se „pomera“ kao da je live market.
+
+
+Test 6 – Stop replay
+
+
+POST /api/replay/stop.
+
+
+replayEngine.getStatus().running → false.
+
+
+Nema više event emisija.
+
+
+Test 7 – Health snapshot za log/replay
+
+
+health.js treba da prijavi status:
+
+
+logging: OK / WARN (ako disk full/pisanje fail),
+
+
+replay: OK / WARN / ERROR (ako sessionId ne postoji).
+
+
+
+
+
+11. FINALNI REZULTAT PHASE 12
+Posle Phase 12, tvoj sistem:
+
+
+Ima jedinstven logging sistem – nema više „svako piše svoj fajl kako hoće“, sve ide kroz logger.js.
+
+
+Svi logovi su u JSON Lines, spremni za:
+
+
+replay,
+
+
+analitiku,
+
+
+ML.
+
+
+
+
+Postoji Retention engine koji održava disk čistim i predvidivim.
+
+
+Imaš Replay Engine koji od LIVE tradinga pravi dataset koji možeš pustiti:
+
+
+kao film,
+
+
+kao trening za AI,
+
+
+kao backtest za novu logiku.
+
+
+
+
+Dashboard dobija REPLAY panel, tako da možeš iz UI-a:
+
+
+napraviti replay sesiju,
+
+
+pokrenuti je,
+
+
+pratiti je kao da je live market.
+
+
+
+
+Ovo je ključni korak da tvoj AI Scalper ne bude samo „live bot“, nego i istraživački alat – gde svaki dan istorije možeš koristiti da postaneš sve bolji.
+========================================
+KRAJ DOKUMENTA – PHASE 12

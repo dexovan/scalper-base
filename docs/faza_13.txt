@@ -1,0 +1,554 @@
+========================================
+PHASE 13 – BACKTEST & STRATEGY SANDBOX
+(OFFLINE TESTIRANJE, PARAMETAR-SWEEP, REPORTI)
+
+Ova faza nadograđuje FAZU 12 (logging + replay) i pravi kompletan BACKTEST & SANDBOX sistem:
+
+uzima istorijske logove (ili replay sesije),
+
+pušta strategiju kao da je live, ali:
+
+možeš menjati parametre (risk, TP/SL, scoring thresholds…),
+
+možeš puštati iste podatke više puta,
+
+sve radi 100% offline, bez Bybit-a, bez rizika,
+
+generiše jasne REPORT-e:
+
+winrate, expectancy, max drawdown,
+
+distribuciju MFE/MAE,
+
+performance po simbolu, po fazi (NORMAL/PUMP itd.),
+
+PnL krive, R-multiples.
+
+Ovo je faza gde tvoj sistem postaje laboratorija – ne samo live bot.
+
+0. CILJ PHASE 13
+
+Napraviti Backtest Engine koji koristi Replay + tvoje module (scoring, state, risk, TPSL, execution) da testira nove postavke.
+
+Omogućiti Strategy Sandbox – definisanje scenario fajlova koje želiš da testiraš (set parametara).
+
+Napraviti reporting format (JSON) + API + dashboard UI za pregled rezultata.
+
+Sve bez menjanja core koda (faze 1–12) – koristi se isti engine, samo druge ulazne podatke i config snapshot.
+
+1. NOVI FAJLOVI / IZMJENE
+1.1 Novi fajlovi
+src/backtest/backtestEngine.js
+src/backtest/sandboxRunner.js
+src/backtest/reportBuilder.js
+src/backtest/strategyConfig.js
+
+1.2 Novi data folderi
+data/backtests/
+  runs/
+    <runId>/
+      config.json           // backtest config (scenario)
+      manifest.json         // meta-info o run-u
+      report.json           // agregatni rezultati
+      trades.jsonl          // kopija trade loga specifična za ovaj run
+      equity_curve.json     // PnL kriva
+
+1.3 Izmene
+
+src/replay/replayEngine.js
+→ omogućava „hook“ mod za backtest (Replay → BacktestEngine, ne direktno u live engine).
+
+web/routes/api-backtest.js (novi fajl za API rute)
+
+web/public/js/dashboard-backtest.js ili integrisano u dashboard.js
+→ frontend logika za backtest sekciju.
+
+2. KONCEPT: ŠTA JE BACKTEST RUN?
+
+Backtest Run = jedan pokušaj testiranja strategije sa određenim parametrima nad određenim setom događaja (replay session).
+
+Elementi:
+
+Ulaz:
+
+replaySessionId (iz Phase 12),
+
+strategyConfig (set parametara / override-a),
+
+runMode: "SIM_BACKTEST".
+
+Jedan run ima:
+
+jedinstveni runId,
+
+početak, kraj, broj eventa,
+
+ishod: PnL, metrics.
+
+3. STRATEGY CONFIG – src/backtest/strategyConfig.js
+
+StrategyConfig opisuje kako želiš da se strategija ponaša u ovom run-u:
+
+StrategyConfig {
+  name: string,
+  description: string,
+
+  // globalni risk parametri override za ovaj run
+  riskOverrides?: {
+    maxRiskPerTradePct?: number,
+    maxPortfolioHeatPct?: number,
+    maxDailyLossPct?: number,
+    maxOpenPositions?: number,
+    maxOpenPositionsPerSymbol?: number
+  },
+
+  // scoring parametri override
+  scoringOverrides?: {
+    watchThresholdLong?: number,
+    watchThresholdShort?: number,
+    armThresholdLong?: number,
+    armThresholdShort?: number,
+    minScoreToTrade?: number
+  },
+
+  // TP/SL parametri override
+  tpslOverrides?: {
+    tp1Factor?: number,
+    tp2Factor?: number,
+    breakEvenBufferPct?: number,
+    trailingActivationPct?: number,
+    trailingDistancePct?: number
+  },
+
+  // Regime overrides (koliko agresivno blokiramo PUMP/NEWS)
+  regimeOverrides?: {
+    allowNewEntriesInPump?: boolean,
+    allowCountertrendInBlowoff?: boolean,
+    riskMultiplierInNewsDriven?: number // npr. 0.5 = pola rizika
+  },
+
+  // SIM/execution parametri
+  executionOverrides?: {
+    maxSlippagePct?: number,
+    maxSpreadPct?: number,
+    minNotionalUsd?: number,
+    maxNotionalUsd?: number
+  },
+
+  // dodatne oznake
+  tags?: string[]
+}
+
+
+Tipovi:
+
+name, description → string
+
+sve overrides → opcioni number/boolean
+
+tags → array<string>
+
+StrategyConfig se čuva u JSON fajlu za svaki run: config.json i koristiti će se da se override-uju osnovni CONFIG parametri za taj backtest.
+
+4. BACKTESTENGINE – src/backtest/backtestEngine.js
+4.1 Svrha
+
+Prima ReplayEvents (iz replayEngine-a),
+
+Hrani njima engine module (scoring, regime, state, risk, execution, TPSL),
+
+Sve radi u izolovanom kontekstu (nema uticaja na LIVE sisteme),
+
+Na kraju generiše:
+
+trade log (specifičan za run),
+
+order log (specifičan za run),
+
+equity curve,
+
+agregatne metrike.
+
+4.2 BacktestContext
+
+Interno:
+
+BacktestContext {
+  runId: string,
+  strategyConfig: StrategyConfig,
+  replayManifest: ReplayManifest,
+
+  // runtime state:
+  eventCount: number,
+  startTimestamp: string,
+  endTimestamp: string,
+  currentSimTime: string,
+
+  equityCurve: EquityPoint[],        // vidi dole
+  tradeRecords: TradeLogRecord[],    // per run
+  orderRecords: OrderLogRecord[],    // per run (opciono)
+  metrics: BacktestMetrics           // agregatni rezultat
+}
+
+
+EquityPoint:
+
+EquityPoint {
+  timestamp: string,
+  equity: number,
+  openPnl: number,
+  balance: number
+}
+
+4.3 API backtestEngine-a
+BacktestEngine {
+  init(runId: string, strategyConfig: StrategyConfig, replayManifest: ReplayManifest): void;
+  onReplayEvent(event: ReplayEvent): void; // zove ga replayEngine
+  finalize(): BacktestReport;             // poziva se nakon završetka session-a
+}
+
+4.4 Kako radi onReplayEvent
+
+Zavisi od event.type:
+
+"MARKET_TRADE" / "MARKET_BOOK"
+→ prosleđuje se u tvoj market data / feature pipeline (kao da je live).
+
+"FEATURE_SNAPSHOT"
+→ direktno hrani scoring/regime/state (ako koristiš prekomputovane feature-e).
+
+"SCORING_UPDATE"
+→ emulira normalan scoring update event (StateEvent).
+
+"RISK_UPDATE", "REGIME_UPDATE" …
+→ opet emulira live event.
+
+Veoma bitno:
+
+umesto logger-a iz Phase 8/10 koji pišu u global data/ fajlove, BacktestEngine koristi lokalnu kolekciju tradeRecords i orderRecords unutar BacktestContext-a.
+
+to znači:
+
+RUN NE dirka live logove
+
+sve zapisuje u data/backtests/runs/<runId>/.
+
+5. SANDBOXRUNNER – src/backtest/sandboxRunner.js
+5.1 Svrha
+
+Organizuje jedan ili više backtest run-ova nad istim replaySession-om,
+
+radi parametar-sweep (npr. 5 različitih StrategyConfig varijanti),
+
+generiše više runId-eva i report.json fajlova.
+
+5.2 Run metadata – BacktestManifest
+
+data/backtests/runs/<runId>/manifest.json:
+
+BacktestManifest {
+  runId: string,
+  createdAt: string,
+  sessionId: string,            // replay session
+  strategyName: string,
+  strategyDescription: string,
+  source: "MANUAL" | "AUTO",
+  status: "PENDING" | "RUNNING" | "DONE" | "FAILED",
+  eventCount: number,
+  symbols: string[],
+  from: string,
+  to: string,
+  speedFactor: number,
+  notes: string | null
+}
+
+5.3 SandboxRunner API
+SandboxRunner {
+  createRun(sessionId: string, strategyConfig: StrategyConfig, options?: SandboxRunOptions): Promise<BacktestManifest>;
+  startRun(runId: string): Promise<void>;
+  getRunStatus(runId: string): Promise<BacktestManifest & { progress: number }>;
+  listRuns(): Promise<BacktestManifest[]>;
+}
+
+
+SandboxRunOptions:
+
+{
+  speedFactor?: number, // za replay (koliko puta brže)
+  notes?: string
+}
+
+
+progress = eventCountProcessed / totalEvents.
+
+6. REPORTBUILDER – src/backtest/reportBuilder.js
+6.1 Svrha
+
+Uzima:
+
+tradeRecords (per run)
+
+equityCurve
+
+orderRecords (opciono)
+
+I pravi BacktestReport:
+
+BacktestReport {
+  runId: string,
+  sessionId: string,
+  strategyName: string,
+  from: string,
+  to: string,
+  symbols: string[],
+
+  // PnL & R
+  totalNetPnl: number,
+  totalNetPnlPct: number,
+  avgR: number,
+  expectancyR: number,
+  profitFactor: number,
+  maxDrawdown: number,
+  maxDrawdownPct: number,
+
+  // Trade stats
+  tradesCount: number,
+  winningTrades: number,
+  losingTrades: number,
+  winRatePct: number,
+  avgWin: number,
+  avgLoss: number,
+  bestTradePnl: number,
+  worstTradePnl: number,
+
+  // Symbol breakdown
+  perSymbol: {
+    [symbol: string]: {
+      tradesCount: number,
+      netPnl: number,
+      winRatePct: number,
+      profitFactor: number
+    }
+  },
+
+  // Regime breakdown (NORMAL, PUMP, MANIPULATED, NEWS_DRIVEN, COOLDOWN)
+  perRegime: {
+    [regime: string]: {
+      tradesCount: number,
+      netPnl: number,
+      winRatePct: number
+    }
+  },
+
+  // Time-based equity
+  equityCurve: EquityPoint[],
+
+  // dodatne info
+  configSnapshot: StrategyConfig
+}
+
+
+Sve brojčano → number, ostalo → string / object.
+
+report.json se čuva u data/backtests/runs/<runId>/report.json.
+
+7. API ZA BACKTEST – web/routes/api-backtest.js
+7.1 GET /api/backtest/runs
+
+Response:
+
+{
+  timestamp: string,
+  runs: BacktestManifest[]
+}
+
+7.2 GET /api/backtest/runs/:runId
+
+Response:
+
+{
+  manifest: BacktestManifest,
+  report?: BacktestReport | null
+}
+
+
+Ako status !== "DONE" → report=null.
+
+7.3 POST /api/backtest/runs
+
+Body:
+
+{
+  "sessionId": "2025-11-18T10-11-BTCUSDT-AIUSDT",
+  "strategyConfig": { ... },  // StrategyConfig objekt
+  "speedFactor": 10.0,
+  "notes": "Test sa agresivnijim TP2"
+}
+
+
+Server:
+
+kreira run (manifest + config.json),
+
+startuje ga (ili ostavi PENDING, pa se startuje ručno).
+
+Response:
+
+{
+  runId: string,
+  manifest: BacktestManifest
+}
+
+7.4 POST /api/backtest/runs/:runId/start
+
+ručno startuje run (korisno ako želiš create → kasnije run).
+
+7.5 GET /api/backtest/runs/:runId/report
+
+Response:
+
+{
+  runId: string,
+  report: BacktestReport | null
+}
+
+7.6 GET /api/backtest/runs/:runId/equity
+
+Response:
+
+{
+  runId: string,
+  equityCurve: EquityPoint[]
+}
+
+8. DASHBOARD – BACKTEST SEKCIJA
+
+Integrisano u postojeći dashboard (Phase 11):
+
+8.1 Nova kartica „Backtest & Sandbox“
+
+Panel s tri dela:
+
+Session selection
+
+Lista replay sesija (iz /api/replay/sessions).
+
+Odabereš jednu kao input.
+
+Strategy config form
+
+Forma gde možeš podesiti overrides:
+
+risk (slideri ili inputi),
+
+scoring thresholds,
+
+TP/SL faktore.
+
+Submit → POST /api/backtest/runs.
+
+Runs list + detalji
+
+Tabela:
+
+runId, sessionId, strategyName, status, totalNetPnl, winRatePct, maxDrawdownPct.
+
+Klik na run → otvara detaljni view:
+
+summary iz report.json,
+
+equity chart (frontend generiše graf iz equityCurve).
+
+JS fajl: web/public/js/dashboard-backtest.js (ili modul unutar dashboard.js).
+
+9. TEST SCENARIJI ZA PHASE 13
+Test 1 – Jedan jednostavan run
+
+Izaberi replaySession sa npr. 10 minuta AIUSDT tradinga.
+
+StrategyConfig = default (bez override-a).
+
+Pokreni run.
+
+Proveri da:
+
+data/backtests/runs/<runId>/config.json postoji,
+
+manifest.json ima tačne info,
+
+report.json generisan,
+
+trades.jsonl ima bar nekoliko trejdova.
+
+Test 2 – Parametar override
+
+Napravi drugi run sa istim sessionId, ali tpslOverrides.tp1Factor duplo veći.
+
+Uporedi report.json (TP1 dalje → manje pogodaka, ali možda veći avgWin).
+
+Test 3 – Winrate / profit factor
+
+ručno izračunaj očekivane metrike za mali dataset (2–3 trejda).
+
+proveri da winRatePct, profitFactor, avgWin, avgLoss odgovaraju.
+
+Test 4 – Symbol breakdown
+
+ako imaš više simbola (BTC, AI16Z) u istom session-u,
+
+proveri perSymbol blok:
+
+da stats po simbolu imaju smisla.
+
+Test 5 – Regime breakdown
+
+ako logovi imaju režime (NORMAL vs PUMP),
+
+proveri perRegime stats.
+
+Test 6 – Dashboard integracija
+
+otvori Backtest tab,
+
+napravi run preko UI,
+
+vidi ga u listi,
+
+otvori report,
+
+proveri da se equity plot korektno prikazuje (na client-side-u).
+
+10. FINALNI REZULTAT PHASE 13
+
+Posle ove faze:
+
+Tvoj sistem nije samo live bot, već i backtest laboratorija:
+
+možeš uzeti bilo koji sat/dan istorije (iz logova),
+
+definisati StrategyConfig (risk, TP/SL, scoring thresholds…),
+
+pustiti run,
+
+dobiti detaljan report.
+
+Možeš:
+
+porediti različite konfiguracije međusobno,
+
+videti kako se sistem ponaša u PUMP vs NORMAL režimu,
+
+optimizovati parametre bez rizika,
+
+pripremiti se za ozbiljan ML / reinforcement learning layer kasnije.
+
+Phase 12 + 13 zajedno ti daju:
+
+Vremeplov (Replay),
+
+Laboratoriju (Backtest + Sandbox),
+
+Reportni sistem koji dokumentuje svaki pokušaj.
+
+========================================
+KRAJ DOKUMENTA – PHASE 13

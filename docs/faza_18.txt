@@ -1,0 +1,629 @@
+========================================
+PHASE 18 – PRODUCTION DEPLOYMENT & PROCESS SPLIT
+(FINALNA FAZA – „ŽIVI U SINGAPURU, ADMIN U ŠVEDSKOJ, NE PADA, NE ZABAGUJE“)
+
+Ovom fazom zatvaramo ceo krug:
+tvoj sistem više nije „veliki Node script“, nego mali cluster servisa na Singapur VPS-u:
+
+jasna podela na servise (Market Data, Strategy, Execution, Web/Dashboard),
+
+PM2 ih diže i drži u životu, sa health-check, logovima, auto-restartom,
+
+deploy flow: Local VSCode → GitHub → VPS auto-update.sh → PM2 reload → sve radi,
+
+environment varijable (.env) za ključeve, modove, API podatke,
+
+logovi rotirani, backup osnovnih podataka (users.db, config, profiles, logs).
+
+Sve setup-ovano tako da ti u Švedskoj na laptopu radiš u VS Code, push na GitHub,
+a Singapur VPS sam sebe drži u full produkciji bez da „pipkaš ručno svaki put“.
+
+0. CILJ PHASE 18
+
+Definisati servise i podelu procesa (process split) u okviru scalper-base.
+
+Napraviti PM2 ekosistem konfiguraciju (ecosystem.config.cjs ili .json).
+
+Urediti environment konfiguraciju – .env fajl (lokal + proizvodnja).
+
+Uvesti deployment workflow:
+
+lokalni razvoj (Windows VS Code),
+
+Git commit & push,
+
+auto-update na VPS (tvoj update.sh + cron),
+
+PM2 reload i health.
+
+Postaviti log rotaciju i minimalni backup plan za kritične fajlove.
+
+Podesiti security & dostupnost (portovi, firewall, basic hardening).
+
+1. SERVISI – KONAČNA PODELA PROCESA
+
+Na kraju želimo minimum 4 procesa (sve Node.js 20.x):
+
+1) market-service       – Market Data Pipeline (Bybit public WS/REST)
+2) strategy-service     – Feature, Pump/Regime, Scoring, State, Risk
+3) execution-service    – Bybit private REST/WS, real orders
+4) web-dashboard        – Express + Dashboard API/UI
+
+
+Kasnije možeš dodati:
+
+5) replay-service       – Replay & Backtest (kada radiš offline analizu)
+6) worker-service       – Periodični poslovi (retention, profiles update)
+
+
+Za sada: osnovna 4 servisa su prioritet.
+
+1.1 Mapiranje na postojeći kod (folderi)
+
+market-service
+koristi module iz:
+
+src/connectors/public/
+
+src/market/
+
+src/pipelines/ (orderbook, trades, microcandles)
+
+src/logging/logger.js
+
+strategy-service
+koristi:
+
+src/features/ (imbalance, walls, spoofing, delta, vola, fee)
+
+src/pump/ (Pump & Anomaly engine)
+
+src/regime/
+
+src/scoring/
+
+src/state/ (stateMachine)
+
+src/risk/
+
+src/latency/, src/profiles/, src/config/
+
+execution-service
+koristi:
+
+src/connectors/private/
+
+src/execution/
+
+src/tpsl/ (Phase 9)
+
+src/failover/ (Phase 17)
+
+src/latency/, src/logging/logger.js
+
+web-dashboard
+koristi:
+
+web/server.js
+
+web/routes/
+
+web/views/
+
+web/public/
+
+API moduli (health, alerts, backtest, replay…)
+
+čita data/system/*.json, data/alerts/*, data/backtests/runs/* itd.
+
+2. DIREKTORIJUMSKA STRUKTURA ZA SERVISE
+
+Nemaš obavezno da praviš 4 odvojena Node projekata – dovoljna je logička podela entry-point fajlova:
+
+scalper-base/
+  src/
+    services/
+      market-service.js
+      strategy-service.js
+      execution-service.js
+      replay-service.js         (opciono kasnije)
+      worker-service.js         (retention/profile updater)
+
+
+Svaki od ovih entry fajlova:
+
+importuje odgovarajuće module,
+
+inicijalizuje config, logger, health, event-bus (npr. Redis ili internal FS/event emitter),
+
+pokreće petlju/WS konekcije.
+
+Tip: svi servisi su Node ES module ("type": "module" je već u package.json).
+
+3. ENVIRONMENT KONFIGURACIJA – .env
+
+Koristi se paket kao dotenv (možda već koristiš; ako ne, u Phase 18 dodaj).
+
+3.1 Lokacije .env fajla
+
+lokalno:
+C:\Users\Dejan...\scalper-base\.env.local (ne diže se na GitHub)
+
+produkcija (VPS):
+/home/aiuser/scalper-base/.env.production
+
+Važno: Ovaj fajl je u .gitignore – nikad ne ide na GitHub.
+
+3.2 Primer .env.production
+# Environment mode
+NODE_ENV=production
+
+# Bybit API (REAL KEY – production)
+BYBIT_API_KEY=xxx
+BYBIT_API_SECRET=yyy
+BYBIT_ACCOUNT_TYPE=linear
+BYBIT_NETWORK=mainnet
+
+# Trading mode
+EXECUTION_MODE=LIVE            # LIVE | DRY_RUN | SIM
+MAX_LEVERAGE=20
+
+# Web dashboard
+WEB_PORT=8080
+WEB_HOST=0.0.0.0
+
+# SQLite / database
+SQLITE_PATH=./data/users.db
+
+# Telegram alerts
+TELEGRAM_BOT_TOKEN=123456:ABC-tele-bot
+TELEGRAM_CHAT_ID=123456789
+
+# Logging
+LOG_LEVEL=info                 # info | debug | warn | error
+
+# Security
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD_HASH=$2b$10$... (bcrypt hash, ne čist password)
+
+# Internal service IDs (za health, identifikaciju)
+SERVICE_CLUSTER_ID=scalper-cluster-1
+
+
+Tipovi:
+
+sve vrednosti u .env su string.
+
+u kodu ih kastuješ u number/bool gde treba.
+
+4. PM2 KONFIGURACIJA – ecosystem.config.cjs
+
+U root projekta (/home/aiuser/scalper-base/ecosystem.config.cjs):
+
+module.exports = {
+  apps: [
+    {
+      name: "market-service",
+      script: "./src/services/market-service.js",
+      interpreter: "node",
+      instances: 1,
+      exec_mode: "fork",
+      env_production: {
+        NODE_ENV: "production",
+        SERVICE_NAME: "market-service",
+        ENV_FILE: ".env.production"
+      }
+    },
+    {
+      name: "strategy-service",
+      script: "./src/services/strategy-service.js",
+      interpreter: "node",
+      instances: 1,
+      exec_mode: "fork",
+      env_production: {
+        NODE_ENV: "production",
+        SERVICE_NAME: "strategy-service",
+        ENV_FILE: ".env.production"
+      }
+    },
+    {
+      name: "execution-service",
+      script: "./src/services/execution-service.js",
+      interpreter: "node",
+      instances: 1,
+      exec_mode: "fork",
+      env_production: {
+        NODE_ENV: "production",
+        SERVICE_NAME: "execution-service",
+        ENV_FILE: ".env.production"
+      }
+    },
+    {
+      name: "web-dashboard",
+      script: "./web/server.js",
+      interpreter: "node",
+      instances: 1,
+      exec_mode: "fork",
+      env_production: {
+        NODE_ENV: "production",
+        SERVICE_NAME: "web-dashboard",
+        ENV_FILE: ".env.production",
+        PORT: 8080
+      }
+    },
+    {
+      name: "worker-service",
+      script: "./src/services/worker-service.js",
+      interpreter: "node",
+      instances: 1,
+      exec_mode: "fork",
+      env_production: {
+        NODE_ENV: "production",
+        SERVICE_NAME: "worker-service",
+        ENV_FILE: ".env.production"
+      }
+    }
+  ]
+};
+
+
+Tipovi:
+
+name, script, interpreter, exec_mode → string
+
+instances → number
+
+env_production → object<string,string>
+
+Trenutno već imaš PM2 sa web/server.js --name dashboard.
+U ovoj fazi taj proces postaje jedan od app-ova u ecosystem.config.cjs.
+
+5. KAKO SE SERVISI POKREĆU (PM2)
+
+Na VPS-u:
+
+cd /home/aiuser/scalper-base
+
+# inicijalno
+pm2 start ecosystem.config.cjs --env production
+
+# za proveru
+pm2 list
+pm2 status
+pm2 logs market-service
+pm2 logs execution-service
+pm2 logs web-dashboard
+
+# svaki put kada update.sh povuče novi kod:
+pm2 reload ecosystem.config.cjs --env production
+
+
+Tvoj postojeći update.sh:
+
+#!/bin/bash
+cd /home/aiuser/scalper-base
+
+echo "📥 Pulling latest from GitHub..."
+git fetch --all
+git reset --hard origin/master
+
+echo "📦 Installing dependencies..."
+npm install --silent
+
+echo "🔄 Reloading PM2 apps..."
+pm2 reload ecosystem.config.cjs --env production
+
+echo "✅ Update complete!"
+
+
+(sam promenio liniju pm2 restart dashboard u pm2 reload ecosystem.config.cjs --env production)
+
+Cron ostaje isti:
+
+*/1 * * * * /home/aiuser/update.sh >> /home/aiuser/update.log 2>&1
+
+6. DEPLOYMENT FLOW – OD VS CODE DO PRODUKCIJE
+6.1 Lokalni rad (Windows VS Code)
+
+Radiš u C:\Users\DejanTrajkovic\Documents\scalper-base\
+
+Setuješ .env.local (testnet, SIM/DRY_RUN mode).
+
+Pokrećeš servise lokalno, ali možeš i monolit „all-in-one“ za test:
+
+node src/services/market-service.js
+
+node src/services/strategy-service.js
+
+node src/services/execution-service.js (DRY_RUN)
+
+node web/server.js
+
+Kad si zadovoljan:
+
+git add .
+
+git commit -m "Phase xx – feature y"
+
+git push origin master
+
+6.2 VPS Singapur – auto update
+
+Cron svake minute poziva update.sh.
+
+update.sh povlači poslednji commit, radi npm install, radi pm2 reload.
+
+PM2 napravi „zero-downtime reload“ – servisi se restartuju jedan po jedan, bez velikih prekida.
+
+Posle reload-a:
+
+health monitor (Phase 1 / 11 / 17) proveri da li je sve OK.
+
+ako ne, Failover & Alerts (Phase 16/17) javljaju problem.
+
+7. LOGOVI – ORGANIZACIJA I ROTACIJA
+
+PM2 sam vodi log fajlove (po default-u):
+
+~/.pm2/logs/market-service-out.log
+~/.pm2/logs/market-service-error.log
+... itd.
+
+
+Ali tvoj sistem već ima:
+
+data/alerts/alert_log.jsonl
+
+data/trades_log/day-YYYY-MM-DD.jsonl
+
+data/orders/day-YYYY-MM-DD.jsonl
+
+data/events/<symbol>.jsonl
+
+data/system/*.json
+
+7.1 PM2 log rotacija
+
+Instalacija:
+
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 10M
+pm2 set pm2-logrotate:retain 7
+pm2 set pm2-logrotate:compress true
+pm2 set pm2-logrotate:dateFormat YYYY-MM-DD_HH-mm-ss
+
+
+Tipovi:
+
+max_size – string "10M"
+
+retain – string/numeric 7
+
+7.2 Interni retention (Phase 12)
+
+Već imaš retention.js koji:
+
+briše stare JSON log fajlove iz data/ nakon X dana.
+
+Worker-service (Phase 18) će:
+
+jednom dnevno pozivati:
+
+runRetentionJob()
+
+profileUpdater.updateAll()
+
+eventualno backup snapshot.
+
+8. MINIMALNI BACKUP PLAN
+
+Kritične datoteke:
+
+data/users.db – login korisnici
+
+data/system/config_history.jsonl
+
+data/system/config_version.json
+
+data/system/process_state.json
+
+data/profiles/*.json
+
+data/backtests/runs/* (nije kritično, ali vredno)
+
+Možeš uvesti jednostavan backup script:
+
+/home/aiuser/backup.sh:
+
+#!/bin/bash
+DATE=$(date +"%Y%m%d-%H%M%S")
+BACKUP_DIR="/home/aiuser/backups/$DATE"
+mkdir -p "$BACKUP_DIR"
+
+cp -r /home/aiuser/scalper-base/data/users.db "$BACKUP_DIR"/
+cp -r /home/aiuser/scalper-base/data/system "$BACKUP_DIR"/system
+cp -r /home/aiuser/scalper-base/data/profiles "$BACKUP_DIR"/profiles
+
+echo "Backup created at $BACKUP_DIR"
+
+
+Cron (jednom dnevno):
+
+0 3 * * * /home/aiuser/backup.sh >> /home/aiuser/backup.log 2>&1
+
+9. SECURITY & NETWORK
+9.1 Portovi
+
+Dashboard: port 8080 (već koristiš).
+
+Poželjno: staviti ispred Nginx sa basic auth / HTTPS, ali minimalna verzija:
+
+U ufw firewallu:
+
+sudo ufw allow OpenSSH
+sudo ufw allow 8080/tcp       # (ili čak ograničiti samo na tvoju IP)
+sudo ufw enable
+
+
+Za još bolju sigurnost:
+
+ufw allow from <tvoja-IP-adresa> to any port 8080
+(ograničiti dashboard pristup samo sa tvoje IP / kuće/kancelarije).
+
+9.2 API ključevi
+
+Bybit keys STO u .env.production (nikad u repo).
+
+Telegram bot token isto u .env.production.
+
+Admin credentials:
+
+u bazi users.db hashed password
+
+ne koristimo plain text u .env sem ako mora (i onda hashed ili random).
+
+9.3 OS Hardening – minimalno
+
+Auto-update OS security paketa (unattended-upgrades).
+
+Zabranjen root login preko SSH (koristiš aiuser + sudo).
+
+SSH key-based auth (ne password).
+
+(Ovo je više DevOps, ali bitno za ozbiljan trading bot.)
+
+10. HEALTH, FAILOVER & ALERTS – KONAČNO VEZIVANJE
+
+Posle Phase 18:
+
+Svi servisi šalju heartbeats i HealthSnapshot ima:
+
+services: {
+  "market-service": {...},
+  "strategy-service": {...},
+  "execution-service": {...},
+  "web-dashboard": {...},
+  "worker-service": {...},
+  ...
+}
+
+
+Ako jedan proces padne (PM2 ga restartuje), FailoverManager:
+
+detektuje restart (ProcessState vs new pid),
+
+generiše PROCESS_RESTART FailureEvent,
+
+radi RESYNC_POSITIONS/ORDERS,
+
+AlertEngine (Phase 16) šalje CRIT info na Telegram.
+
+Dashboard global panel:
+
+vidiš koji servisi su ON,
+
+vidiš mode (SIM/DRY/LIVE),
+
+vidiš da li je SAFE_MODE + RISK_OFF.
+
+11. TEST SCENARIJI ZA PHASE 18
+Test 1 – PM2 multi-service start
+
+U Singapuru:
+
+pm2 delete all (pažljivo, ako ima starih test procesa).
+
+pm2 start ecosystem.config.cjs --env production
+
+Provera: pm2 list – vidiš 4 app-a (market, strategy, execution, web, worker).
+
+Dashboard na http://<vps-ip>:8080/ radi; health pokazuje sve OK.
+
+Test 2 – Auto-deploy
+
+Napravi malu izmenu u kodu lokalno.
+
+git commit, git push.
+
+Sačekaj minut → update.sh odradi svoj posao.
+
+pm2 list vidi restart time, novi build.
+
+Dashboard verzija (npr. verzija u footer-u) se promenila.
+
+Test 3 – Proces crash & auto-restart
+
+Ručno ubij market-service:
+
+pm2 stop market-service pa pm2 start market-service,
+ili u testu simuliraj exception.
+
+PM2 ga restartuje.
+
+Health & failover: vidi PROCESS_RESTART; safeMode ako treba; alert.
+
+Test 4 – Env separacija
+
+Lokalu: .env.local sa DRY_RUN/testnet.
+
+VPS: .env.production sa LIVE/mainnet.
+
+Uveri se da nikad ne koristiš LIVE ključ u SIM/DRY_RUN lokalno.
+
+Test 5 – Restart celog clustera
+
+pm2 reload ecosystem.config.cjs
+
+Sistem se reload-uje bez „hard down“ stanja.
+
+Health nakon 30 sekundi: sve GREEN.
+
+Nikakve pozicije na Bybit-u nisu „izgubljene“ – recovery radi.
+
+12. FINALNI REZULTAT – POSLE PHASE 18
+
+Tvoj AI Scalper sistem:
+
+Radi na Singapur VPS-u kao skup servisa:
+
+market-service
+
+strategy-service
+
+execution-service
+
+web-dashboard
+
+worker-service
+
+Ima:
+
+stabilan deployment flow (GitHub → auto-update → PM2 reload),
+
+standardizovan config preko .env.production + config.json,
+
+logove pod kontrolom (rotation + retention),
+
+safe failover & recovery (Phase 17),
+
+alerting (Phase 16) kad god nešto nije u redu,
+
+replay + backtest laboratoriju (Phase 12–13),
+
+adaptive config & profile sistem (Phase 14–15).
+
+Ovo više nije „sklepani bot“ – ovo je mini trading platforma sa:
+
+jasno definisanim modulima,
+
+procesima koji žive dugo,
+
+automatskim update-om,
+
+sigurnosnim slojem,
+
+alatom za razvoj i testiranje (lokalno + VPS).
+
+========================================
+KRAJ DOKUMENTA – PHASE 18
+(KOMPLETAN SISTEMSKI PLAN JE ZATVOREN)

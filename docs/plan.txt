@@ -1,0 +1,433 @@
+0. CILJ SISTEMA – v2.0 (vrhunski)
+Sistem treba da:
+1.	Skenira ceo Bybit linear USDT perp u realnom vremenu.
+2.	Razume po simbolu:
+o	orderbook (imbalance, zidovi, spoofing),
+o	trade flow (agresor, odbrana),
+o	volatilnost i pump/pump&dump faze,
+o	news/sentiment (min. stub + kasnije pravi feed),
+o	realan fee-first profit uz leverage i slippage.
+3.	Donosi odluku:
+o	normalan (scalp OK),
+o	pump mod (specijalan režim),
+o	manipulisan / spoofing (smanjiti risk / blokirati),
+o	news-driven (specijalan režim).
+4.	Upravljа pozicijama:
+o	entries, SL/TP, break-even,
+o	unrealized PnL, R, portfolio heat.
+5.	Sve čuva u JSON + retention >24h, sa opcijom „replay“.
+6.	Ima dashboard koji uvek prikazuje:
+o	pump signale, spoof signale, news flagove,
+o	sve pozicije, rizik, PnL, globalni režim,
+o	health sistema i mod rada (SIM/DRY/LIVE).
+7.	Radi deterministično:
+o	jasan redosled koraka po tick-u,
+o	backpressure & failover,
+o	risk rollback ako nešto pukne.
+________________________________________
+1. GLOBALNA ARHITEKTURA – SCALPER-BASE
+Koristimo postojeću strukturu:
+scalper-base/
+  src/         ← AI engine, servisi
+  web/         ← dashboard + auth + API
+  data/        ← JSON arhiva, logovi
+1.1 Servisi (logički procesi)
+Kasnije ih možemo podeliti u više procesa, ali logički imamo:
+1.	Market Data Service
+o	Bybit public WS + REST
+o	održava orderbook + trades + micro-candles
+2.	Strategy & Risk Service
+o	feature engine (imbalance, walls, pump, flow, vola, news stub)
+o	regime engine (symbol + global)
+o	scoring engine (FinalScalpScore)
+o	state mašina (po simbolu)
+o	risk & portfolio
+3.	Execution Service
+o	Bybit private WS + REST
+o	otvaranje/menjanje/gašenje naloga
+o	sync stvarnih pozicija
+4.	Storage & Replay Service
+o	JSON zapis
+o	retention
+o	replay (kasnije)
+5.	Dashboard Backend
+o	/web/server.js + /web/routes/api.js
+o	čita informacije iz Strategy & Risk + Storage
+o	služi podatke UI-ju
+Sve može početi kao jedan Node proces, sa jasnim modulima, pa kasnije razbijamo na više.
+________________________________________
+2. CONFIG & PATHS – JEDNO MESTO (Windows + Linux)
+2.1 src/config/paths.js
+•	koristi import.meta.url + path.dirname da odredi root projekta.
+•	export:
+o	PROJECT_ROOT
+o	DATA_DIR
+o	LOG_DIR
+o	PROFILES_DIR
+o	SYSTEM_DIR
+Svi moduli (storage, retention, web/auth, itd.) koriste OVO, nema više hardkodovanih path-ova → radi i na Windows i na Ubuntu.
+2.2 src/config/index.js
+•	globalni parametri:
+o	MODE ∈ {SIM, DRY_RUN, LIVE}
+o	riskPerTrade, maxPortfolioHeat, dailyLossLimit
+o	watchThreshold, armThreshold
+o	latencyPriceBufferPct
+o	fee parametri (maker/taker)
+•	po kategoriji:
+o	Prime/Normal/Wild → specifični limiti (maxLeverage, maxSize...)
+•	per-symbol override (kasnije upis u data/profiles/).
+Hot reload (config čita poslednju verziju bez restartovanja engine-a).
+________________________________________
+3. DETERMINISTIČKI PIPELINE & BACKPRESSURE
+Ovo je ključni „vrhunski“ deo.
+3.1 Event Loop Redosled
+Za svaki „tick“ (po simbolu ili batch):
+1.	Market Data Update
+o	primi WS event (orderbook/trade/ticker)
+o	ažurira lokalni snapshot / buffer
+2.	Microstructure Update
+o	iz snapshot-a i trades:
+o	generiše micro-candles (1s/3s/5s/15s)
+o	ažurira delta, volume spike, vola
+3.	Feature Engine
+o	orderbook imbalance
+o	walls & spoof
+o	pump & anomaly
+o	flow & delta
+o	vola engine
+o	fee & leverage
+o	news stub
+4.	Regime Engine
+o	per-symbol RegimeState
+o	global regime
+5.	Scoring Engine
+o	FinalScalpScoreLong/Short
+o	penalizing pump, spoof, news, etc.
+6.	State Machine
+o	prelazi: FLAT → WATCHING → ARMED → ORDER_PLACED → IN_POSITION → MANAGING → EXITED → COOLDOWN / BLOCKED_REGIME
+o	odluka: treba li novi signal
+7.	Risk & Portfolio Check
+o	portfolio_heat
+o	unrealized drawdown
+o	daily loss
+8.	Execution
+o	ako je odobreno → priprema nalog
+o	uzima u obzir MODE (SIM/DRY/LIVE)
+o	šalje izvršenje ili simulaciju
+9.	Logging & Events
+o	upis u JSON (signal, state change, trade, pump event…)
+o	event bus (za dashboard/alert)
+10.	Dashboard Metrics
+•	ažurira in-memory metrike koje čita /api.
+Sve to stoji u jednom centralnom modulu npr. src/core/engine.js koji orkestrira redosled.
+3.2 Backpressure & Safety
+Ako:
+•	latency između „tick“ početka i kraja > X ms (npr. 300ms)
+→ engine prelazi u:
+•	DEGRADED_MODE:
+o	ne otvara nove trejdove,
+o	samo održava postojeće i risk kontrolu,
+o	loguje event.
+Ako backlog WS eventova raste (npr. queue > N):
+•	odbaci najstarije „high frequency“ evente za memecoin-e,
+•	uvek čuvaj full fidelity za BTC/ETH/Prime.
+________________________________________
+4. BYBIT KONEKTORI (PUBLIC + PRIVATE) + FAILOVER
+4.1 src/connectors/bybitPublic.js
+•	REST:
+o	instruments – filtira linear USDT perpe
+o	initial orderbook snapshot
+•	WS:
+o	subs na: orderbook, trades, tickers
+•	health:
+o	ping/pong, reconnect logika
+o	status: CONNECTED / RECONNECTING / DOWN
+Failover:
+•	exponential backoff na reconnect
+•	ako padne preko određenog vremena:
+o	globalRegime → RISK_OFF
+o	ne otvaraj nove pozicije
+4.2 src/connectors/bybitPrivate.js
+•	REST:
+o	balance/equity
+o	open positions / orders
+o	place/modify/cancel order
+•	WS:
+o	order i position update feed
+Rate-limit & retry:
+•	ograniči QPS
+•	retry sa backoff-om na 429/5xx
+________________________________________
+5. UNIVERSE + SYMBOL PERFORMANCE TRACKER
+5.1 src/market/universe.js
+•	učitava listu simbola (USDT perp)
+•	setuje category: Prime / Normal / Wild
+•	detektuje nove simbole (svakih 15s):
+o	doda WILD + NEWS-LISTING flag
+•	izbacuje delistovane ili LONG-term neaktivne.
+5.2 src/market/symbolProfile.js
+•	čuva i ažurira:
+o	winrate po simbolu
+o	prosečan MFE/MAE
+o	prosečan slippage
+o	frequency pump režima
+o	spoofing pattern-e
+Na osnovu toga:
+•	automatski reduce size,
+•	podiže required FinalScalpScore,
+•	eventualni auto-blacklist.
+Čuva se u data/profiles/<symbol>.json.
+________________________________________
+6. STORAGE & RETENTION (JSON)
+6.1 src/storage/jsonStore.js
+•	standardizovan API:
+o	append(type, symbol, obj)
+o	setSnapshot(type, symbol, obj)
+•	type npr. „orderbook“, „trades_stream“, „events“, „metrics“, „trades_log“, itd.
+•	piše u:
+data/
+  orderbook/
+  trades_stream/
+  microcandles/
+  metrics/
+  events/
+  trades_log/
+  profiles/
+  system/
+6.2 src/storage/retention.js
+•	periodično (npr. svaka 2h) pregleda:
+o	briše raw evente >24h
+o	ostavlja:
+	per-day summary u trades_log/day-YYYY-MM-DD.json
+	per-symbol profile
+Loguje retention event u data/system/retention.log.jsonl.
+________________________________________
+7. REAL-TIME DATA PIPELINES
+7.1 Orderbook
+•	per symbol snapshot:
+o	Prime: top 50–100 nivoa
+o	Normal: top 50
+o	Wild: top 20
+7.2 Trades (tape)
+•	ring buffer poslednjih 1000–2000 trejdova:
+o	time, price, qty, side (agresivni kupac/prodavac)
+7.3 Micro-candles
+•	1s, 3s, 5s, 15s:
+o	OHLC, volume, delta (buy/sell)
+•	piše u data/microcandles.
+________________________________________
+8. FEATURE ENGINE
+U src/features/:
+1.	orderbookImbalance.js
+o	level1 TOB
+o	zonal depth imbalance
+2.	wallsSpoof.js
+o	zidovi (size >> avg)
+o	ABSORBING vs SPOOFING
+o	outputs:
+	WallSupportScore, WallResistanceScore
+	SpoofingScore
+3.	pumpEngine.js
+o	stanja: NONE, PREPUMP, PUMPING, BLOWOFF, DUMP, COOLDOWN
+o	koristi price% change, volume spike, trade-per-second, orderbook thinning
+4.	flowDelta.js
+o	AggBuy vs AggSell
+o	DeltaVol, streak
+5.	volatility.js
+o	micro ATR (1s/3s)
+o	VolatilityScore, ExplosionFlag
+6.	feeLeverage.js
+o	izraćunava MinMoveForProfit
+o	LiqSafetyScore (distance entry–liq)
+7.	newsFlagsStub.js
+o	stub za sada (ručni flagovi)
+o	output:
+	NewsImpactScore, NewsType, NewsTime
+Sve feature-e beležimo per symbol u data/metrics/<symbol>.json (rolling).
+________________________________________
+9. REGIME ENGINE
+9.1 symbolRegime.js
+•	input:
+o	PumpState
+o	SpoofingScore
+o	NewsImpactScore
+o	VolatilityScore
+•	output:
+o	RegimeState(symbol) ∈ {NORMAL, PUMP, MANIPULATED, NEWS_DRIVEN, COOLDOWN}
+9.2 globalRegime.js
+•	posmatra BTC/ETH vola, korelacije i šokove
+•	stanja:
+o	GLOBAL_NORMAL
+o	GLOBAL_RISK_OFF
+o	GLOBAL_PANIC
+Ako GLOBAL_PANIC → Ne otvara nove pozicije, samo štiti postojeće.
+________________________________________
+10. SCORING & SIGNAL ENGINE
+src/scoring/scalpScore.js:
+•	bazni score:
+o	orderbook, flow, vola, fee, leverage
+•	korekcije:
+o	PumpState PUMPING/BLOWOFF → penal za long
+o	visok SpoofingScore → penal / blok
+o	NewsImpactScore visok → poseban mod
+o	RegimeState = MANIPULATED → disable
+Rezultat:
+•	FinalScalpScoreLong
+•	FinalScalpScoreShort
+Thresholds:
+•	watch_threshold
+•	arm_threshold
+Samo kad:
+•	RegimeState ∈ {NORMAL, COOLDOWN_DONE}
+•	FinalScore > odgovarajući threshold
+→ signal ide u state mašinu.
+________________________________________
+11. STATE MAŠINA
+src/state/stateMachine.js:
+Stanja:
+1.	FLAT
+2.	WATCHING_LONG / WATCHING_SHORT
+3.	ARMED_LONG / ARMED_SHORT
+4.	ORDER_PLACED
+5.	IN_POSITION
+6.	MANAGING
+7.	EXITED
+8.	COOLDOWN
+9.	BLOCKED_REGIME
+Prelazi:
+•	FLAT → WATCHING ako FinalScore > watch threshold + Regime OK
+•	WATCHING → ARMED ako dodatni uslovi (walls, flow, no fresh bad news)
+•	bilo koji → BLOCKED_REGIME ako Regime postane PUMP/MANIPULATED/NEWS_HIGH_RISK
+•	IN_POSITION → MANAGING → EXITED / COOLDOWN na osnovu TP/SL/hard stop
+Sve state change se loguju u data/events/<symbol>.json.
+________________________________________
+12. RISK & PORTFOLIO ENGINE
+src/risk/riskEngine.js + src/state/portfolio.js:
+•	per trade:
+o	risk per trade (R)
+o	izračun size iz SL distance + leverage + fee + latency buffer
+•	portfolio:
+o	portfolio_heat = sum(risk_per_position)
+o	unrealized_drawdown
+o	daily realized PnL
+Ako:
+•	portfolio_heat > maxHeat
+ili
+•	unrealized_drawdown > unrealizedLimit
+ili
+•	dailyLoss > dailyLossLimit
+→ RISK_OFF:
+•	ne otvaraj nove trejdove
+•	po potrebi zatvori najrizičnije.
+________________________________________
+13. TP/SL, BREAK-EVEN & FEE-FIRST
+src/execution/tpslPlanner.js:
+1.	Fee-first:
+o	TP1 nikad ispod MinMoveForProfit.
+2.	Break-even trigger:
+o	kada unrealizedPnL >= FeeTotal * (1 + bufferK):
+	SL → entry ± fee+buffer
+3.	Pump aware:
+o	PumpState BLOWOFF → agresivnije uzimanje profita, zatezanje trailing-a
+o	MANIPULATED/NEWS_HIGH_RISK → širi SL ili ne trejdovati.
+________________________________________
+14. EXECUTION ENGINE + RISK ROLLBACK
+src/execution/executionEngine.js:
+•	Maker-preferred entry, fallback na taker
+•	auto-cancel:
+o	book/flow/news promene sliku pre fill-a
+•	pre izvršenja:
+o	proveri RegimeState
+o	proveri portfolio heat
+o	proveri mode (SIM/DRY/LIVE)
+Trade Integrity / Rollback:
+•	periodični sync sa Bybit:
+o	lokalne pozicije == Bybit pozicije?
+•	ako ne:
+o	INTEGRITY_BROKEN event
+o	blokira nove trejdove
+o	opcija PANIC CLOSE ALL
+o	loguje detalje
+Kill switch:
+•	mreža/API problemi
+•	ekstremni spread / vola
+•	ručni „PANIC“ sa dashboarda.
+________________________________________
+15. MODOVI RADA: SIM / DRY-RUN / LIVE
+src/execution/modeManager.js:
+•	MODE globalno vidljiv (API + dashboard)
+•	prelazak u LIVE zahteva:
+o	dvostruku potvrdu + možda „PIN“ ili lozinku
+•	SIM:
+o	sve odluke kao LIVE
+o	ali sve se izvršava lokalno (simulated fills)
+•	DRY-RUN:
+o	real-time feed, realni market data
+o	ali i dalje bez realnih naloga
+________________________________________
+16. LOGGING & REPLAY
+src/monitoring/logger.js:
+•	JSONL format:
+o	signal event
+o	state change
+o	trade event
+o	pump/spoof/news event
+o	error
+src/storage/replay.js:
+•	čita logove iz perioda i re-pušuje evente u engine kao da su live
+•	omogućava backtest bez rizika.
+________________________________________
+17. MONITORING, METRICS & DASHBOARD API
+src/monitoring/metrics.js:
+•	global metrics:
+o	equity, balance
+o	realized/unrealized PnL
+o	portfolio heat
+o	globalRegime
+o	MODE
+o	broj pozicija
+o	Bybit WS/REST health
+o	error rate
+Sve to izlažemo preko web/routes/api.js:
+•	GET /api/health
+•	GET /api/summary
+•	GET /api/hotlist
+•	GET /api/symbol/:symbol
+•	GET /api/trades/active
+•	GET /api/events/recent
+Plus kasnije:
+•	POST /api/panic-close
+•	POST /api/pause
+•	POST /api/blacklist-symbol
+•	POST /api/mode (SIM/DRY/LIVE)
+Dashboard kartice:
+•	Global panel (summary + mode + globalRegime + heat)
+•	Hot list (po simbolu: category, RegimeState, PumpState, Spoofing, News, scores, state)
+•	Active trades
+•	Event feed (pump 🔥, news 🚨, spoof 🎭)
+•	Symbol detail (orderbook + micro-candles + delta + events)
+________________________________________
+18. REDOSLED IMPLEMENTACIJE (VRHUNSKI, ALI TESTIRLJIV)
+1.	Config & Paths (paths.js, index.js) + health skeleton.
+2.	Bybit Public connector + Universe
+o	minimalni /api/summary i /api/health na dashboardu.
+3.	JSON storage + retention
+o	/api/storage/status.
+4.	Orderbook + Trades + Micro-candles pipeline
+o	osnovni metrics na dashboardu (price, spread, vola).
+5.	Feature engine (imbalance, walls, spoof, flow, vola, fee)
+o	prikaz osnovnih score-ova na „Symbol detail“.
+6.	Pump engine + Regime (symbol + global)
+o	PumpState, RegimeState, ikone na „Hot list“.
+7.	Scoring & State mašina
+o	log signal/state change + prikaz u UI.
+8.	Risk & Portfolio engine
+o	portfolio heat + risk status na dashboardu.
+9.	TP/SL planner + break-even
+o	integracija sa state mašinom (MANAGING).
+10.	Execution engine (SIM mode)
+o	full signal → „sim“ trade sa JSON logom + UI prikaz.
+11.	Integrity check + risk rollback + kill switch.
+12.	DRY-RUN & LIVE mod + guard rails.
+13.	Logging + Replay modul.
+

@@ -1,0 +1,784 @@
+========================================
+PHASE 03 – MICROSTRUCTURE PIPELINE
+(ORDERBOOK, TRADES, MICRO-CANDLES)
+FINAL SPEC (TXT EDITION)
+
+PREGLED
+
+Phase 03 uvodi real-time "microstructure" sloj nad Bybit public podacima.
+
+Cilj ove faze je:
+
+da se od Bybit WS feed-a (orderbook + trades) napravi:
+
+stabilan snapshot orderbook-a po simbolu,
+
+ring buffer poslednjih trejdova po simbolu,
+
+micro-candles (1s, 3s, 5s, 15s) po simbolu,
+
+da se sve to po standardu upisuje u JSON fajlove u data/ strukturi,
+
+da se obezbedi API endpoint za dashboard da vidi:
+
+poslednju cenu,
+
+spread,
+
+osnovni orderbook,
+
+poslednje trejdove,
+
+osnovne mikro-sveće.
+
+Phase 03 NE uvodi još "feature engine" (imbalance, walls, spoofing, pump) – to će doći u sledećoj fazi.
+Ovo je "raw microstructure" sloj na koji će se feature engine nasloniti.
+
+FAJLOVI KOJE OVA FAZA KREIRA ILI MENJA
+
+Novi fajlovi:
+
+src/storage/jsonStore.js
+src/market/microstructure.js
+
+Izmene postojećih fajlova:
+
+src/connectors/bybitPublic.js (proširenje: subs na orderbook/trades WS, event forward)
+src/monitoring/health.js (dodavanje microstructure informacija – opcionalno)
+web/routes/api.js (novi endpoint: /api/symbol/:symbol/micro ili proširen /api/symbol/:symbol)
+
+Novi JSON fajlovi u data/:
+
+data/orderbook/<symbol>.json
+data/trades_stream/<symbol>.json
+data/microcandles/<symbol>_1s.json
+data/microcandles/<symbol>_3s.json
+data/microcandles/<symbol>_5s.json
+data/microcandles/<symbol>_15s.json
+
+MODUL: src/storage/jsonStore.js
+
+2.1 Svrha
+
+jsonStore modul standardizuje upis i čitanje JSON podataka u data/ folderu.
+
+Koristi putanje iz src/config/paths.js (DATA_DIR, itd.).
+
+2.2 Strukture i tipovi
+
+Sve funkcije rade sa sledećim tipovima:
+
+pathType: string (dozvoljene vrednosti: "orderbook", "trades_stream", "microcandles", "metrics", "events", "trades_log", "profiles", "system", "tmp")
+
+symbol: string (npr. "BTCUSDT")
+
+timeframe: string (npr. "1s", "3s", "5s", "15s")
+
+data: objekat ili niz objekata, u zavisnosti od tipa fajla.
+
+2.3 Funkcije koje modul treba da eksportuje
+
+getPathFor(type, symbol?, timeframe?)
+
+Ulaz:
+
+type: string (jedna od vrednosti gore)
+
+symbol: string ili undefined (opciono)
+
+timeframe: string ili undefined (opciono – za microcandles)
+
+Izlaz:
+
+string – apsolutna putanja do fajla
+
+Ponašanje (primjeri):
+
+type="orderbook", symbol="BTCUSDT"
+→ data/orderbook/BTCUSDT.json
+
+type="trades_stream", symbol="BTCUSDT"
+→ data/trades_stream/BTCUSDT.json
+
+type="microcandles", symbol="BTCUSDT", timeframe="1s"
+→ data/microcandles/BTCUSDT_1s.json
+
+writeSnapshot(type, symbol, payload, timeframe?)
+
+tip: async funkcija (Promise<void>)
+
+parametri:
+
+type: string
+
+symbol: string
+
+payload: objekat (jedan JSON objekat koji predstavlja snapshot – npr. orderbook snapshot)
+
+timeframe: string (opciono, samo za microcandles)
+
+ponašanje:
+
+payload se serijalizuje kao JSON i upisuje u fajl (overwrite).
+
+appendJsonLine(type, symbol, payload, timeframe?)
+
+tip: async funkcija (Promise<void>)
+
+parametri:
+
+type: string
+
+symbol: string
+
+payload: objekat (jedan event / trade / log)
+
+timeframe: string (opciono)
+
+ponašanje:
+
+otvara (ili kreira) fajl, dodaje payload kao jednu liniju JSON-a (JSON Lines format).
+
+readSnapshot(type, symbol, timeframe?)
+
+tip: async funkcija (Promise<object ili null>)
+
+vraća:
+
+ako fajl postoji → objekat (parsiran JSON)
+
+ako fajl ne postoji → null
+
+readJsonLines(type, symbol, timeframe?, limit?)
+
+tip: async funkcija
+
+parametri:
+
+type: string
+
+symbol: string
+
+timeframe: string (opciono)
+
+limit: number (opciono; maksimalan broj linija koje treba pročitati od kraja)
+
+vraća:
+
+array<objekat> – niz event-ova / trade-ova / candles, u redosledu od najstarijeg ka najnovijem (ili kako se definiše).
+
+Napomena:
+Za Phase 03, minimalno je potrebno:
+
+writeSnapshot za orderbook i microcandles
+
+appendJsonLine za trades_stream
+
+MODUL: src/market/microstructure.js
+
+3.1 Svrha
+
+Ovaj modul održava mikrostrukturu tržišta po simbolu:
+
+aktuelni orderbook snapshot (ograničen depth),
+
+ring buffer poslednjih N trejdova,
+
+micro-candles za više timeframova.
+
+Koristi podatke dobijene iz Bybit public WS (orderbook + trades).
+
+3.2 Tipovi podataka u memoriji
+
+MicrostructureState (glavni objekat) – u memoriji:
+
+symbols: mapa (object)
+
+ključ: symbol (string)
+
+vrednost: MicroSymbolState
+
+MicroSymbolState (po simbolu):
+
+symbol: string
+
+lastUpdateAt: string (ISO datetime – poslednja promjena bilo kog dela state-a)
+
+priceInfo: PriceInfo
+
+orderbook: OrderbookSnapshot
+
+trades: array<TradeTick> (ring buffer)
+
+candles: objekat (mapa timeframe → array<Candle>)
+
+PriceInfo (objekat):
+
+lastPrice: number ili null
+
+bestBid: number ili null
+
+bestAsk: number ili null
+
+spread: number ili null
+
+lastTradeSide: string ili null (BUY / SELL)
+
+lastTradeTime: string ili null (ISO)
+
+OrderbookSnapshot (objekat):
+
+bids: array<OrderbookLevel>
+
+asks: array<OrderbookLevel>
+
+lastUpdateId: string ili number (u zavisnosti od Bybit formata)
+
+lastUpdateAt: string (ISO datetime)
+
+OrderbookLevel (objekat):
+
+price: number
+
+qty: number
+
+Trades buffer (array<TradeTick>):
+
+TradeTick (objekat):
+
+tradeId: string ili number
+
+time: string (ISO datetime)
+
+price: number
+
+qty: number
+
+side: string ("BUY" ili "SELL") – strana agresora
+
+Candles mapa:
+
+ključ: timeframe string ("1s", "3s", "5s", "15s")
+
+vrednost: array<Candle>
+
+Candle (objekat):
+
+openTime: string (ISO datetime – početak intervala)
+
+closeTime: string (ISO datetime – kraj intervala, ili null dok je sveća "u toku")
+
+open: number
+
+high: number
+
+low: number
+
+close: number
+
+volume: number (ukupan volumen)
+
+buyVolume: number (volumen od BUY agresora)
+
+sellVolume: number (volumen od SELL agresora)
+
+3.3 Konfiguracioni parametri za microstructure
+
+Mogu se nalaziti u CONFIG, primer:
+
+CONFIG.microstructure:
+
+maxOrderbookDepth:
+
+prime: number (npr 100)
+
+normal: number (npr 50)
+
+wild: number (npr 20)
+
+maxTradesPerSymbol: number (npr 2000)
+
+candleTimeframes: array<string> (["1s","3s","5s","15s"])
+
+Tipovi:
+
+maxTradesPerSymbol: number
+
+candleTimeframes: array<string>
+
+3.4 Funkcije koje modul eksportuje
+
+initMicrostructure()
+
+parametri: nema
+
+povratna vrednost: void ili Promise<void>
+
+svrha:
+
+inicijalizuje MicrostructureState
+
+povezuje modul sa bybitPublic konektorom (registruje callback-e za orderbook/trade eventove)
+
+onOrderbookEvent(symbol: string, eventData: objekat)
+
+ovu funkciju interno zove bybitPublic konektor kada dobije orderbook update za neki simbol
+
+parametri:
+
+symbol: string
+
+eventData: objekat – strukturiran po Bybit specifikaciji (interno modul prevodi u OrderbookSnapshot)
+
+povratna vrednost: void
+
+ponašanje:
+
+update-uje in-memory OrderbookSnapshot za dati simbol
+
+recalculates priceInfo.bestBid, bestAsk, spread
+
+ažurira lastUpdateAt i orderbook.lastUpdateAt
+
+upisuje snapshot u jsonStore.writeSnapshot("orderbook", symbol, snapshot) periodično (npr. na svakih X ms ili N update-a)
+
+onTradeEvent(symbol: string, eventData: objekat)
+
+ovu funkciju intern o zove bybitPublic kada dobije trade event
+
+parametri:
+
+symbol: string
+
+eventData: objekat – tick data po Bybit-u
+
+povratna vrednost: void
+
+ponašanje:
+
+kreira TradeTick objekat
+
+ubacuje ga u ring buffer trades za simbol
+
+ako je broj elemenata > maxTradesPerSymbol → drop najstarije
+
+update-uje priceInfo.lastPrice, lastTradeSide, lastTradeTime
+
+update-uje micro-candles (poziva helper: updateCandlesFromTrade(symbol, tradeTick))
+
+append-uje trade u data/trades_stream/<symbol>.json preko jsonStore.appendJsonLine("trades_stream", symbol, tradeTick)
+
+getSymbolMicroState(symbol: string)
+
+parametri:
+
+symbol: string
+
+povratna vrednost: objekat MicroSymbolState ili null (ako simbol nije inicijalizovan)
+
+getOrderbookSummary(symbol: string, depthLimit?: number)
+
+parametri:
+
+symbol: string
+
+depthLimit: number (opciono, npr. koliko nivoa po strani)
+
+povratna vrednost: objekat:
+
+bids: array<OrderbookLevel> (ograničeno na depthLimit)
+
+asks: array<OrderbookLevel> (ograničeno na depthLimit)
+
+bestBid: number ili null
+
+bestAsk: number ili null
+
+spread: number ili null
+
+lastUpdateAt: string (ISO)
+
+getRecentTrades(symbol: string, limit: number)
+
+parametri:
+
+symbol: string
+
+limit: number (maksimalan broj trejdova)
+
+povratna vrednost: array<TradeTick>
+
+ponašanje:
+
+vraća poslednjih min(limit, broj u bufferu) trejdova, sortiranih po vremenu (od najstarijeg ka najnovijem ili obrnuto – definisati i dosledno koristiti)
+
+getCandles(symbol: string, timeframe: string, limit: number)
+
+parametri:
+
+symbol: string
+
+timeframe: string ("1s","3s","5s","15s")
+
+limit: number
+
+povratna vrednost: array<Candle>
+
+ponašanje:
+
+vraća poslednjih limit sveća za dati timeframe iz in-memory state-a
+
+3.5 Generisanje micro-candles
+
+updateCandlesFromTrade(symbol, tradeTick):
+
+nalazi koji time-bucket pripada trade-u (npr. floor na 1s, 3s, 5s, 15s)
+
+za svaki timeframe u CONFIG.microstructure.candleTimeframes:
+
+pronađe tekuću sveću (poslednji Candle u candles[timeframe])
+
+ako trade time spada u isti interval → update:
+
+high = max(high, trade.price)
+
+low = min(low, trade.price)
+
+close = trade.price
+
+volume += trade.qty
+
+buyVolume += trade.qty ako side="BUY"
+
+sellVolume += trade.qty ako side="SELL"
+
+ako trade time prelazi u sledeći interval:
+
+zatvori postojeću sveću (postavi closeTime = kraj intervala)
+
+napravi novu sveću:
+
+openTime = početak novog intervala
+
+closeTime = null (još je u toku)
+
+open = high = low = close = trade.price
+
+volume = trade.qty
+
+buyVolume = trade.qty (ako side="BUY") ili 0
+
+sellVolume = trade.qty (ako side="SELL") ili 0
+
+INTEGRACIJA SA BYBIT PUBLIC KONEKTOROM
+
+4.1 Proširenje src/connectors/bybitPublic.js
+
+U Fazi 2 je definisan bybitPublic modul sa REST konekcijom i WS statusom.
+
+Sada treba proširiti WS deo:
+
+nakon uspostavljanja WS veze, modul se pretplaćuje na:
+
+orderbook depth feed za sve relevantne simbole,
+
+trades feed za sve relevantne simbole.
+
+Strategija za subscription može biti:
+
+za početak: svi USDT simbole iz Universe (Prime + Normal + Wild),
+
+kasnije: filtriranje prema interesantnim simbolima.
+
+bybitPublic modul interno mapira WS poruke i poziva:
+
+microstructure.onOrderbookEvent(symbol, eventData)
+
+microstructure.onTradeEvent(symbol, eventData)
+
+JSON FAJLOVI – STRUKTURA
+
+5.1 data/orderbook/<symbol>.json
+
+Sadrži jedan JSON objekat po simbolu:
+
+Polja:
+
+symbol: string
+
+lastUpdateAt: string (ISO)
+
+bestBid: number ili null
+
+bestAsk: number ili null
+
+spread: number ili null
+
+bids: array objekata { price: number, qty: number }
+
+asks: array objekata { price: number, qty: number }
+
+Tipovi:
+
+symbol: string
+
+lastUpdateAt: string
+
+bestBid: number ili null
+
+bestAsk: number ili null
+
+spread: number ili null
+
+bids: array objekata
+
+asks: array objekata
+
+5.2 data/trades_stream/<symbol>.json
+
+Format: JSON Lines (svaka linija je jedan TradeTick objekat).
+
+Jedna linija (primer polja):
+
+tradeId: string ili number
+
+time: string (ISO)
+
+price: number
+
+qty: number
+
+side: string ("BUY" ili "SELL")
+
+Tip:
+
+fajl: tekstualni, svaka linija je validan JSON objekat.
+
+5.3 data/microcandles/<symbol>_<timeframe>.json
+
+Format: ili snapshot (jedan JSON array candles) ili JSON Lines (po dogovoru).
+
+Pojedinačna sveća (Candle):
+
+openTime: string
+
+closeTime: string ili null
+
+open: number
+
+high: number
+
+low: number
+
+close: number
+
+volume: number
+
+buyVolume: number
+
+sellVolume: number
+
+Tipovi:
+
+openTime, closeTime: string ili null
+
+open, high, low, close, volume, buyVolume, sellVolume: number
+
+API ENDPOINT ZA DASHBOARD (web/routes/api.js)
+
+6.1 GET /api/symbol/:symbol/micro
+
+Svrha:
+
+da dashboard dobije mikrostrukturu za jedan simbol:
+
+price info,
+
+short orderbook,
+
+poslednje trade-ove,
+
+kratku listu micro-candles.
+
+Parametar:
+
+:symbol → string (npr "BTCUSDT")
+
+Response JSON polja:
+
+symbol: string
+
+priceInfo: objekat PriceInfo (kao gore)
+
+orderbook: objekat:
+
+bestBid: number ili null
+
+bestAsk: number ili null
+
+spread: number ili null
+
+bids: array<OrderbookLevel> (npr. prvih 10 nivoa)
+
+asks: array<OrderbookLevel> (prvih 10 nivoa)
+
+trades: array<TradeTick> (npr. poslednjih 50)
+
+candles: objekat:
+
+"1s": array<Candle> (npr. poslednjih 60)
+
+"5s": array<Candle> (npr. poslednjih 60)
+
+Ako simbol ne postoji ili nema microstate:
+
+404 ili JSON sa error poljem.
+
+6.2 Potencijalno proširenje GET /api/symbol/:symbol/basic
+
+Može se proširiti da u polju "micro" uključi skraćenu mikrostrukturu (npr. samo priceInfo + spread), ali to nije obavezno u ovoj fazi.
+
+DASHBOARD – ŠTA SE PRIKAZUJE U FAZI 3
+
+U Fazi 3 dashboard po prvi put dobija "žive" market podatke:
+
+U listi simbola (Hot list, kad bude gotov):
+
+može prikazati lastPrice, spread pored kategorije (Prime/Normal/Wild).
+
+U detalju simbola:
+
+lastPrice
+
+bestBid / bestAsk
+
+spread
+
+poslednjih N trade-ova sa strane (BUY/SELL kogresi)
+
+jednostavan prikaz micro-candles (može se kasnije nacrtati kao mali chart)
+
+Front-end deo dashboard-a će koristiti:
+
+GET /api/symbol/:symbol/micro u periodičnom intervalu (npr. 1–2 sekunde).
+
+Tačno šta će se nacrtati na UI je fleksibilno, ali backend mora da isporuči podatke u definisanim strukturama.
+
+TEST SCENARIJI
+
+Test 1 – Orderbook snapshot test:
+
+Nakon povezivanja sa Bybit WS i par sekundi rada:
+
+pozvati getOrderbookSummary("BTCUSDT", 10).
+
+očekuje se da:
+
+bestBid i bestAsk imaju razumne vrednosti (bestBid < bestAsk),
+
+bids i asks nizovi nisu prazni,
+
+spread je pozitivan broj,
+
+lastUpdateAt nije null.
+
+Pogledati data/orderbook/BTCUSDT.json:
+
+proveriti da format odgovara specifikaciji.
+
+Test 2 – Trades ring buffer:
+
+generisati trade evente (ili pustiti WS da radi neko vreme).
+
+pozvati getRecentTrades("BTCUSDT", 50):
+
+dobiti niz TradeTick objekata,
+
+broj elemenata <= 50,
+
+tipovi polja (price: number, qty: number, side: "BUY"/"SELL", time: string),
+
+ako je definisan maxTradesPerSymbol (npr. 2000), proveriti da buffer ne prelazi taj broj.
+
+proveriti data/trades_stream/BTCUSDT.json:
+
+fajl postoji,
+
+ima više JSON Lines,
+
+svaki red je validan JSON objekat.
+
+Test 3 – Micro-candles:
+
+pustiti sistem da radi nekoliko minuta.
+
+pozvati getCandles("BTCUSDT", "1s", 60):
+
+dobiti array candles,
+
+svaki Candle ima open, high, low, close, volume itd.
+
+proveriti data/microcandles/BTCUSDT_1s.json:
+
+struktura odgovara Candle objektima.
+
+Test 4 – API /api/symbol/:symbol/micro:
+
+Pozvati GET /api/symbol/BTCUSDT/micro:
+
+response sadrži symbol, priceInfo, orderbook, trades, candles.
+
+Testirati nepostojeći simbol:
+
+GET /api/symbol/FAKE123USDT/micro:
+
+očekivati error response.
+
+Test 5 – WS integration:
+
+Ako bybitPublic WS pukne:
+
+health.marketData.status treba da se promeni u DEGRADED ili DOWN,
+
+microstructure state se ne osvežava,
+
+/api/symbol/:symbol/micro može vratiti stale data ili error, u zavisnosti od nivoa zaštite (definisati politiku).
+
+FINALNI REZULTAT FAZE 03
+
+Posle završetka Phase 03:
+
+Sistem ima u memoriji precizan microstructure state za svaki simbol:
+
+orderbook depth (ograničen, ali dovoljan),
+
+poslednje trejdove (ring buffer),
+
+micro-candles za ključne timeframove.
+
+Podaci se upisuju u JSON fajlove:
+
+data/orderbook,
+
+data/trades_stream,
+
+data/microcandles.
+
+API /api/symbol/:symbol/micro omogućava dashboard-u da prikaže:
+
+real-time cenu,
+
+spread,
+
+orderbook snapshot,
+
+poslednje trade-ove,
+
+osnovne mikro-sveće.
+
+Mikrostruktura je spremna kao input za sledeću fazu:
+
+Feature engine (imbalance, walls, spoofing, pump, delta, vola).
+
+========================================
+KRAJ DOKUMENTA – PHASE 03

@@ -1,0 +1,819 @@
+========================================
+PHASE 06 – SCORING & SIGNAL ENGINE
+(FINALSCALPSCORE LONG/SHORT + WATCH/ARM SIGNALI)
+FINAL SPEC (TXT EDITION – VEOMA DETALJNO)
+
+PREGLED
+
+Phase 06 uvodi ključni sloj između „posmatranja tržišta“ i „stvarnog trejdovanja“:
+
+Na osnovu FeatureEngine (Phase 04) i RegimeEngine (Phase 05), za svaki simbol izračunava:
+
+BaseScalpScoreLong i BaseScalpScoreShort (0–100).
+
+FinalScalpScoreLong i FinalScalpScoreShort (nakon svih penala i filtera).
+
+Odlučuje da li je simbol:
+
+neinteresantan (nizak score),
+
+u WATCH zoni (zanimljiv, ali još ne spreman),
+
+u ARM zoni (spreman da ide u state mašinu za potencijalni entry).
+
+NIKAKVE naloge još ne šalje u Phase 06 – ovo je čista logika za „koliko je ovaj simbol dobar kandidat“.
+
+Scoring Engine je „mozgovni filter“ koji:
+
+spaja orderbook, flow, spoofing, vola, fee, pump rizik i režime,
+
+garantuje da signal ne bude generisan ako je:
+
+globalni režim RISK_OFF/PANIC,
+
+simbol u PUMP/MANIPULATED/NEWS_DRIVEN/COOLDOWN,
+
+fee/risk/vola razlozi čine trejd glupo opkladu.
+
+Phase 06 ne otvara pozicije.
+To će raditi state machine + execution u kasnijim fazama.
+
+FAJLOVI KOJE OVA FAZA KREIRA ILI MENJA
+
+Novi fajlovi:
+
+src/scoring/scoringEngine.js
+src/scoring/scoringModel.js
+
+Moguće kasnije proširenje (stub za integraciju sa risk engine):
+
+src/scoring/riskSignalsAdapter.js (opciono, ili kasnije u Phase 09)
+
+Izmene postojećih fajlova:
+
+src/features/featureEngine.js (dodavanje hook-a ka scoringEngine-u)
+src/regime/regimeEngine.js (ako treba dodatni info za scoring)
+src/monitoring/health.js (dodavanje scoringEngine health info)
+web/routes/api.js (novi endpoint-i /api/symbol/:symbol/score i /api/scanner/hotlist)
+data/metrics/<symbol>.json (proširen scoring poljem)
+
+KONCEPT – SCORING MODEL
+
+2.1 Ideja
+
+Za svaki simbol i svaku stranu (LONG / SHORT) sistem računa:
+
+BaseScalpScoreLong (0–100)
+
+BaseScalpScoreShort (0–100)
+
+Na osnovu:
+
+orderbook imbalansa,
+
+zidova (support/resistance),
+
+spoofing penala,
+
+flow/delta,
+
+volatilnosti,
+
+fee & leverage logike,
+
+pump pre-signala.
+
+Zatim se ta baza modifikuje:
+
+prema RegimeState (ako je PUMP, MANIPULATED, NEWS_DRIVEN, COOLDOWN),
+
+prema GlobalRegime (RISK_OFF, PANIC),
+
+prema risk flagovima (posle će doći iz risk engine-a: portfolio heat, daily loss, slippage itd.).
+
+Rezultat su:
+
+FinalScalpScoreLong,
+
+FinalScalpScoreShort.
+
+Na kraju se porede sa pragovima:
+
+watchThreshold,
+
+armThreshold.
+
+Na osnovu toga se generišu „logički signali“:
+
+NONE (nema trade signala),
+
+WATCH_LONG / WATCH_SHORT,
+
+ARM_LONG / ARM_SHORT.
+
+KONFIGURACIJA – NOVA POLJA U CONFIG
+
+U CONFIG.scoring (src/config/index.js) se dodaju/definišu:
+
+Pragovi:
+
+watchThreshold: number (npr. 40)
+
+armThreshold: number (npr. 70)
+
+Težine (weights) po faktorima – za Long i Short odvojeno:
+
+CONFIG.scoring.weights:
+
+orderbookWeightLong: number
+orderbookWeightShort: number
+
+flowWeightLong: number
+flowWeightShort: number
+
+wallsWeightLong: number
+wallsWeightShort: number
+
+spoofPenaltyWeight: number
+
+volatilityWeight: number
+
+feeEdgeWeight: number
+
+pumpPenaltyWeight: number
+
+newsPenaltyWeight: number
+
+Globalni scaling:
+
+baseScoreMax: number (tipično 100)
+
+minScoreToConsider: number (npr. 10 – sve ispod je praktično 0)
+
+Ograničenja signala / hotlist:
+
+maxWatchCandidates: number (npr. 50)
+
+maxArmCandidates: number (npr. 10)
+
+Tipovi:
+
+sve vrednosti su number, osim ako je naznačeno drugačije
+
+weights se koriste za ponderisanje normalizovanih feature-a
+
+STRUKTURA U MEMORIJI – SCORE STATE
+
+ScoringEngineState:
+
+perSymbol: mapa
+
+ključ: string (symbol)
+
+vrednost: ScoreState
+
+ScoreState (po simbolu):
+
+symbol: string
+
+lastUpdateAt: string (ISO)
+
+regime:
+
+currentRegime: string ("NORMAL", "PUMP", "MANIPULATED", "NEWS_DRIVEN", "COOLDOWN")
+
+globalRegime: string ("GLOBAL_NORMAL", "GLOBAL_RISK_OFF", "GLOBAL_PANIC")
+
+scores:
+
+long: ScoreSideState
+
+short: ScoreSideState
+
+ScoreSideState:
+
+baseScore: number (0–100)
+
+finalScore: number (0–100)
+
+components: ScoreComponents (detaljan breakdown)
+
+allowed: boolean (da li je uopšte dozvoljeno razmatrati ovaj smer)
+
+blockedReasons: array<string> (lista razloga zašto nije allowed)
+
+regimeOk: boolean (TRUE ako je simbolov režim dozvoljen)
+
+globalOk: boolean (TRUE ako global režim dozvoljava nove trejdove)
+
+riskOk: boolean (TRUE ako risk engine ne blokira)
+
+signalState: string ("NONE", "WATCH", "ARM")
+
+ScoreComponents:
+
+orderbookScore: number (0–100)
+
+flowScore: number (0–100)
+
+wallsScore: number (0–100)
+
+spoofPenalty: number (0–100, veća vrednost = viši penal)
+
+volatilityScore: number (0–100)
+
+feeEdgeScore: number (0–100)
+
+pumpPenalty: number (0–100)
+
+newsPenalty: number (0–100)
+
+ULAZNI PODACI ZA SCORING ENGINE
+
+ScoringEngine koristi sledeće objekte:
+
+FeatureState (iz Phase 04):
+
+imbalance: ImbalanceFeatures
+
+walls: WallFeatures
+
+spoofing: SpoofingFeatures
+
+flow: FlowFeatures
+
+volatility: VolatilityFeatures
+
+feeLeverage: FeeLeverageFeatures
+
+pumpSignals: PumpSignalsFeatures
+
+RegimeState (iz Phase 05):
+
+per simbol: RegimeState objekat
+
+global: GlobalMarketRegime objekat
+
+(Kasnije) RiskState (stub u ovoj fazi):
+
+portfolioHeat: number
+
+dailyLossUsed: number
+
+riskAllowNewPositions: boolean
+
+riskAllowNewLong: boolean
+
+riskAllowNewShort: boolean
+
+Za Phase 06 može se koristiti jednostavan stub (uvek TRUE) ili minimalno:
+
+riskAllowNewPositions = true
+
+MODUL: src/scoring/scoringModel.js
+
+6.1 Svrha
+
+sadrži čistu logiku za pretvaranje feature-a u BaseScoreLong/Short i aplikovanje penala.
+
+6.2 Glavne funkcije
+
+computeBaseScores(symbol, featureState)
+
+Ulaz:
+
+symbol: string
+
+featureState: FeatureState
+
+Izlaz:
+
+objekat:
+
+baseLong: { baseScore: number, components: ScoreComponents }
+
+baseShort: { baseScore: number, components: ScoreComponents }
+
+applyRegimeAndRiskFilters(symbol, baseLong, baseShort, regimeState, globalRegime, riskState, config)
+
+Ulaz:
+
+symbol: string
+
+baseLong: objekat (baseScore + components)
+
+baseShort: objekat (baseScore + components)
+
+regimeState: RegimeState
+
+globalRegime: GlobalMarketRegime
+
+riskState: objekat (stub)
+
+config: CONFIG.scoring
+
+Izlaz:
+
+longSideState: ScoreSideState
+
+shortSideState: ScoreSideState
+
+6.3 score component kalkulacije
+
+orderbookScoreLong:
+
+bazirano na imbalanceFeatures.tobImbalance, zoneImbalance i walls.absorbingSupportScore
+
+ako je imbalance u korist BUY (pozitivan) + postoje jaki bid zidovi → visok score za LONG
+
+normalizovano u 0–100
+
+orderbookScoreShort:
+
+suprotno, koristi SELL bias i ask zidove
+
+flowScoreLong:
+
+više kupaca (delta pozitivna, dominance "BUY") → veći score
+
+flowScoreShort:
+
+više prodavaca → veći score
+
+wallsScore (po smeru):
+
+LONG: važniji bid zidovi i absorbingSupportScore
+
+SHORT: važniji ask zidovi i absorbingResistanceScore
+
+spoofPenalty:
+
+viši spoofingScore → viši spoofPenalty (0–100)
+
+kasnije se oduzima od totalnog skor-a ili koristi kao maska
+
+volatilityScore:
+
+preuzeto iz VolatilityFeatures, mapirano u 0–100
+
+može se koristiti kao multiplicator (prevelika vola → penal; premala → penal jer nema pokreta)
+
+feeEdgeScore:
+
+koristi feeLeverage.minMoveForProfitX vs atr/volatilnost
+
+ako je minimalni pomak za profit mnogo manji od tipičnog ATR → dobar edge (visok score)
+
+ako je minimalni pomak za profit veći od tipičnog ATR → loš edge (nizak score)
+
+pumpPenalty:
+
+koristi PumpSignalsFeatures.pumpLikelihoodScore
+
+veći pumpLikelihood → veći penal za LONG
+
+za SHORT se može tretirati drugačije (npr. manji penal ili čak malo povećanje, ali mora biti kontrolisano)
+
+newsPenalty:
+
+koristi newsImpactScore
+
+visok impactScore → veliki penal, posebno za long u sideways / risk-on uslovima
+
+6.4 Normalizacija u BaseScore
+
+Za svaki smer:
+
+rawScore =
+orderbookScore * orderbookWeight
+
+flowScore * flowWeight
+
+wallsScore * wallsWeight
+
+volatilityScore * volatilityWeight
+
+feeEdgeScore * feeEdgeWeight
+
+spoofPenalty * spoofPenaltyWeight
+
+pumpPenalty * pumpPenaltyWeight
+
+newsPenalty * newsPenaltyWeight
+
+baseScore = clamp(rawScore, 0, baseScoreMax)
+
+6.5 Primena režima i rizika
+
+applyRegimeAndRiskFilters:
+
+ako globalRegime.current == "GLOBAL_PANIC":
+
+allowed = false
+
+finalScore = 0
+
+blockedReasons uključuje "GLOBAL_PANIC"
+
+ako globalRegime.current == "GLOBAL_RISK_OFF":
+
+allowed za neke simbole može biti true, ali po defaultu:
+
+allowed = false (ili jako penalizovati finalScore)
+
+ako regimeState.current ∈ {"PUMP","MANIPULATED","NEWS_DRIVEN"}:
+
+allowed = false za oba smera, ili:
+
+allowedLong=false; allowedShort može biti specijalno razmatran (ali u ovoj fazi može i short blokirati sve dok se ne odluči drugačije)
+
+finalScore = 0
+
+ako regimeState.current == "COOLDOWN":
+
+allowed = false
+
+blockedReasons uključuje "COOLDOWN"
+
+ako riskState.riskAllowNewPositions == false:
+
+allowed = false za oba
+
+blockedReasons uključuje "RISK_ENGINE_BLOCK"
+
+Ako je allowed = true:
+
+finalScore počinje od baseScore
+
+može se dodatno malo skalirati (npr. ako volatilityScore prevelik → finalScore *= 0.8)
+
+MODUL: src/scoring/scoringEngine.js
+
+7.1 Svrha
+
+Orkestracija scoring procesa za sve simbole.
+
+7.2 Struktura – ScoringEngineState
+
+Već definisan u (4).
+Drži ScoreState po simbolu.
+
+7.3 Funkcije koje modul eksportuje
+
+initScoringEngine()
+
+Parametri: nema
+
+Povratna vrednost: Promise<void> ili void
+
+Ponašanje:
+
+inicijalizuje praznu perSymbol mapu
+
+postavlja timer/loop da na svakih X ms poziva updateAllScores()
+
+updateScoreForSymbol(symbol: string)
+
+Parametri:
+
+symbol: string
+
+Ponašanje:
+
+uzima FeatureState iz FeatureEngineState
+
+uzima RegimeState per-symbol i GlobalRegime
+
+uzima RiskState (stub)
+
+poziva computeBaseScores(symbol, featureState)
+
+poziva applyRegimeAndRiskFilters(...)
+
+popunjava ScoreState za dati simbol
+
+upisuje scoring deo u data/metrics/<symbol>.json (koristeći jsonStore.writeSnapshot, zajedno sa feature+regime informacijama)
+
+updateAllScores()
+
+Parametri: nema
+
+Ponašanje:
+
+loop kroz sve simbole iz Universe
+
+poziva updateScoreForSymbol(symbol) za one koje su aktivni (npr. Prime + Normal)
+
+getScoreState(symbol: string)
+
+vraća ScoreState ili null
+
+getScannerHotlist(filterOptions)
+
+Parametri (mogu biti null ili minimalni):
+
+side: string ("LONG","SHORT","BOTH")
+
+minScore: number (default = CONFIG.scoring.watchThreshold)
+
+regimeFilter: npr. samo "NORMAL"
+
+Povratna vrednost:
+
+array<ScannerEntry>
+
+ScannerEntry:
+
+symbol: string
+
+side: string ("LONG"/"SHORT")
+
+finalScore: number
+
+baseScore: number
+
+regime: string
+
+globalRegime: string
+
+pumpRisk: number (pumpSignals.pumpLikelihoodScore)
+
+spoofingLevel: number (spoofing.spoofingScore)
+
+JSON FAJLOVI – SCORES U METRICS
+
+data/metrics/<symbol>.json sada sadrži, pored feature i regime, i scoring polje:
+
+"scoring": {
+"lastUpdateAt": "...",
+"scores": {
+"long": {
+"baseScore": number,
+"finalScore": number,
+"allowed": boolean,
+"blockedReasons": [string, ...],
+"regimeOk": boolean,
+"globalOk": boolean,
+"riskOk": boolean,
+"signalState": "NONE" | "WATCH" | "ARM",
+"components": {
+"orderbookScore": number,
+"flowScore": number,
+"wallsScore": number,
+"spoofPenalty": number,
+"volatilityScore": number,
+"feeEdgeScore": number,
+"pumpPenalty": number,
+"newsPenalty": number
+}
+},
+"short": {
+... isto polje kao i long ...
+}
+},
+"regime": {
+... (prethodno definisan RegimeState snapshot) ...
+},
+"features": {
+... (prethodni FeatureState snapshot) ...
+}
+}
+
+Tipovi:
+
+sve brojčane vrednosti su number
+
+allowed, regimeOk, globalOk, riskOk su boolean
+
+blockedReasons je array<string>
+
+signalState je string iz navedenog skupa
+
+API ENDPOINTI
+
+9.1 GET /api/symbol/:symbol/score
+
+Svrha:
+
+Vrati kompletnu scoring sliku za jedan simbol.
+
+Parametar:
+
+:symbol → string
+
+Response JSON:
+
+symbol: string
+
+lastUpdateAt: string
+
+regime:
+
+currentRegime: string
+
+globalRegime: string
+
+scores:
+
+long: ScoreSideState
+
+short: ScoreSideState
+
+Svi tipovi polja kao u ScoreState strukturi.
+
+9.2 GET /api/scanner/hotlist
+
+Svrha:
+
+Da dashboard dobije listu top simbola po finalScore-u.
+
+Mogući query parametri:
+
+side = "LONG" / "SHORT" / "BOTH"
+
+minScore = number (default = watchThreshold)
+
+limit = number (default = maxWatchCandidates ili neko razuman)
+
+Response JSON:
+
+globalRegime: string
+
+timestamp: string (ISO)
+
+entries: array objekata:
+
+HotlistEntry:
+
+symbol: string
+
+side: string
+
+finalScore: number
+
+signalState: string ("WATCH" ili "ARM")
+
+regime: string (per symbol)
+
+pumpRisk: number
+
+spoofingLevel: number
+
+volatilityScore: number
+
+DASHBOARD – ŠTA SE PRIKAZUJE POSLE PHASE 06
+
+HOTLIST TABELA
+
+Kolone (primer):
+
+Symbol
+
+Side (L/S)
+
+FinalScore
+
+BaseScore
+
+Regime
+
+GlobalRegime
+
+PumpRisk (pumpSignals.pumpLikelihoodScore)
+
+SpoofingScore
+
+VolatilityScore
+
+SignalState (WATCH / ARM)
+
+DETAIL VIEW SCORE
+
+U detalju simbola:
+
+Long Score:
+
+baseScore
+
+finalScore
+
+allowed
+
+blockedReasons (lista)
+
+breakdown komponenti (orderbookScore, flowScore, wallsScore, spoofPenalty, itd.)
+
+Short Score – analogno
+
+Na ovaj način možeš vizuelno da razumeš „zašto sistem misli da je ovo dobar ili loš kandidat“.
+
+TEST SCENARIJI
+
+Test 1 – Bez režim penala:
+
+simulirati featureState sa snažnim BUY signalima (imbalance, flow, walls) i niskim spoof/pump/news penalima
+
+RegimeState.current = "NORMAL"
+
+GlobalRegime ="GLOBAL_NORMAL"
+
+očekivati visok baseScoreLong i finalScoreLong
+
+scoreShort treba biti nizak
+
+Test 2 – PUMP režim:
+
+isti featureState kao gore, ali RegimeState.current = "PUMP"
+
+allowedLong = false
+
+finalScoreLong = 0
+
+blockedReasons sadrži "PUMP_REGIME" ili slično
+
+Test 3 – NEWS_DRIVEN:
+
+newsImpactScore visok
+
+newsPenalty visok
+
+finalScore* skoro 0 za oba smera
+
+Test 4 – GLOBAL_RISK_OFF:
+
+GlobalRegime.current="GLOBAL_RISK_OFF"
+
+allowed=False za oba smera
+
+hotlist prazan
+
+Test 5 – WATCH vs ARM:
+
+podesiti CONFIG.scoring.watchThreshold = 40, armThreshold = 70
+
+ako finalScoreLong=50 → signalStateLong="WATCH"
+
+ako finalScoreLong=80 → signalStateLong="ARM"
+
+Test 6 – Hotlist endpoint:
+
+pozvati /api/scanner/hotlist
+
+dobiti listu simbola sa finalScore >= watchThreshold
+
+soft-verifikovati da su sortiran po finalScore (poželjno ali treba definisati u spec da hotlist bude sortiran DESC po finalScore).
+
+Test 7 – Snapshot JSON:
+
+proveriti data/metrics/<symbol>.json
+
+scoring polje ima sve definisane pod-strukture
+
+JSON je validan, tipovi polja korektni.
+
+FINALNI REZULTAT FAZE 06
+
+Nakon završetka Phase 06:
+
+Svaki simbol ima SCORE sliku (LONG i SHORT) zasnovanu na:
+
+orderbook-u,
+
+flow-u,
+
+spoof-u,
+
+vola-i,
+
+fee/leverage-u,
+
+pump i news rizicima,
+
+per-symbol režimu,
+
+globalnom režimu (i kasnije risk engine-u).
+
+ScoringEngine daje:
+
+BaseScalpScoreLong/Short
+
+FinalScalpScoreLong/Short
+
+signalState (NONE / WATCH / ARM) per side
+
+Dashboard može da:
+
+vidi HOTLIST najzanimljivijih simbola po score-u,
+
+vidi tačno zašto je simbol dobar ili loš (components breakdown),
+
+vidi da li je simbol blokiran zbog režima ili globalnih uslova.
+
+Ova faza je direktan input za sledeće:
+
+Phase 07 – State Machine po simbolu (FLAT → WATCHING → ARMED → ORDER_PLACED → IN_POSITION → MANAGING → COOLDOWN, itd.)
+
+gde će se FinalScalpScore + signalState koristiti za prelazak iz FLAT u WATCH i ARM state.
+
+========================================
+KRAJ DOKUMENTA – PHASE 06
