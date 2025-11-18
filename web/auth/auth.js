@@ -4,12 +4,16 @@ import { open } from "sqlite";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Fix za ES module path
+// Fix ES module paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Baza je u: /data/users.db (u korenu projekta)
-const dbPath = path.join(__dirname, "../../data/users.db");
+// Always resolve project root no matter where PM2 or Node is running
+// /web/auth/auth.js → projectRoot = scalper-base/
+const projectRoot = path.resolve(__dirname, "../../");
+
+// Our database file → scalper-base/data/users.db
+const dbPath = path.join(projectRoot, "data", "users.db");
 
 export async function createDB() {
     const db = await open({
@@ -46,3 +50,5 @@ export async function authenticate(db, username, password) {
     if (!row) return false;
     return await bcrypt.compare(password, row.password);
 }
+
+export { dbPath, projectRoot };
