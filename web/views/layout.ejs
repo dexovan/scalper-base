@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title><%= title %> | AI Scalper</title>
+
+    <!-- Default title fallback (sprečava 500 error) -->
+    <title><%= typeof title !== 'undefined' ? title : 'AI Scalper' %> | AI Scalper</title>
 
     <style>
         body {
@@ -58,7 +60,8 @@
     </nav>
 
     <div>
-        <span style="margin-right: 1rem;">👤 <%= user %></span>
+        <!-- Default user fallback so login page works -->
+        <span style="margin-right: 1rem;">👤 <%= typeof user !== 'undefined' ? user : 'Guest' %></span>
         <a href="/logout" style="color:red; text-decoration:none;">Logout</a>
     </div>
 </header>
