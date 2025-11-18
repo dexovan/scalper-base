@@ -1,10 +1,12 @@
 ﻿import express from "express";
 import session from "express-session";
 import path from "path";
+
 import authRoutes from "./routes/auth.js";
-import { requireAuth } from "./auth/middleware.js";
+import { requireAuth } from "../src/auth/middleware.js";
+import { createDB } from "../src/auth/auth.js";
+
 import apiRoutes from "./routes/api.js";
-import { createDB } from "./auth/auth.js";
 import paths from "../src/config/paths.js";
 import { initHealth } from "../src/monitoring/health.js";
 
@@ -52,9 +54,8 @@ app.use(
 // =======================================
 const db = await createDB();
 
-// *** OVO JE NEDOSTAJALO — 100% VAŽNO ***
 app.use((req, res, next) => {
-  req.db = db;     // now login can access database
+  req.db = db;
   next();
 });
 
@@ -68,13 +69,10 @@ console.log("✅ Phase 1 Health Monitoring initialized!\n");
 // 🔐 ROUTES
 // =======================================
 
-// login / register / logout
 app.use(authRoutes);
 
-// API
 app.use("/api", apiRoutes);
 
-// DASHBOARD (protected)
 app.get("/", requireAuth, (req, res) => {
   res.send("Dashboard logged in as " + req.session.user.username);
 });
