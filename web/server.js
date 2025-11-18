@@ -1,14 +1,16 @@
 ﻿import express from "express";
 import session from "express-session";
 import path from "path";
+import expressLayouts from "express-ejs-layouts";
 
-import authRoutes from "./routes/auth.js";            // ✔ OK
-import { requireAuth } from "./auth/middleware.js";   // ✔ OK
-import { createDB } from "./auth/auth.js";            // ✔ FIXED
+import authRoutes from "./routes/auth.js";
+import { requireAuth } from "./auth/middleware.js";
+import { createDB } from "./auth/auth.js";
 
 import apiRoutes from "./routes/api.js";
 import paths from "../src/config/paths.js";
 import { initHealth } from "../src/monitoring/health.js";
+
 
 // =======================================
 // 🔍 FAZA 1 – PATHS TEST
@@ -31,6 +33,7 @@ console.log("✔ No file protocol:", !hasFileProtocol(paths.PROJECT_ROOT) && !ha
 console.log("✔ No relative paths:", !isRelativePath(paths.PROJECT_ROOT) && !isRelativePath(paths.DATA_DIR));
 console.log("✅ Paths test complete!\n");
 
+
 // =======================================
 // 🚀 EXPRESS INIT
 // =======================================
@@ -38,6 +41,9 @@ const app = express();
 
 app.set("view engine", "ejs");
 app.set("views", "./web/views");
+app.use(expressLayouts);                         // << 🔥 VAŽNO
+app.set("layout", "layout");                     // koristi layout.ejs
+
 app.use(express.static("./web/public"));
 app.use(express.urlencoded({ extended: true }));
 
@@ -49,6 +55,7 @@ app.use(
   })
 );
 
+
 // =======================================
 // 🗄️ DB INIT + INJECTION
 // =======================================
@@ -59,11 +66,13 @@ app.use((req, res, next) => {
   next();
 });
 
+
 // =======================================
 // ❤️ HEALTH SYSTEM
 // =======================================
 initHealth();
 console.log("✅ Phase 1 Health Monitoring initialized!\n");
+
 
 // =======================================
 // 🔐 ROUTES
@@ -71,9 +80,18 @@ console.log("✅ Phase 1 Health Monitoring initialized!\n");
 app.use(authRoutes);
 app.use("/api", apiRoutes);
 
+
+// =======================================
+// 📊 DASHBOARD (EJS)
+// =======================================
 app.get("/", requireAuth, (req, res) => {
-  res.send("Dashboard logged in as " + req.session.user.username);
+  res.render("dashboard", {
+    title: "Dashboard",
+    user: req.session.user.username,
+    currentTime: new Date().toLocaleString()
+  });
 });
+
 
 // =======================================
 // SERVER START
