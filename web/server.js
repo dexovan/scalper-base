@@ -14,7 +14,7 @@ import { initHealth } from "../src/monitoring/health.js";
 
 
 // =======================================
-// 🔍 FAZA 1 – PATHS TEST
+// 🔍 PATH TEST
 // =======================================
 console.log("\n🧪 FAZA 1 - PATHS TEST:");
 console.log("ROOT:", paths.PROJECT_ROOT);
@@ -42,14 +42,17 @@ const app = express();
 
 app.set("view engine", "ejs");
 app.set("views", "./web/views");
+
+// Layout system
 app.use(expressLayouts);
 app.set("layout", "layout");
 
+// Static & forms
 app.use(express.static("./web/public"));
 app.use(express.urlencoded({ extended: true }));
 
-// ❌ VAŽNO: ne koristiš Nginx → trust proxy mora biti ISKLJUČEN
-// app.set("trust proxy", 1); // ← OVO NE SME!
+// ❗ VRLO VAŽNO — NEMA NGINX PROXY → PROXY MORA BITI ISKLJUČEN!
+app.set("trust proxy", false);
 
 
 // =======================================
@@ -67,10 +70,10 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      httpOnly: true,   // secure: true zahteva HTTPS → ti si na HTTP
-      secure: false,    // mora biti false jer radiš na IP + HTTP
-      sameSite: "lax",  // najbolji mod za IP login
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      httpOnly: true,          // zaštita od JS pristupa
+      secure: false,           // HTTP/IP → mora biti false
+      sameSite: "lax",         // najbolja kompatibilnost
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dana
     },
   })
 );
