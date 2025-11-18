@@ -48,12 +48,12 @@ app.set("layout", "layout");
 app.use(express.static("./web/public"));
 app.use(express.urlencoded({ extended: true }));
 
-// Bitno kada je server iza IP + port
-app.set("trust proxy", 1);
+// ❌ VAŽNO: ne koristiš Nginx → trust proxy mora biti ISKLJUČEN
+// app.set("trust proxy", 1); // ← OVO NE SME!
 
 
 // =======================================
-// 💾 SESSION STORAGE – SQLite (FIXED COOKIE SETTINGS)
+// 💾 SESSION STORAGE – SQLite
 // =======================================
 const SQLiteStore = SQLiteStoreFactory(session);
 
@@ -67,10 +67,10 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      httpOnly: true,                 // zaštita od JS pristupa
-      secure: false,                  // ❗ IP + HTTP → mora biti false
-      sameSite: "lax",                // ❗ jedini mod koji radi na IP adresi
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dana
+      httpOnly: true,   // secure: true zahteva HTTPS → ti si na HTTP
+      secure: false,    // mora biti false jer radiš na IP + HTTP
+      sameSite: "lax",  // najbolji mod za IP login
+      maxAge: 7 * 24 * 60 * 60 * 1000
     },
   })
 );
