@@ -2,6 +2,7 @@
 import session from "express-session";
 import path from "path";
 import expressLayouts from "express-ejs-layouts";
+import SQLiteStoreFactory from "connect-sqlite3";
 
 import authRoutes from "./routes/auth.js";
 import { requireAuth } from "./auth/middleware.js";
@@ -41,17 +42,30 @@ const app = express();
 
 app.set("view engine", "ejs");
 app.set("views", "./web/views");
-app.use(expressLayouts);                         // << 🔥 VAŽNO
-app.set("layout", "layout");                     // koristi layout.ejs
+app.use(expressLayouts);                 // Layout sistem
+app.set("layout", "layout");             // layout.ejs
 
 app.use(express.static("./web/public"));
 app.use(express.urlencoded({ extended: true }));
 
+
+// =======================================
+// 💾 SESSION STORAGE – SQLite
+// =======================================
+const SQLiteStore = SQLiteStoreFactory(session);
+
 app.use(
   session({
-    secret: "your-secret",
+    store: new SQLiteStore({
+      db: "sessions.db",
+      dir: "./web/auth",
+    }),
+    secret: "super-secret-key",
     resave: false,
     saveUninitialized: false,
+    cookie: {
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dana
+    },
   })
 );
 
@@ -82,13 +96,13 @@ app.use("/api", apiRoutes);
 
 
 // =======================================
-// 📊 DASHBOARD (EJS)
+// 📊 DASHBOARD
 // =======================================
 app.get("/", requireAuth, (req, res) => {
   res.render("dashboard", {
     title: "Dashboard",
     user: req.session.user.username,
-    currentTime: new Date().toLocaleString()
+    currentTime: new Date().toLocaleString(),
   });
 });
 
