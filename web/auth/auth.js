@@ -1,10 +1,19 @@
 import bcrypt from "bcrypt";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Fix za ES module path
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Baza je u: /data/users.db (u korenu projekta)
+const dbPath = path.join(__dirname, "../../data/users.db");
 
 export async function createDB() {
     const db = await open({
-        filename: "./data/users.db",
+        filename: dbPath,
         driver: sqlite3.Database
     });
 
