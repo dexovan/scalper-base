@@ -6,22 +6,34 @@ const router = express.Router();
 
 // GET /login
 router.get("/login", (req, res) => {
-  res.render("login", { error: null });
+  res.render("login", {
+    error: null,
+    title: "Login",
+    user: null
+  });
 });
 
 // POST /login
 router.post("/login", async (req, res) => {
-  const db = req.db; // DB injected iz server.js
+  const db = req.db;
   const { username, password } = req.body;
 
   const user = await findUser(db, username);
   if (!user) {
-    return res.render("login", { error: "User not found" });
+    return res.render("login", {
+      error: "User not found",
+      title: "Login",
+      user: null
+    });
   }
 
   const match = await bcrypt.compare(password, user.password);
   if (!match) {
-    return res.render("login", { error: "Invalid password" });
+    return res.render("login", {
+      error: "Invalid password",
+      title: "Login",
+      user: null
+    });
   }
 
   req.session.user = {
