@@ -18,14 +18,13 @@ import { initEventHub } from "./ws/eventHub.js";
 
 import CONFIG from "./config/index.js";
 
-import metrics from './core/metrics.js';
+import metrics from "./core/metrics.js";
 
-// WS metrics – load all functions as one shared module
+// WS metrics – shared module
 import * as wsMetrics from "./monitoring/wsMetrics.js";
 
-// Parallel metrics WS connector
+// Parallel metrics WS connector (stable)
 import { BybitPublicWS } from "./connectors/bybit/publicWS.js";
-
 
 async function startEngine() {
   console.log("====================================================");
@@ -35,9 +34,12 @@ async function startEngine() {
   metrics.markDecision();
   metrics.heartbeat();
 
+  // --------------------------
+  // UNIVERSE INIT
+  // --------------------------
   await initUniverse();
 
-  // MAIN WS (dynamic subscription)
+  // MAIN WS (dynamic)
   initPublicConnection();
 
   initEventHub();
@@ -56,10 +58,9 @@ async function startEngine() {
   console.log("🧠 AI Event Hub active.");
   console.log("⚡ Engine running normally.");
 
-
-  // -------------------------------------------------------
-  //   WS-METRICS CONNECTOR – fixed shared instance
-  // -------------------------------------------------------
+  // =====================================================
+  // METRICS-WEBSOCKET INSTANCE
+  // =====================================================
   console.log("=============================");
   console.log("📡 METRICS: Creating WS...");
   console.log("=============================");
@@ -67,10 +68,18 @@ async function startEngine() {
   const metricsWS = new BybitPublicWS();
 
   console.log("📡 METRICS: Calling connect() now...");
+
   metricsWS.connect({
     symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
     channels: ["tickers", "publicTrade"],
-    onEvent: () => wsMetrics.wsMarkMessage()
+
+    // MUST HAVE THE RAW MESSAGE
+    onEvent: (msg) => {
+      wsMetrics.wsMarkMessage();
+
+      // OPTIONAL DEBUG
+      // console.log("[METRICS-WS] EVENT:", msg.topic);
+    }
   });
 
   console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);
