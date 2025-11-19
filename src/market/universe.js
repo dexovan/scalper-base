@@ -1,174 +1,122 @@
-// src/market/universe.js
+/* =========================================================
+   src/market/universe.js
+   AI Scalper – Universe Service (OPCIJA A)
+   ========================================================= */
 
 import fs from "fs";
 import path from "path";
-import { fetchInstrumentsUSDTPerp } from "../connectors/bybitPublic.js";
+import fetch from "node-fetch";
 import CONFIG from "../config/index.js";
-import PATHS from "../config/paths.js";
+import paths from "../config/paths.js";
 
-const UNIVERSE_FILE = path.join(PATHS.SYSTEM_DIR, "universe.json");
+const UNIVERSE_FILE = path.join(paths.SYSTEM_DIR, "universe.json");
 
-// In-memory state
-let UniverseState = {
+// In-memory cache
+let UNIVERSE = {
   fetchedAt: null,
-  symbols: {},
-  stats: {
-    totalSymbols: 0,
-    primeCount: 0,
-    normalCount: 0,
-    wildCount: 0,
-    lastUniverseUpdateAt: null,
-  },
+  symbols: [],
+  totalSymbols: 0,
+  prime: [],
+  normal: [],
+  wild: []
 };
 
-// Save snapshot JSON
-function saveUniverseSnapshot() {
+/* ---------------------------------------------------------
+   Helper: Save universe to disk
+--------------------------------------------------------- */
+function saveUniverseToDisk() {
   try {
-    fs.writeFileSync(UNIVERSE_FILE, JSON.stringify(UniverseState, null, 2));
+    fs.writeFileSync(
+      UNIVERSE_FILE,
+      JSON.stringify(UNIVERSE, null, 2),
+      "utf8"
+    );
   } catch (err) {
-    console.error("❌ Error saving universe snapshot:", err);
+    console.error("❌ [UNIVERSE] Failed to save universe:", err);
   }
 }
 
-// Category logic
-function categorizeSymbol(symbol) {
-  const primeList = CONFIG.primeSymbols || [];
+/* ---------------------------------------------------------
+   Helper: Determine category for a symbol
+--------------------------------------------------------- */
+function categorizeSymbol(s) {
+  const symbol = s.symbol;
 
-  if (primeList.includes(symbol)) return "Prime";
+  if (CONFIG.primeSymbols.includes(symbol)) return "prime";
 
-  const meta = UniverseState.symbols[symbol];
-  if (meta && meta.isNewListing) return "Wild";
+  // Detect new listings ("Wild")
+  const isWild =
+    Number(s.volume24h) < 1000000 ||
+    Number(s.lastPrice) < 0.0001;
 
-  return "Normal";
+  return isWild ? "wild" : "normal";
 }
 
-// Update stats
-function updateUniverseStats() {
-  const symbols = Object.values(UniverseState.symbols);
-
-  UniverseState.stats.totalSymbols = symbols.length;
-  UniverseState.stats.primeCount = symbols.filter((s) => s.category === "Prime").length;
-  UniverseState.stats.normalCount = symbols.filter((s) => s.category === "Normal").length;
-  UniverseState.stats.wildCount = symbols.filter((s) => s.category === "Wild").length;
-  UniverseState.stats.lastUniverseUpdateAt = new Date().toISOString();
-}
-
-// Initial load
+/* ---------------------------------------------------------
+   Fetch universe from Bybit REST
+--------------------------------------------------------- */
 export async function initUniverse() {
   console.log("🌍 [UNIVERSE] Initial fetch...");
 
-  const result = await fetchInstrumentsUSDTPerp();
+  try {
+    const url =
+      "https://api.bybit.com/v5/market/tickers?category=linear";
 
-  if (!result.success) {
-    console.error("❌ [UNIVERSE] Failed to fetch instruments:", result.error);
-    return;
-  }
+    const response = await fetch(url);
+    const json = await response.json();
 
-  const now = new Date().toISOString();
-  UniverseState.fetchedAt = now;
-
-  for (const item of result.symbols) {
-    const symbol = item.symbol;
-
-    UniverseState.symbols[symbol] = {
-      symbol,
-      baseAsset: item.baseAsset,
-      quoteAsset: item.quoteAsset,
-      contractType: item.contractType,
-      status: item.status,
-      tickSize: item.tickSize,
-      minOrderQty: item.minOrderQty,
-      lotSize: item.lotSize,
-      maxLeverage: item.maxLeverage,
-      isNewListing: false,
-      firstSeenAt: now,
-      lastUpdatedAt: now,
-      category: "Normal",
-    };
-  }
-
-  // Categorize
-  for (const s of Object.keys(UniverseState.symbols)) {
-    UniverseState.symbols[s].category = categorizeSymbol(s);
-  }
-
-  updateUniverseStats();
-  saveUniverseSnapshot();
-
-  console.log(`🌍 [UNIVERSE] Loaded ${UniverseState.stats.totalSymbols} symbols`);
-}
-
-// Periodic refresh
-export function refreshUniversePeriodically() {
-  const interval = CONFIG.system.universeRefreshIntervalMs;
-
-  setInterval(async () => {
-    const result = await fetchInstrumentsUSDTPerp();
-    const now = new Date().toISOString();
-
-    if (!result.success) {
-      console.error("⚠️ [UNIVERSE] Refresh failed:", result.error);
+    if (!json || !json.result || !json.result.list) {
+      console.error("❌ [UNIVERSE] Bad response:", json);
       return;
     }
 
-    const incoming = result.symbols;
+    const symbols = json.result.list;
 
-    for (const item of incoming) {
-      const symbol = item.symbol;
+    // Build full universe object
+    const prime = [];
+    const normal = [];
+    const wild = [];
 
-      if (!UniverseState.symbols[symbol]) {
-        // New listing
-        UniverseState.symbols[symbol] = {
-          symbol,
-          baseAsset: item.baseAsset,
-          quoteAsset: item.quoteAsset,
-          contractType: item.contractType,
-          status: item.status,
-          tickSize: item.tickSize,
-          minOrderQty: item.minOrderQty,
-          lotSize: item.lotSize,
-          maxLeverage: item.maxLeverage,
-          isNewListing: true,
-          firstSeenAt: now,
-          lastUpdatedAt: now,
-          category: "Wild",
-        };
+    for (const s of symbols) {
+      const category = categorizeSymbol(s);
 
-        console.log(`🆕 [UNIVERSE] NEW LISTING: ${symbol}`);
-        continue;
-      }
-
-      // Existing → update metadata
-      const meta = UniverseState.symbols[symbol];
-      meta.status = item.status;
-      meta.tickSize = item.tickSize;
-      meta.minOrderQty = item.minOrderQty;
-      meta.lotSize = item.lotSize;
-      meta.maxLeverage = item.maxLeverage;
-      meta.lastUpdatedAt = now;
+      if (category === "prime") prime.push(s.symbol);
+      else if (category === "wild") wild.push(s.symbol);
+      else normal.push(s.symbol);
     }
 
-    // Re-categorize everything
-    for (const s of Object.keys(UniverseState.symbols)) {
-      UniverseState.symbols[s].category = categorizeSymbol(s);
-    }
+    UNIVERSE = {
+      fetchedAt: new Date().toISOString(),
+      symbols: symbols.map((s) => s.symbol),
+      totalSymbols: symbols.length,
+      prime,
+      normal,
+      wild
+    };
 
-    updateUniverseStats();
-    saveUniverseSnapshot();
-  }, interval);
+    console.log(`🌍 [UNIVERSE] Loaded ${UNIVERSE.totalSymbols} symbols`);
+
+    saveUniverseToDisk();
+
+  } catch (err) {
+    console.error("❌ [UNIVERSE] Error:", err);
+  }
 }
 
-// Public API
-export function getUniverseSnapshot() {
-  return JSON.parse(JSON.stringify(UniverseState));
+/* ---------------------------------------------------------
+   Periodic refresh
+--------------------------------------------------------- */
+export function refreshUniversePeriodically() {
+  console.log("🌍 [UNIVERSE] Auto-refresh enabled...");
+
+  setInterval(async () => {
+    await initUniverse();
+  }, CONFIG.system.universeRefreshIntervalMs);
 }
 
-export function getSymbolMeta(symbol) {
-  return UniverseState.symbols[symbol] || null;
-}
-
-export function getSymbolsByCategory(category) {
-  return Object.keys(UniverseState.symbols).filter(
-    (s) => UniverseState.symbols[s].category === category
-  );
+/* ---------------------------------------------------------
+   Exposed getter (used by engine)
+--------------------------------------------------------- */
+export function getUniverse() {
+  return UNIVERSE;
 }
