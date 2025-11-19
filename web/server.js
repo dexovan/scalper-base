@@ -1,6 +1,7 @@
 ﻿import express from "express";
 import session from "express-session";
 import path, { join } from "path";
+import fs from "fs";
 import expressLayouts from "express-ejs-layouts";
 import SQLiteStoreFactory from "connect-sqlite3";
 import { fileURLToPath } from "url";
@@ -40,15 +41,16 @@ console.log("=======================================\n");
 const app = express();
 
 app.set("view engine", "ejs");
-app.set("views", "./web/views");
+app.set("views", path.join(__dirname, "views"));
 
 // Layout system
 app.use(expressLayouts);
 app.set("layout", "layout");
 
 // Static & forms
-app.use(express.static("./web/public"));
+app.use(express.static(path.join(__dirname, "public")));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 // ❗ VRLO VAŽNO — NEMAMO NGINX PROXY
 app.set("trust proxy", false);
@@ -59,11 +61,19 @@ app.set("trust proxy", false);
 // =======================================
 const SQLiteStore = SQLiteStoreFactory(session);
 const SESSION_SECRET = "a909d8a1c1db4af6b0e3b4c8bbd9a514-super-strong-secret";
+
+// Kreiraj sessions direktorijum
+const sessionsDir = path.join(paths.DATA_DIR, "sessions");
+if (!fs.existsSync(sessionsDir)) {
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  console.log("✅ Created sessions directory:", sessionsDir);
+}
+
 app.use(
   session({
     store: new SQLiteStore({
       db: "sessions.db",
-      dir: path.join(paths.DATA_DIR, "sessions"),   // ← OVO JE NOVO!
+      dir: sessionsDir,
       table: "sessions",
       concurrentDB: true
     }),
@@ -134,8 +144,33 @@ app.get("/", requireAuth, (req, res) => {
 
 
 // =======================================
+// ERROR HANDLING
+// =======================================
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+// =======================================
 // SERVER START
 // =======================================
-app.listen(8080, () => {
-  console.log("Dashboard running at http://0.0.0.0:8080");
+const server = app.listen(8080, '0.0.0.0', () => {
+  console.log("🚀 PHASE 1 Server running at http://0.0.0.0:8080");
+  console.log("🏥 Health API: http://0.0.0.0:8080/api/health");
+  console.log("📁 Sessions dir:", sessionsDir);
+  console.log("📁 Views dir:", path.join(__dirname, "views"));
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('Process terminated');
+    process.exit(0);
+  });
 });
