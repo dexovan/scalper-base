@@ -85,6 +85,24 @@ try {
   console.log("✅ Fallback sessions directory:", sessionsDir);
 }
 
+// Cleanup stare session fajlove if they exist
+try {
+  const oldSessionFiles = [
+    path.join(paths.PROJECT_ROOT, "sessions.db"),
+    path.join(__dirname, "sessions.db"),
+    path.join(__dirname, "auth", "sessions.db")
+  ];
+
+  oldSessionFiles.forEach(file => {
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+      console.log("🧹 Cleaned old session file:", file);
+    }
+  });
+} catch (error) {
+  console.warn("⚠️ Could not clean old sessions:", error.message);
+}
+
 // Session configuration with SQLite store + fallback
 let sessionConfig = {
   secret: SESSION_SECRET,
@@ -102,13 +120,22 @@ let sessionConfig = {
 
 // Try SQLite store, fallback to memory store
 try {
-  sessionConfig.store = new SQLiteStore({
+  const sqliteStore = new SQLiteStore({
     db: "sessions.db",
     dir: sessionsDir,
     table: "sessions",
     concurrentDB: true,
     timeout: 10000
   });
+
+  // Suppress SQLite error spam
+  sqliteStore.on('error', (err) => {
+    if (err.code !== 'SQLITE_CANTOPEN') {
+      console.error('SQLite Store Error:', err);
+    }
+  });
+
+  sessionConfig.store = sqliteStore;
   console.log("✅ Using SQLite session store");
 } catch (error) {
   console.warn("⚠️ SQLite store failed, using memory store:", error.message);
