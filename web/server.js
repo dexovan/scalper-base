@@ -66,17 +66,18 @@ app.use(
       db: "sessions.db",
       dir: "./web/auth",
     }),
-    secret: "super-secret-key",
+    secret: "gTu93#A!2h^F1!dfX4pQ0z!vA8F$u2kW9m%PqZsR7nL#hE0cS!jU7bG1xK3dR",
     resave: false,
     saveUninitialized: false,
     cookie: {
-      httpOnly: true,          // zaštita od JS pristupa
-      secure: false,           // HTTP/IP → mora biti false
-      sameSite: "lax",         // najbolja kompatibilnost
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dana
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000
     },
   })
 );
+
 
 
 // =======================================
