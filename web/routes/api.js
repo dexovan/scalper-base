@@ -9,7 +9,7 @@ import HealthStatus, {
   getServiceStatus
 } from "../../src/monitoring/health.js";
 
-const metrics = require('../../src/core/metrics');
+import metrics from '../../src/core/metrics.js';
 
 const router = express.Router();
 

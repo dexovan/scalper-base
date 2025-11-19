@@ -11,7 +11,7 @@ import {
 } from "./storage.js";
 
 // EngineMetrics tracking
-const metrics = require('../core/metrics');
+import metrics from '../core/metrics.js';
 
 export function initEventHub() {
   console.log("📡 [EVENT-HUB] Initializing...");

@@ -19,7 +19,7 @@ import { initEventHub } from "./ws/eventHub.js";
 import CONFIG from "./config/index.js";
 
 // EngineMetrics tracking
-const metrics = require('./core/metrics');
+import metrics from './core/metrics.js';
 
 
 async function startEngine() {

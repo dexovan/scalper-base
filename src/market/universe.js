@@ -10,7 +10,7 @@ import CONFIG from "../config/index.js";
 import paths from "../config/paths.js";
 
 // EngineMetrics tracking
-const metrics = require('../core/metrics');
+import metrics from '../core/metrics.js';
 
 const UNIVERSE_FILE = path.join(paths.SYSTEM_DIR, "universe.json");
 

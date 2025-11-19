@@ -1,6 +1,6 @@
 // src/core/metrics.js
 
-class EngineMetrics {
+export class EngineMetrics {
     constructor() {
         this.startTime = Date.now();
 
@@ -57,4 +57,5 @@ class EngineMetrics {
     }
 }
 
-module.exports = new EngineMetrics();
+const metrics = new EngineMetrics();
+export default metrics;
