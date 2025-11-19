@@ -9,24 +9,24 @@ router.get("/", (req, res) => {
   const uni = readUniverseFromDisk();
 
   return res.json({
-    fetchedAt: uni.fetchedAt,
-    totalSymbols: uni.totalSymbols || 0,
-    primeCount: uni.primeCount || 0,
-    normalCount: uni.normalCount || 0,
-    wildCount: uni.wildCount || 0,
+    fetchedAt: uni.fetchedAt || null,
+    totalSymbols: Array.isArray(uni.symbols) ? uni.symbols.length : 0,
     symbols: uni.symbols || []
   });
 });
 
-// /api/universe/categories
+// /api/universe/categories  (temporary, until categories exist)
 router.get("/categories", (req, res) => {
   const uni = readUniverseFromDisk();
 
+  const symbols = Array.isArray(uni.symbols) ? uni.symbols : [];
+
   return res.json({
-    totalSymbols: uni.totalSymbols || 0,
-    prime: uni.symbols.filter(s => s.category === "prime"),
-    normal: uni.symbols.filter(s => s.category === "normal"),
-    wild: uni.symbols.filter(s => s.category === "wild"),
+    totalSymbols: symbols.length,
+    prime: [],
+    normal: [],
+    wild: [],
+    note: "Categories not implemented yet — symbols are simple strings."
   });
 });
 
