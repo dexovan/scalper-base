@@ -4,14 +4,7 @@
 // ===========================================================
 
 import WebSocket from "ws";
-import {
-  wsMarkConnecting,
-  wsMarkConnected,
-  wsMarkDisconnected,
-  wsMarkError,
-  wsMarkReconnect,
-  wsMarkMessage,
-} from "../../monitoring/wsMetrics.js";
+import * as wsMetrics from "../../monitoring/wsMetrics.js";
 
 // PRAVILAN URL za linear USDT perp public feed
 const WS_URL = "wss://stream.bybit.com/v5/public/linear";
@@ -66,7 +59,7 @@ export class BybitPublicWS {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
     console.log("📡 [METRICS-WS] _open() → URL:", this.url);
-    wsMarkConnecting();
+    wsMetrics.wsMarkConnecting();
     this.connected = false;
 
     try {
@@ -78,7 +71,7 @@ export class BybitPublicWS {
         this.reconnectAttempts = 0;
         this.connected = true;
         this._messageCount = 0;
-        wsMarkConnected();
+        wsMetrics.wsMarkConnected();
 
         this._sendSubscribe();
         this._startHeartbeat();
@@ -86,7 +79,7 @@ export class BybitPublicWS {
 
       // ----------- MESSAGE ------------
       this.ws.on("message", (raw) => {
-        wsMarkMessage();
+        wsMetrics.wsMarkMessage();
         this._messageCount++;
 
         let msg = null;
@@ -116,7 +109,7 @@ export class BybitPublicWS {
       // ------------- CLOSE -------------
       this.ws.on("close", (code, reason) => {
         console.warn("🔴 [METRICS-WS] Closed:", code, reason?.toString());
-        wsMarkDisconnected();
+        wsMetrics.wsMarkDisconnected();
         this._cleanupWS();
         this._scheduleReconnect();
       });
@@ -124,13 +117,13 @@ export class BybitPublicWS {
       // ------------- ERROR -------------
       this.ws.on("error", (err) => {
         console.error("❌ [METRICS-WS] Error:", err.message);
-        wsMarkError();
+        wsMetrics.wsMarkError();
         this._cleanupWS();
         this._scheduleReconnect();
       });
     } catch (err) {
       console.error("❌ [METRICS-WS] Open exception:", err);
-      wsMarkError();
+      wsMetrics.wsMarkError();
       this._scheduleReconnect();
     }
   }
@@ -189,7 +182,7 @@ export class BybitPublicWS {
     if (this.reconnectTimer) return;
 
     this.reconnectAttempts++;
-    wsMarkReconnect();
+    wsMetrics.wsMarkReconnect();
 
     const delay = Math.min(2_000 * this.reconnectAttempts, 30_000);
     console.log(`🔁 [METRICS-WS] Reconnecting in ${delay}ms...`);
@@ -232,7 +225,7 @@ export class BybitPublicWS {
       }
     }
 
-    wsMarkDisconnected();
+    wsMetrics.wsMarkDisconnected();
     this.connected = false;
     console.log("⏹️ [METRICS-WS] Disconnected by request.");
   }
