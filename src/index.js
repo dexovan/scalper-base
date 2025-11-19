@@ -21,6 +21,9 @@ import CONFIG from "./config/index.js";
 // EngineMetrics tracking
 import metrics from './core/metrics.js';
 
+// WS Metrics Connector (parallel to existing engine WS)
+import { BybitPublicWS } from "./connectors/bybit/publicWS.js";
+
 
 async function startEngine() {
   console.log("====================================================");
@@ -63,6 +66,21 @@ async function startEngine() {
   // 5. Start Background Universe Refresh
   // ---------------------------------------------------------
   refreshUniversePeriodically();
+
+  // ---------------------------------------------------------
+  // 6. WS Metrics Connector (parallel - does NOT affect engine)
+  // ---------------------------------------------------------
+  const wsMetrics = new BybitPublicWS();
+  wsMetrics.connect({
+    symbols: ["BTCUSDT", "ETHUSDT"], // za početak
+    channels: ["tickers", "publicTrade"],
+    onEvent: (msg) => {
+      // Za sada ne diramo eventHub
+      // Ovo samo proverava da WS radi i puni wsMetrics
+      // console.log("[BybitWS EVENT]", msg.topic);
+    },
+  });
+  console.log("📊 WS Metrics Connector initialized (parallel mode)");
 
   // ---------------------------------------------------------
   // Boot Complete
