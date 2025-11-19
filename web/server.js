@@ -91,6 +91,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// Active page (sidebar highlight)
+app.use((req, res, next) => {
+  const seg = req.path.split("/")[1] || "dashboard";
+  res.locals.active = seg;
+  next();
+});
+
 // ---------------------------------------
 // SESSION STORAGE (SQLite)
 // ---------------------------------------
@@ -169,7 +176,11 @@ app.use((req, res, next) => {
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/");
-  res.render("login", { title: "Login", error: null });
+  res.render("login", {
+    layout: false,      // ← OVO je najvažnije!
+    title: "Login",
+    error: null
+  });
 });
 
 // 2️⃣ API ROUTES (public)
@@ -185,6 +196,7 @@ app.get("/", requireAuth, (req, res) => {
   res.render("dashboard", {
     title: "Dashboard",
     currentTime: new Date().toLocaleString(),
+    user: req.session.user?.username
   });
 });
 
