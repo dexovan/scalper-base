@@ -169,3 +169,29 @@ export function getSymbolsByCategory(category) {
 export function getUniverse() {
   return UNIVERSE; // backwards compatibility
 }
+
+/* ---------------------------------------------------------
+   FOR DASHBOARD (temporary placeholders)
+--------------------------------------------------------- */
+
+export function getUniverseSnapshot() {
+  return {
+    fetchedAt: UNIVERSE.fetchedAt,
+    totalSymbols: UNIVERSE.totalSymbols,
+    prime: UNIVERSE.prime,
+    normal: UNIVERSE.normal,
+    wild: UNIVERSE.wild
+  };
+}
+
+export function getSymbolMeta(symbol) {
+  return {
+    symbol,
+    category:
+      UNIVERSE.prime.includes(symbol)
+        ? "prime"
+        : UNIVERSE.wild.includes(symbol)
+        ? "wild"
+        : "normal"
+  };
+}
