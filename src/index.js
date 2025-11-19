@@ -1,15 +1,20 @@
 /**
  * src/index.js
- * AI Scalper Engine – Phase 1 (Universe + periodic refresh)
+ * AI Scalper Engine – Phase 2 (Universe + WS dynamic subscription)
  */
 
 import {
   initUniverse,
-  refreshUniversePeriodically
+  refreshUniversePeriodically,
+  getUniverseSnapshot,
+  getSymbolsByCategory
 } from "./market/universe.js";
 
-import { initPublicConnection } from "./connectors/bybitPublic.js";
-import { subscribeSymbols } from "./connectors/bybitPublic.js";
+import {
+  initPublicConnection,
+  subscribeSymbols
+} from "./connectors/bybitPublic.js";
+
 import CONFIG from "./config/index.js";
 
 async function startEngine() {
@@ -18,16 +23,25 @@ async function startEngine() {
   // 1. Initial Universe fetch
   await initUniverse();
 
-  await initPublicConnection();
+  // 2. Start WS
+  initPublicConnection();
 
-  const uni = getUniverseSnapshot();
-  subscribeSymbols(uni.prime);
+  // 3. Subscribe PRIME symbols on startup
+  const primeSymbols = getSymbolsByCategory("Prime");
 
-  // 2. Start periodic background refresh
+  if (primeSymbols.length > 0) {
+    subscribeSymbols(primeSymbols);
+    console.log("📡 Subscribed PRIME:", primeSymbols);
+  } else {
+    console.log("⚠️ No PRIME symbols detected!");
+  }
+
+  // 4. Start periodic refresh
   refreshUniversePeriodically();
 
   console.log("🌍 Universe service started.");
-  console.log("✅ Engine running");
+  console.log("📡 Public WS active.");
+  console.log("🧠 AI Engine running.");
 }
 
 startEngine().catch((err) => {
