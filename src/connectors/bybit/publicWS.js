@@ -12,7 +12,7 @@ import {
 } from "../../monitoring/wsMetrics.js";
 
 // Use non-linear cluster for metrics WS
-const WS_URL = "wss://stream.bybit.com/v5/public";
+const WS_URL = "wss://stream.bybit.com/v5/public/linear";
 
 export class BybitPublicWS {
   constructor() {
