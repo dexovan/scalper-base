@@ -11,7 +11,8 @@ import {
   wsMarkMessage,
 } from "../../monitoring/wsMetrics.js";
 
-const WS_URL = "wss://stream.bybit.com/v5/public/linear";
+// Use non-linear cluster for metrics WS
+const WS_URL = "wss://stream.bybit.com/v5/public";
 
 export class BybitPublicWS {
   constructor() {
