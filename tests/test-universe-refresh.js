@@ -1,12 +1,12 @@
-import { initUniverse, getUniverseSnapshot } from "../src/market/universe.js";
+import { initUniverse, refreshUniversePeriodically, getUniverseSnapshot } from "../src/market/universe.js";
+
+console.log("Starting Universe test with periodic refresh...");
 
 await initUniverse();
+refreshUniversePeriodically();  // <--- aktivira refresh na 15s
 
-const uni = getUniverseSnapshot();
-
-console.log("TOTAL:", uni.stats.totalSymbols);
-console.log("Prime:", uni.stats.primeCount);
-console.log("Wild:", uni.stats.wildCount);
-console.log("Normal:", uni.stats.normalCount);
-
-console.log("Example:", Object.keys(uni.symbols).slice(0, 5));
+setInterval(() => {
+  const uni = getUniverseSnapshot();
+  console.log("Updated at:", uni.stats.lastUniverseUpdateAt);
+  console.log("Total:", uni.stats.totalSymbols, "Wild:", uni.stats.wildCount);
+}, 5000);
