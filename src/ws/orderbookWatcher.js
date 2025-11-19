@@ -1,10 +1,24 @@
 // ================================================
 // src/ws/orderbookWatcher.js
-// Just delegates to STORAGE
 // ================================================
 
-import { getOrderbook as storageGetOrderbook } from "./storage.js";
+const ORDERBOOK = {};
+
+export function handleOrderbookEvent(symbol, msg) {
+  const data = msg.data;
+  if (!data || !data.b || !data.a) return;
+
+  ORDERBOOK[symbol] = {
+    bids: data.b.map(([p, q]) => ({ price: Number(p), qty: Number(q) })),
+    asks: data.a.map(([p, q]) => ({ price: Number(p), qty: Number(q) })),
+    ts: Date.now()
+  };
+}
 
 export function getOrderbook(symbol) {
-  return storageGetOrderbook(symbol);
+  return ORDERBOOK[symbol] || {
+    bids: [],
+    asks: [],
+    ts: null
+  };
 }

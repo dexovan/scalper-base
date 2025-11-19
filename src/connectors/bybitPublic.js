@@ -13,6 +13,7 @@ import {
   storeTrade,
   storeOrderbook
 } from "../ws/storage.js";
+import { handleOrderbookEvent } from "../ws/orderbookWatcher.js";
 
 // -----------------------------------------------
 // REST: fetchInstrumentsUSDTPerp  (TVOJ POSTOJEĆI KOD)
@@ -276,3 +277,13 @@ export function getWsStatus() {
     reconnectAttempts: WS.reconnectAttempts,
   };
 }
+
+publicEmitter.on("ws", (msg) => {
+  if (!msg.topic || !msg.data) return;
+
+  // ORDERBOOK 50 event
+  if (msg.topic.startsWith("orderbook.50.")) {
+    const symbol = msg.topic.split(".")[2];
+    handleOrderbookEvent(symbol, msg);
+  }
+});
