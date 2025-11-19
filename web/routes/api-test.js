@@ -4,12 +4,12 @@ import fs from "fs";
 import path from "path";
 
 import paths from "../../src/config/paths.js";
-import { getWsStatus } from "../../src/ws/eventHub.js";
+import { getWsStatus } from "../../src/connectors/bybitPublic.js";
 
 const router = express.Router();
 
 /* ---------------------------------------------------------
-   Helper – load JSON safely
+   Safe JSON loader
 --------------------------------------------------------- */
 function loadJson(filePath) {
   try {
@@ -23,7 +23,7 @@ function loadJson(filePath) {
 }
 
 /* ---------------------------------------------------------
-   1) Ticker
+   TICKER
 --------------------------------------------------------- */
 router.get("/ticker/:symbol", (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
@@ -38,7 +38,7 @@ router.get("/ticker/:symbol", (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   2) Tradeflow
+   TRADEFLOW
 --------------------------------------------------------- */
 router.get("/tradeflow/:symbol", (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
@@ -53,7 +53,7 @@ router.get("/tradeflow/:symbol", (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   3) Orderbook
+   ORDERBOOK
 --------------------------------------------------------- */
 router.get("/orderbook/:symbol", (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
@@ -70,18 +70,11 @@ router.get("/orderbook/:symbol", (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   4) WebSocket Status
+   WS status
 --------------------------------------------------------- */
 router.get("/ws", (req, res) => {
   const st = getWsStatus();
-
-  res.json({
-    connected: st.connected,
-    lastConnectedAt: st.lastConnectedAt,
-    lastMessageAt: st.lastMessageAt,
-    reconnectAttempts: st.reconnectAttempts,
-    error: st.lastErrorMessage || null
-  });
+  res.json(st);
 });
 
 export default router;

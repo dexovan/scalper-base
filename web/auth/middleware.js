@@ -1,6 +1,34 @@
+// ========================================================
+// web/auth/middleware.js
+// AUTH MIDDLEWARE – hardened version
+// ========================================================
+
 export function requireAuth(req, res, next) {
-    if (!req.session.user) {
-        return res.redirect("/login");
+  try {
+    // Ako nema sesije - odmah redirect
+    if (!req.session || !req.session.user) {
+      return res.redirect("/login");
     }
-    next();
+
+    // Ako se sesija oštetila / nevalidna
+    if (typeof req.session.user.username !== "string") {
+      req.session.destroy(() => {});
+      return res.redirect("/login");
+    }
+
+    // Produžavanje sesije na aktivnost (rolling session)
+    req.session.touch?.();
+
+    return next();
+
+  } catch (err) {
+    console.error("❌ requireAuth error:", err);
+
+    // Ako se nešto jako loše desi → hard reset session
+    try {
+      req.session.destroy(() => {});
+    } catch {}
+
+    return res.redirect("/login");
+  }
 }

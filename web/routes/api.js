@@ -8,7 +8,9 @@ import HealthStatus, {
 
 const router = express.Router();
 
-// GET /api/health - Full health status
+/* ---------------------------------------------------------
+   GET /api/health – Full health check
+--------------------------------------------------------- */
 router.get("/health", (req, res) => {
   try {
     const status = updateHealth();
@@ -27,7 +29,9 @@ router.get("/health", (req, res) => {
   }
 });
 
-// GET /api/health/summary - Health overview
+/* ---------------------------------------------------------
+   GET /api/health/summary – Overview
+--------------------------------------------------------- */
 router.get("/health/summary", (req, res) => {
   try {
     const summary = getHealthSummary();
@@ -50,7 +54,9 @@ router.get("/health/summary", (req, res) => {
   }
 });
 
-// GET /api/health/services - All services status
+/* ---------------------------------------------------------
+   GET /api/health/services – List of services
+--------------------------------------------------------- */
 router.get("/health/services", (req, res) => {
   try {
     return res.json({
@@ -68,27 +74,24 @@ router.get("/health/services", (req, res) => {
   }
 });
 
-// GET /api/health/services/:serviceName - Specific service status
+/* ---------------------------------------------------------
+   GET /api/health/services/:serviceName
+--------------------------------------------------------- */
 router.get("/health/services/:serviceName", (req, res) => {
   try {
-    const { serviceName } = req.params;
-    const service = getServiceStatus(serviceName);
-
-    if (!service) {
+    const s = getServiceStatus(req.params.serviceName);
+    if (!s) {
       return res.status(404).json({
         timestamp: new Date().toISOString(),
         status: "error",
-        message: `Service '${serviceName}' not found`
+        message: `Service '${req.params.serviceName}' not found`
       });
     }
 
     return res.json({
       timestamp: new Date().toISOString(),
       status: "success",
-      data: {
-        serviceName,
-        ...service
-      }
+      data: { ...s }
     });
   } catch (error) {
     return res.status(500).json({
