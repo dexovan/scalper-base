@@ -50,6 +50,7 @@ import { createDB } from "./auth/auth.js";
 import apiRoutes from "./routes/api.js";
 import universeAPI from "./routes/api-universe.js";
 import apiTest from "./routes/api-test.js";
+import monitorApiRoutes from "./routes/api-monitor.js";
 
 import paths from "../src/config/paths.js";
 import { initHealth } from "../src/monitoring/health.js";
@@ -188,6 +189,9 @@ app.use("/api/universe", universeAPI);
 app.use("/api", apiRoutes);
 app.use("/api/test", apiTest);
 
+// monitoring API (protected)
+app.use("/api/monitor", requireAuth, monitorApiRoutes);
+
 // 3️⃣ AUTH ROUTES (login, logout, register)
 app.use(authRoutes);
 
@@ -197,6 +201,13 @@ app.get("/", requireAuth, (req, res) => {
     title: "Dashboard",
     currentTime: new Date().toLocaleString(),
     user: req.session.user?.username
+  });
+});
+
+// 5️⃣ MONITOR PAGE (PROTECTED)
+app.get("/monitor", requireAuth, (req, res) => {
+  res.render("monitor", {
+    title: "Monitor",
   });
 });
 

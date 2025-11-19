@@ -1,0 +1,252 @@
+<!-- web/views/monitor.ejs -->
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-100 flex items-center gap-2">
+      📊 System Monitor
+    </h1>
+    <p class="text-gray-400 text-sm">
+      Pregled rada DTrade engine-a, Bybit konekcije i sistema.
+    </p>
+  </div>
+
+  <button
+    id="refresh-btn"
+    class="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition flex items-center gap-2"
+  >
+    🔄 Osveži sada
+  </button>
+</div>
+
+<!-- GRID KARTICA -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-6">
+  <!-- System -->
+  <div class="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-xl">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold text-gray-100 flex items-center gap-2">
+        🖥️ System
+      </h2>
+      <span
+        id="monitor-timestamp"
+        class="text-xs text-gray-500"
+      >—</span>
+    </div>
+
+    <div class="space-y-2 text-sm text-gray-300">
+      <div class="flex justify-between">
+        <span>Uptime:</span>
+        <span id="sys-uptime" class="font-mono text-blue-400">—</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Load (1m):</span>
+        <span id="sys-load" class="font-mono text-blue-400">—</span>
+      </div>
+      <div class="flex justify-between">
+        <span>RSS:</span>
+        <span id="sys-rss" class="font-mono text-blue-400">—</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Heap used:</span>
+        <span id="sys-heap-used" class="font-mono text-blue-400">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- WS / Bybit -->
+  <div class="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-xl">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold text-gray-100 flex items-center gap-2">
+        🌐 Bybit WS
+      </h2>
+      <span
+        id="ws-status-pill"
+        class="text-xs px-2 py-1 rounded-full bg-gray-700 text-gray-300"
+      >Unknown</span>
+    </div>
+
+    <div class="space-y-2 text-sm text-gray-300">
+      <div class="flex justify-between">
+        <span>Status:</span>
+        <span id="ws-status" class="font-mono text-blue-400">—</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Last message:</span>
+        <span id="ws-last-msg" class="font-mono text-blue-400">—</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Subscribed streams:</span>
+        <span id="ws-streams" class="font-mono text-blue-400">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Engine -->
+  <div class="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-xl">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold text-gray-100 flex items-center gap-2">
+        ⚙️ Engine
+      </h2>
+      <span
+        id="engine-status-pill"
+        class="text-xs px-2 py-1 rounded-full bg-gray-700 text-gray-300"
+      >Unknown</span>
+    </div>
+
+    <div class="space-y-2 text-sm text-gray-300">
+      <div class="flex justify-between">
+        <span>Status:</span>
+        <span id="engine-status" class="font-mono text-blue-400">—</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Mode:</span>
+        <span id="engine-mode" class="font-mono text-blue-400">—</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Logs / JSON dump -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-xl">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold text-gray-100 flex items-center gap-2">
+        📋 Raw JSON snapshot
+      </h2>
+      <span class="text-xs text-gray-500">/api/monitor/summary</span>
+    </div>
+
+    <pre
+      id="monitor-json"
+      class="text-xs bg-gray-900 rounded-md p-3 overflow-auto max-h-80 text-gray-300"
+    >—</pre>
+  </div>
+
+  <div class="bg-gray-800 border border-gray-700 rounded-xl p-5 shadow-xl">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold text-gray-100 flex items-center gap-2">
+        🧠 Napomena
+      </h2>
+    </div>
+
+    <p class="text-sm text-gray-300 mb-2">
+      Ovo je prva verzija DTrade monitoring panela.
+    </p>
+    <ul class="list-disc list-inside text-sm text-gray-400 space-y-1">
+      <li>System metrika radi odmah (uptime, memory).</li>
+      <li>Bybit WS status koristi <code>getWsStatus()</code>.</li>
+      <li>Engine sekcija je za sada placeholder → kasnije je vezujemo na pravi core.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  async function loadMonitorSummary() {
+    try {
+      const res = await fetch("/api/monitor/summary");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+
+      // timestamp
+      const tsEl = document.getElementById("monitor-timestamp");
+      if (tsEl && data.timestamp) {
+        const dt = new Date(data.timestamp);
+        tsEl.textContent = dt.toLocaleString();
+      }
+
+      // System
+      document.getElementById("sys-uptime").textContent =
+        data.system?.uptimeHuman || "—";
+
+      document.getElementById("sys-load").textContent =
+        data.system?.load1m != null ? data.system.load1m.toFixed(2) : "—";
+
+      document.getElementById("sys-rss").textContent =
+        data.system?.memory?.rssMB != null
+          ? data.system.memory.rssMB + " MB"
+          : "—";
+
+      document.getElementById("sys-heap-used").textContent =
+        data.system?.memory?.heapUsedMB != null
+          ? data.system.memory.heapUsedMB + " MB"
+          : "—";
+
+      // WS
+      const ws = data.ws || {};
+      const wsStatusText =
+        ws.connected === true || ws.ok === true
+          ? "Connected"
+          : ws.connected === false
+          ? "Disconnected"
+          : ws.status || "Unknown";
+
+      const wsPill = document.getElementById("ws-status-pill");
+      if (wsPill) {
+        wsPill.textContent = wsStatusText;
+        wsPill.classList.remove("bg-gray-700", "bg-green-600", "bg-red-600");
+        if (ws.connected === true || ws.ok === true) {
+          wsPill.classList.add("bg-green-600");
+        } else if (ws.connected === false) {
+          wsPill.classList.add("bg-red-600");
+        } else {
+          wsPill.classList.add("bg-gray-700");
+        }
+      }
+
+      document.getElementById("ws-status").textContent = wsStatusText;
+
+      document.getElementById("ws-last-msg").textContent =
+        ws.lastMessageAt || ws.lastEventAt || "—";
+
+      const streamsCount =
+        (Array.isArray(ws.subscriptions) && ws.subscriptions.length) ||
+        ws.subscribedCount ||
+        ws.streamsCount ||
+        null;
+
+      document.getElementById("ws-streams").textContent =
+        streamsCount != null ? streamsCount : "—";
+
+      // Engine
+      const eng = data.engine || {};
+      document.getElementById("engine-status").textContent =
+        eng.status || "unknown";
+      document.getElementById("engine-mode").textContent =
+        eng.mode || "—";
+
+      const engPill = document.getElementById("engine-status-pill");
+      if (engPill) {
+        engPill.textContent = eng.status || "unknown";
+        engPill.classList.remove("bg-gray-700", "bg-green-600", "bg-red-600");
+        if (eng.status === "running") {
+          engPill.classList.add("bg-green-600");
+        } else if (eng.status === "stopped" || eng.status === "error") {
+          engPill.classList.add("bg-red-600");
+        } else {
+          engPill.classList.add("bg-gray-700");
+        }
+      }
+
+      // Raw JSON
+      const jsonEl = document.getElementById("monitor-json");
+      if (jsonEl) {
+        jsonEl.textContent = JSON.stringify(data, null, 2);
+      }
+    } catch (err) {
+      console.error("Monitor fetch error:", err);
+      const jsonEl = document.getElementById("monitor-json");
+      if (jsonEl) {
+        jsonEl.textContent = "Error loading /api/monitor/summary: " + err;
+      }
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    loadMonitorSummary();
+    const btn = document.getElementById("refresh-btn");
+    if (btn) {
+      btn.addEventListener("click", () => loadMonitorSummary());
+    }
+    // auto refresh na 5 sekundi
+    setInterval(loadMonitorSummary, 5000);
+  });
+</script>
