@@ -1,49 +1,71 @@
-// Global WS metrics state
-let wsStatus = "unknown";
-let lastMessageAt = null;
-let reconnectAttempts = 0;
-let messageCount = 0;
+// ============================================================
+// SINGLETON WS METRICS MODULE (FINAL FIX)
+// ============================================================
 
-export function wsMarkConnecting() {
-  wsStatus = "connecting";
+const state = {
+  status: "unknown",
+  lastMessageAt: null,
+  reconnectAttempts: 0,
+  messageCount: 0,
+};
+
+// ---------------------
+// MUTATIONS
+// ---------------------
+function markConnecting() {
+  state.status = "connecting";
 }
 
-export function wsMarkConnected() {
-  wsStatus = "connected";
+function markConnected() {
+  state.status = "connected";
 }
 
-export function wsMarkDisconnected() {
-  wsStatus = "disconnected";
+function markDisconnected() {
+  state.status = "disconnected";
 }
 
-export function wsMarkError() {
-  wsStatus = "error";
+function markError() {
+  state.status = "error";
 }
 
-export function wsMarkReconnect() {
-  reconnectAttempts++;
+function markReconnect() {
+  state.reconnectAttempts++;
 }
 
-export function wsMarkMessage() {
-  messageCount++;
-  lastMessageAt = Date.now();
+function markMessage() {
+  state.messageCount++;
+  state.lastMessageAt = Date.now();
 }
 
-export function getWsStatus() {
-  return {
-    status: wsStatus,
-    lastMessageAt,
-    reconnectAttempts,
-    messageCount,
-  };
+// ---------------------
+// ACCESSOR
+// ---------------------
+function getSummary() {
+  return { ...state };
 }
 
-// 🚀 ADD THIS — Dashboard API uses this name!
-export function getWsSummary() {
-  return {
-    status: wsStatus,
-    lastMessageAt,
-    reconnectAttempts,
-    messageCount,
-  };
-}
+// ---------------------
+// DEFAULT SINGLETON EXPORT
+// ---------------------
+export default {
+  markConnecting,
+  markConnected,
+  markDisconnected,
+  markError,
+  markReconnect,
+  markMessage,
+  getSummary,
+};
+
+// ---------------------
+// NAMED EXPORTS
+// ---------------------
+export {
+  markConnecting as wsMarkConnecting,
+  markConnected as wsMarkConnected,
+  markDisconnected as wsMarkDisconnected,
+  markError as wsMarkError,
+  markReconnect as wsMarkReconnect,
+  markMessage as wsMarkMessage,
+  getSummary as getWsSummary,
+};
