@@ -9,6 +9,9 @@ import fetch from "node-fetch";
 import CONFIG from "../config/index.js";
 import paths from "../config/paths.js";
 
+// EngineMetrics tracking
+const metrics = require('../core/metrics');
+
 const UNIVERSE_FILE = path.join(paths.SYSTEM_DIR, "universe.json");
 
 /* ---------------------------------------------------------
@@ -147,7 +150,14 @@ export function refreshUniversePeriodically() {
   console.log("🌍 [UNIVERSE] Auto-refresh enabled...");
 
   setInterval(async () => {
-    await initUniverse();
+    try {
+      await initUniverse();
+      metrics.markDecision(); // Mark universe refresh as decision
+      metrics.heartbeat();    // Update heartbeat
+    } catch (err) {
+      console.error("❌ [UNIVERSE] Refresh failed:", err);
+      metrics.markError();
+    }
   }, CONFIG.system.universeRefreshIntervalMs);
 }
 

@@ -18,11 +18,18 @@ import { initEventHub } from "./ws/eventHub.js";
 
 import CONFIG from "./config/index.js";
 
+// EngineMetrics tracking
+const metrics = require('./core/metrics');
+
 
 async function startEngine() {
   console.log("====================================================");
   console.log("🚀 AI Scalper Engine – Phase 2 Booting...");
   console.log("====================================================");
+
+  // Engine startup - mark decision and heartbeat
+  metrics.markDecision();
+  metrics.heartbeat();
 
   // ---------------------------------------------------------
   // 1. Initial Universe fetch
@@ -60,15 +67,19 @@ async function startEngine() {
   // ---------------------------------------------------------
   // Boot Complete
   // ---------------------------------------------------------
-  console.log("====================================================");
+  console.log("=====================================================");
   console.log("🌍 Universe service started.");
   console.log("📡 Public WS active.");
   console.log("🧠 AI Event Hub active.");
   console.log("⚡ Engine running normally.");
-  console.log("====================================================");
+  console.log("=====================================================");
+
+  // Mark engine as fully initialized
+  metrics.heartbeat();
 }
 
 
 startEngine().catch((err) => {
   console.error("❌ ENGINE CRASHED:", err);
+  metrics.markError();
 });

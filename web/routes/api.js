@@ -9,6 +9,8 @@ import HealthStatus, {
   getServiceStatus
 } from "../../src/monitoring/health.js";
 
+const metrics = require('../../src/core/metrics');
+
 const router = express.Router();
 
 /* ---------------------------------------------------------
@@ -104,6 +106,21 @@ router.get("/health/services/:serviceName", (req, res) => {
       error: error.message
     });
   }
+});
+
+// ---------------------------------------------------------
+// MONITOR SUMMARY — engine metrics + system info
+// ---------------------------------------------------------
+router.get('/monitor/summary', async (req, res) => {
+    res.json({
+        engine: metrics.getSummary(),
+        system: {
+            uptime: process.uptime(),
+            rss: process.memoryUsage().rss,
+            heap: process.memoryUsage().heapUsed
+        },
+        ws: global.WS_STATUS || 'unknown'
+    });
 });
 
 // ---------------------------------------------------------

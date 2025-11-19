@@ -10,6 +10,9 @@ import {
   storeOrderbook
 } from "./storage.js";
 
+// EngineMetrics tracking
+const metrics = require('../core/metrics');
+
 export function initEventHub() {
   console.log("📡 [EVENT-HUB] Initializing...");
 
@@ -17,6 +20,10 @@ export function initEventHub() {
     if (!msg?.topic || !msg?.data) return;
 
     const topic = msg.topic;
+
+    // Track WS message processing as decisions and heartbeat
+    metrics.markDecision();
+    metrics.heartbeat();
 
     // ----------------------
     // TICKER
@@ -34,7 +41,10 @@ export function initEventHub() {
       const symbol = topic.split(".")[1];
       // msg.data is array of trades
       const trade = msg.data[0];
-      if (trade) storeTrade(symbol, trade);
+      if (trade) {
+        storeTrade(symbol, trade);
+        metrics.markTradeExecuted(); // Track trade data received
+      }
       return;
     }
 
