@@ -93,6 +93,9 @@ async function startEngine() {
     }
   });
 
+  console.log("📡 [WS-METRICS] Connector launched with topics:",
+      metricsWS.subscriptions);
+
   console.log("=====================================================");
 
   // Mark engine as fully initialized
