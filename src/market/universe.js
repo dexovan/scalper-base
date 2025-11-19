@@ -1,6 +1,6 @@
 /* =========================================================
    src/market/universe.js
-   AI Scalper – Universe Service (REFABRIKOVANO, stabilno)
+   AI Scalper – Universe Service (PHASE 2 FULL VERSION)
    ========================================================= */
 
 import fs from "fs";
@@ -12,19 +12,22 @@ import paths from "../config/paths.js";
 const UNIVERSE_FILE = path.join(paths.SYSTEM_DIR, "universe.json");
 
 /* ---------------------------------------------------------
-   IN-MEMORY CACHE
+   In-memory universe state
 --------------------------------------------------------- */
 let UNIVERSE = {
   fetchedAt: null,
-  symbols: [],
-  totalSymbols: 0,
-  prime: [],
-  normal: [],
-  wild: []
+  symbols: {},        // KEY = symbol, VALUE = SymbolMeta
+  stats: {
+    totalSymbols: 0,
+    primeCount: 0,
+    normalCount: 0,
+    wildCount: 0,
+    lastUniverseUpdateAt: null
+  }
 };
 
 /* ---------------------------------------------------------
-   Save universe to disk
+   Save universe snapshot to disk
 --------------------------------------------------------- */
 function saveUniverseToDisk() {
   try {
@@ -34,7 +37,7 @@ function saveUniverseToDisk() {
       "utf8"
     );
   } catch (err) {
-    console.error("❌ [UNIVERSE] Failed to save universe:", err);
+    console.error("❌ [UNIVERSE] Failed to save:", err);
   }
 }
 
@@ -42,20 +45,40 @@ function saveUniverseToDisk() {
    Categorization logic
 --------------------------------------------------------- */
 function categorizeSymbol(item) {
-  const symbol = item.symbol;
+  const sym = item.symbol;
 
-  // PRIME: ručna lista definisana u configu
-  if (CONFIG.primeSymbols.includes(symbol)) return "prime";
+  if (CONFIG.primeSymbols.includes(sym)) return "Prime";
 
-  // WILD heuristika – na osnovu volumena i cene
   const vol = Number(item.volume24h || 0);
   const price = Number(item.lastPrice || 0);
 
-  if (vol < 1_000_000) return "wild";     // niska likvidnost
-  if (price < 0.0001) return "wild";      // micro-coini
-  if (symbol.includes("1000") || symbol.includes("10000")) return "wild";
+  if (vol < 1_000_000) return "Wild";
+  if (price < 0.0001) return "Wild";
+  if (sym.includes("1000") || sym.includes("10000")) return "Wild";
 
-  return "normal";
+  return "Normal";
+}
+
+/* ---------------------------------------------------------
+   Create SymbolMeta object
+--------------------------------------------------------- */
+function buildSymbolMeta(item) {
+  return {
+    symbol: item.symbol,
+    baseAsset: item.baseCoin || item.baseAsset || null,
+    quoteAsset: item.quoteCoin || item.quoteAsset || "USDT",
+    contractType: item.contractType || "LinearPerpetual",
+    status: item.status || "Trading",
+    category: categorizeSymbol(item),
+    tickSize: Number(item.tickSize || item.priceFilter?.tickSize || 0),
+    minOrderQty: Number(item.lotSizeFilter?.minOrderQty || 0),
+    lotSize: Number(item.lotSizeFilter?.qtyStep || 0),
+    maxLeverage: Number(item.leverageFilter?.maxLeverage || 1),
+    isNewListing: false,
+    firstSeenAt: new Date().toISOString(),
+    lastUpdatedAt: new Date().toISOString(),
+    raw: item
+  };
 }
 
 /* ---------------------------------------------------------
@@ -65,11 +88,9 @@ export async function initUniverse() {
   console.log("🌍 [UNIVERSE] Initial fetch...");
 
   try {
-    const url =
-      "https://api.bybit.com/v5/market/tickers?category=linear";
-
-    const response = await fetch(url);
-    const json = await response.json();
+    const url = "https://api.bybit.com/v5/market/tickers?category=linear";
+    const res = await fetch(url);
+    const json = await res.json();
 
     if (!json || !json.result || !Array.isArray(json.result.list)) {
       console.error("❌ [UNIVERSE] Bad response:", json);
@@ -77,32 +98,39 @@ export async function initUniverse() {
     }
 
     const list = json.result.list;
+    const newMap = {};
 
-    const prime = [];
-    const normal = [];
-    const wild = [];
+    let primeCount = 0;
+    let normalCount = 0;
+    let wildCount = 0;
 
     for (const item of list) {
-      const cat = categorizeSymbol(item);
+      const meta = buildSymbolMeta(item);
 
-      if (cat === "prime") prime.push(item.symbol);
-      else if (cat === "wild") wild.push(item.symbol);
-      else normal.push(item.symbol);
+      // Stats
+      if (meta.category === "Prime") primeCount++;
+      else if (meta.category === "Wild") wildCount++;
+      else normalCount++;
+
+      newMap[item.symbol] = meta;
     }
 
     UNIVERSE = {
       fetchedAt: new Date().toISOString(),
-      symbols: list.map(s => s.symbol),
-      totalSymbols: list.length,
-      prime,
-      normal,
-      wild
+      symbols: newMap,
+      stats: {
+        totalSymbols: list.length,
+        primeCount,
+        normalCount,
+        wildCount,
+        lastUniverseUpdateAt: new Date().toISOString()
+      }
     };
 
     saveUniverseToDisk();
 
     console.log(
-      `🌍 [UNIVERSE] Loaded ${UNIVERSE.totalSymbols} symbols → P:${prime.length} N:${normal.length} W:${wild.length}`
+      `🌍 [UNIVERSE] Loaded ${list.length} symbols → P:${primeCount} N:${normalCount} W:${wildCount}`
     );
 
   } catch (err) {
@@ -111,7 +139,7 @@ export async function initUniverse() {
 }
 
 /* ---------------------------------------------------------
-   Auto-refresh (uses configured interval)
+   Auto-refresh every X ms
 --------------------------------------------------------- */
 export function refreshUniversePeriodically() {
   console.log("🌍 [UNIVERSE] Auto-refresh enabled...");
@@ -122,8 +150,22 @@ export function refreshUniversePeriodically() {
 }
 
 /* ---------------------------------------------------------
-   Exposed getter
+   Public getters
 --------------------------------------------------------- */
-export function getUniverse() {
+export function getUniverseSnapshot() {
   return UNIVERSE;
+}
+
+export function getSymbolMeta(symbol) {
+  return UNIVERSE.symbols[symbol] || null;
+}
+
+export function getSymbolsByCategory(category) {
+  return Object.values(UNIVERSE.symbols)
+    .filter(meta => meta.category === category)
+    .map(meta => meta.symbol);
+}
+
+export function getUniverse() {
+  return UNIVERSE; // backwards compatibility
 }
