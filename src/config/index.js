@@ -2,10 +2,12 @@
 import paths from "./paths.js";
 
 const CONFIG = {
+  // Prime symbols for categorization
+  primeSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
+
   market: {
     venue: "BYBIT_LINEAR_PERP",
     symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "AI16ZUSDT", "DOGEUSDT"],
-    primeSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
     categories: {
       "Prime": ["BTCUSDT", "ETHUSDT"],
       "Normal": ["SOLUSDT", "ADAUSDT"],
