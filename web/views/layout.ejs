@@ -1,43 +1,192 @@
 <!DOCTYPE html>
-<html lang="en" class="bg-gray-900">
+<html lang="en" class="bg-slate-950">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title><%= title %> | Dexovan AI Scalper</title>
+    <title>
+        <%= typeof title !== "undefined" ? (title + " | DTrade") : "DTrade" %>
+    </title>
 
+    <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="min-h-screen text-gray-100">
+<body class="min-h-screen text-slate-100 bg-slate-950">
+<div class="min-h-screen flex">
 
-    <!-- HEADER -->
-    <header class="bg-gray-800 border-b border-gray-700 py-4 px-6 flex justify-between items-center">
-        <div class="text-xl font-bold text-blue-400">🤖 DTrade</div>
+    <!-- SIDEBAR -->
+    <aside
+        id="sidebar"
+        class="hidden md:flex md:flex-col w-64 bg-slate-950 border-r border-slate-800"
+    >
+        <!-- Logo / Brand -->
+        <div class="h-16 flex items-center px-4 border-b border-slate-800">
+            <div class="flex items-center gap-2">
+                <!-- Mali “logo” ikonica -->
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-950" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 19V5l8-3 8 3v14l-8 3-8-3z" />
+                        <path d="M8 10l2 2 4-4 2 2" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-sm uppercase tracking-[0.25em] text-slate-500">
+                        Dexovan
+                    </div>
+                    <div class="text-lg font-semibold tracking-tight">
+                        DTrade
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        <nav class="space-x-6 hidden md:block">
-            <a href="/" class="text-gray-300 hover:text-white">Dashboard</a>
-            <a href="/trades" class="text-gray-300 hover:text-white">Trades</a>
-            <a href="/engine" class="text-gray-300 hover:text-white">Engine</a>
-            <a href="/settings" class="text-gray-300 hover:text-white">Settings</a>
+        <!-- Navigation -->
+        <nav class="flex-1 py-4 text-sm">
+            <!-- Dashboard -->
+            <a href="/"
+               class="flex items-center px-4 py-2.5 gap-2
+                      <%= active === 'dashboard' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' %>">
+                <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 13h8V3H3z" />
+                    <path d="M13 21h8V11h-8z" />
+                    <path d="M13 3v4h8V3z" />
+                    <path d="M3 21h8v-4H3z" />
+                </svg>
+                <span>Dashboard</span>
+            </a>
+
+            <!-- Trades -->
+            <a href="/trades"
+               class="flex items-center px-4 py-2.5 gap-2
+                      <%= active === 'trades' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' %>">
+                <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 19l4-9 4 6 4-10 4 13" />
+                    <path d="M2 21h20" />
+                </svg>
+                <span>Trades</span>
+            </a>
+
+            <!-- Engine -->
+            <a href="/engine"
+               class="flex items-center px-4 py-2.5 gap-2
+                      <%= active === 'engine' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' %>">
+                <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1.82l.03.08a2 2 0 1 1-3.38 0l.03-.08A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1.82-.33l-.08.03a2 2 0 1 1 0-3.38l.08.03A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1.82l-.03-.08a2 2 0 1 1 3.38 0l-.03.08A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.37.55.6 1.21.6 1.92s-.23 1.37-.6 2.08z" />
+                </svg>
+                <span>Engine</span>
+            </a>
+
+            <!-- Settings -->
+            <a href="/settings"
+               class="flex items-center px-4 py-2.5 gap-2
+                      <%= active === 'settings' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white' %>">
+                <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4" />
+                </svg>
+                <span>Settings</span>
+            </a>
         </nav>
 
-        <div class="text-gray-300">👤 <%= user %></div>
+        <!-- Sidebar bottom info -->
+        <div class="border-t border-slate-800 p-4 text-xs text-slate-500">
+            <div class="flex items-center justify-between mb-1">
+                <span>Engine</span>
+                <span class="text-emerald-400 flex items-center gap-1">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Online
+                </span>
+            </div>
+            <div>DTrade · v1.0</div>
+            <div class="mt-1">
+                Session: <span class="text-slate-300"><%= user || "Guest" %></span>
+            </div>
+        </div>
+    </aside>
 
-        <a href="/logout" class="ml-4 px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white">
-            Logout
-        </a>
-    </header>
+    <!-- MAIN COLUMN -->
+    <div class="flex-1 flex flex-col">
 
-    <!-- PAGE CONTENT -->
-    <main class="p-6 max-w-6xl mx-auto">
-        <%- body %>
-    </main>
+        <!-- HEADER / TOPBAR -->
+        <header class="h-16 flex items-center justify-between border-b border-slate-800 bg-slate-950/90 backdrop-blur px-4 md:px-6">
+            <div class="flex items-center gap-3">
+                <!-- Mobile: sidebar toggle -->
+                <button
+                    id="sidebarToggle"
+                    class="md:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800"
+                    aria-label="Toggle navigation"
+                >
+                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg"
+                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
 
-    <!-- FOOTER -->
-    <footer class="bg-gray-800 border-t border-gray-700 py-4 text-center text-gray-400">
-        Dexovan AI Scalper — <%= new Date().getFullYear() %>
-    </footer>
+                <div>
+                    <h1 class="text-base md:text-lg font-semibold tracking-tight">
+                        <%= typeof pageTitle !== 'undefined' ? pageTitle : (title || "Dashboard") %>
+                    </h1>
+                    <p class="text-xs md:text-[0.7rem] text-slate-500">
+                        Dexovan · DTrade Scalping Control Panel
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- Status badge -->
+                <div class="hidden sm:flex items-center gap-2 text-xs text-slate-400">
+                    <span class="inline-flex w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>WS / Engine OK</span>
+                </div>
+
+                <!-- User pill -->
+                <div class="flex items-center gap-2 rounded-full bg-slate-900 border border-slate-700 px-3 py-1 text-xs">
+                    <div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center text-slate-900 font-semibold">
+                        <%= (user || "DT").slice(0,1).toUpperCase() %>
+                    </div>
+                    <div class="flex flex-col leading-tight">
+                        <span class="text-[0.7rem] uppercase text-slate-500">Logged in</span>
+                        <span class="text-sm font-medium">
+                            <%= user || "Guest" %>
+                        </span>
+                    </div>
+                    <a href="/logout" class="ml-2 text-[0.7rem] text-slate-400 hover:text-red-400">
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- PAGE CONTENT -->
+        <main class="flex-1 bg-slate-950 px-4 md:px-6 py-6">
+            <%- body %>
+        </main>
+
+        <!-- FOOTER (uvek na dnu zbog flex-1 gore) -->
+        <footer class="border-t border-slate-800 bg-slate-950 py-3 text-center text-[0.7rem] text-slate-500">
+            Dexovan · DTrade · <%= new Date().getFullYear() %>
+        </footer>
+    </div>
+</div>
+
+<script>
+    // Jednostavan toggle sidebar-a za mobilne
+    (function () {
+        const btn = document.getElementById('sidebarToggle');
+        const sidebar = document.getElementById('sidebar');
+        if (!btn || !sidebar) return;
+
+        btn.addEventListener('click', () => {
+            sidebar.classList.toggle('hidden');
+        });
+    })();
+</script>
 
 </body>
 </html>

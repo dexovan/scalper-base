@@ -1,47 +1,160 @@
-<div class="text-center mb-10">
-    <h1 class="text-4xl font-bold text-blue-400">Trading Dashboard</h1>
-    <p class="text-gray-400 mt-2">AI-powered scalping engine</p>
-    <p class="text-gray-500 text-sm mt-2">Last update: <%= currentTime %></p>
-</div>
+<div class="space-y-6">
 
-<!-- GRID -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Welcome / Hero -->
+    <section class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <h2 class="text-2xl md:text-3xl font-semibold tracking-tight">
+                Dobrodošao nazad, <span class="text-blue-400"><%= user || "trader" %></span>
+            </h2>
+            <p class="mt-1 text-sm text-slate-400">
+                Centralni panel za tvoj DTrade AI scalping engine.
+            </p>
+            <p class="mt-1 text-xs text-slate-500">
+                Last updated: <%= currentTime %>
+            </p>
+        </div>
 
-    <!-- System Status -->
-    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
-        <h3 class="text-xl font-semibold">System Status</h3>
-        <p class="text-green-400 text-3xl font-bold mt-2">Online</p>
-    </div>
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/40 text-emerald-300">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Engine Online
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/40 text-blue-300">
+                Market Scanner
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-800 text-slate-300">
+                Mode: <span class="font-semibold text-slate-100">SIM</span>
+            </span>
+        </div>
+    </section>
 
-    <!-- Portfolio -->
-    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
-        <h3 class="text-xl font-semibold">Portfolio Value</h3>
-        <p class="text-blue-400 text-3xl font-bold mt-2">$12,847.50</p>
-        <p class="text-green-400 mt-1">+2.45% today</p>
-    </div>
+    <!-- Stat cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <!-- Portfolio -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400">Portfolio Value</p>
+                    <p class="mt-1 text-2xl font-semibold tracking-tight">
+                        $12,847.50
+                    </p>
+                </div>
+                <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg"
+                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 3v18" />
+                        <path d="M5 9h14" />
+                        <path d="M7 5h10v4H7z" />
+                    </svg>
+                </div>
+            </div>
+            <p class="mt-2 text-xs text-emerald-400">
+                +2.45% danas
+            </p>
+        </div>
 
-    <!-- Active Trades -->
-    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
-        <h3 class="text-xl font-semibold">Active Trades</h3>
-        <p class="text-blue-400 text-3xl font-bold mt-2">7</p>
-    </div>
+        <!-- Active trades -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400">Active Trades</p>
+                    <p class="mt-1 text-2xl font-semibold tracking-tight">
+                        7
+                    </p>
+                </div>
+                <div class="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-emerald-400" xmlns="http://www.w3.org/2000/svg"
+                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 19l4-9 4 6 4-10 4 13" />
+                        <path d="M2 21h20" />
+                    </svg>
+                </div>
+            </div>
+            <p class="mt-2 text-xs text-slate-400">
+                Praćenje tržišnih scalp prilika
+            </p>
+        </div>
 
-    <!-- Success Rate -->
-    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
-        <h3 class="text-xl font-semibold">Success Rate</h3>
-        <p class="text-blue-400 text-3xl font-bold mt-2">87.3%</p>
-    </div>
+        <!-- Winrate -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400">Success Rate (30d)</p>
+                    <p class="mt-1 text-2xl font-semibold tracking-tight">
+                        87.3%
+                    </p>
+                </div>
+                <div class="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-amber-400" xmlns="http://www.w3.org/2000/svg"
+                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 3l3 7h7l-5.5 4.2L18 21l-6-3.8L6 21l1.5-6.8L2 10h7z" />
+                    </svg>
+                </div>
+            </div>
+            <p class="mt-2 text-xs text-slate-400">
+                Bazirano na istoriji tvojih scalpova
+            </p>
+        </div>
 
-    <!-- AI Engine -->
-    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
-        <h3 class="text-xl font-semibold">AI Engine</h3>
-        <p class="text-green-400 text-3xl font-bold mt-2">Active</p>
-    </div>
+        <!-- Alerts -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs text-slate-400">Alerts</p>
+                    <p class="mt-1 text-2xl font-semibold tracking-tight">
+                        3
+                    </p>
+                </div>
+                <div class="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-red-400" xmlns="http://www.w3.org/2000/svg"
+                         viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 9v4" />
+                        <path d="M12 17h.01" />
+                        <path d="M10.29 3.86L1.82 18a1 1 0 0 0 .86 1.5h18.64a1 1 0 0 0 .86-1.5L13.71 3.86a1 1 0 0 0-1.72 0z" />
+                    </svg>
+                </div>
+            </div>
+            <p class="mt-2 text-xs text-slate-400">
+                Novi scalp signali / rizični tokene
+            </p>
+        </div>
+    </section>
 
-    <!-- Alerts -->
-    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
-        <h3 class="text-xl font-semibold">Alerts</h3>
-        <p class="text-blue-400 text-3xl font-bold mt-2">3</p>
-    </div>
+    <!-- Quick actions -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <h3 class="text-sm font-semibold mb-2">
+                Quick Actions
+            </h3>
+            <p class="text-xs text-slate-400 mb-3">
+                Najčešće radnje koje ćeš koristiti tokom sesije.
+            </p>
+            <div class="flex flex-wrap gap-2">
+                <a href="/trades"
+                   class="px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-600 hover:bg-blue-500">
+                    View Live Trades
+                </a>
+                <a href="/engine"
+                   class="px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-800 hover:bg-slate-700">
+                    Engine Status
+                </a>
+                <a href="/settings"
+                   class="px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-800 hover:bg-slate-700">
+                    Risk & TP/SL
+                </a>
+            </div>
+        </div>
 
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <h3 class="text-sm font-semibold mb-2">
+                Session Info
+            </h3>
+            <ul class="space-y-1 text-xs text-slate-400">
+                <li>• User: <span class="text-slate-200"><%= user || "admin" %></span></li>
+                <li>• Mode: SIM (planirano LIVE kasnije)</li>
+                <li>• WS feed: Bybit linear USDT perp</li>
+                <li>• Scalper verzija: Core v1 · Panel v1</li>
+            </ul>
+        </div>
+    </section>
 </div>
