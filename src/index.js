@@ -23,6 +23,7 @@ import metrics from './core/metrics.js';
 
 // WS Metrics Connector (parallel to existing engine WS)
 import { BybitPublicWS } from "./connectors/bybit/publicWS.js";
+import { wsMarkMessage } from "./monitoring/wsMetrics.js";
 
 
 async function startEngine() {
@@ -68,21 +69,6 @@ async function startEngine() {
   refreshUniversePeriodically();
 
   // ---------------------------------------------------------
-  // 6. WS Metrics Connector (parallel - does NOT affect engine)
-  // ---------------------------------------------------------
-  const wsMetrics = new BybitPublicWS();
-  wsMetrics.connect({
-    symbols: ["BTCUSDT", "ETHUSDT"], // za početak
-    channels: ["tickers", "publicTrade"],
-    onEvent: (msg) => {
-      // Za sada ne diramo eventHub
-      // Ovo samo proverava da WS radi i puni wsMetrics
-      // console.log("[BybitWS EVENT]", msg.topic);
-    },
-  });
-  console.log("📊 WS Metrics Connector initialized (parallel mode)");
-
-  // ---------------------------------------------------------
   // Boot Complete
   // ---------------------------------------------------------
   console.log("=====================================================");
@@ -90,6 +76,23 @@ async function startEngine() {
   console.log("📡 Public WS active.");
   console.log("🧠 AI Event Hub active.");
   console.log("⚡ Engine running normally.");
+
+  //-------------------------------------------------
+  // NEW: Start WS Metrics connector (parallel WS)
+  //-------------------------------------------------
+  console.log("📡 [WS-METRICS] Starting...");
+
+  const metricsWS = new BybitPublicWS();
+
+  metricsWS.connect({
+    symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
+    channels: ["tickers", "publicTrade"],
+    onEvent: (msg) => {
+      // samo registrujemo dolazak eventa u wsMetrics
+      wsMarkMessage();
+    }
+  });
+
   console.log("=====================================================");
 
   // Mark engine as fully initialized
