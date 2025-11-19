@@ -10,16 +10,18 @@ import HealthStatus, {
   getServiceStatus
 } from "../../src/monitoring/health.js";
 
-import metrics from '../../src/core/metrics.js';
+import metrics from "../../src/core/metrics.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ---------------------------------------------------------
+// FIXED WS IMPORT (abs path, never breaks)
+// ---------------------------------------------------------
 let getWsSummary;
 (async () => {
-  const wsMetrics = await import(
-    path.resolve(__dirname, "../../src/monitoring/wsMetrics.js")
-  );
+  const wsPath = path.join(paths.PROJECT_ROOT, "src/monitoring/wsMetrics.js");
+  const wsMetrics = await import(wsPath);
   getWsSummary = wsMetrics.getWsSummary;
 })();
 
@@ -47,7 +49,7 @@ router.get("/health", (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   GET /api/health/summary – Overview
+   GET /api/health/summary
 --------------------------------------------------------- */
 router.get("/health/summary", (req, res) => {
   try {
@@ -72,7 +74,7 @@ router.get("/health/summary", (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   GET /api/health/services – List of services
+   GET /api/health/services
 --------------------------------------------------------- */
 router.get("/health/services", (req, res) => {
   try {
@@ -121,22 +123,22 @@ router.get("/health/services/:serviceName", (req, res) => {
 });
 
 // ---------------------------------------------------------
-// MONITOR SUMMARY — engine metrics + system info
+// MONITOR SUMMARY
 // ---------------------------------------------------------
-router.get('/monitor/summary', async (req, res) => {
-    res.json({
-        engine: metrics.getSummary(),
-        system: {
-            uptime: process.uptime(),
-            rss: process.memoryUsage().rss,
-            heap: process.memoryUsage().heapUsed
-        },
-        ws: getWsSummary()
-    });
+router.get("/monitor/summary", async (req, res) => {
+  res.json({
+    engine: metrics.getSummary(),
+    system: {
+      uptime: process.uptime(),
+      rss: process.memoryUsage().rss,
+      heap: process.memoryUsage().heapUsed
+    },
+    ws: getWsSummary ? getWsSummary() : { status: "loading" }
+  });
 });
 
 // ---------------------------------------------------------
-// MONITOR LOGS — poslednje linije iz pm2-engine-out.log
+// MONITOR LOGS
 // ---------------------------------------------------------
 router.get("/monitor/logs", (req, res) => {
   const lines = parseInt(req.query.lines, 10) || 200;
@@ -147,7 +149,7 @@ router.get("/monitor/logs", (req, res) => {
       return res.json({
         ok: false,
         error: err.message,
-        lines: [],
+        lines: []
       });
     }
 
@@ -157,7 +159,7 @@ router.get("/monitor/logs", (req, res) => {
     res.json({
       ok: true,
       file: "pm2-engine-out.log",
-      lines: tail,
+      lines: tail
     });
   });
 });
