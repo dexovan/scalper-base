@@ -13,9 +13,11 @@ import HealthStatus, {
 
 import metrics from "../../src/core/metrics.js";
 
-import {
-  getWsSummary
-} from "../../src/monitoring/wsMetrics.js";   // ✅ FIXED PATH — THIS IS CORRECT
+// *** FIX: STATIC IMPORT (jedna instanca wsMetrics u celom projektu) ***
+import { getWsSummary } from "../../src/monitoring/wsMetrics.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
@@ -25,13 +27,13 @@ const router = express.Router();
 router.get("/health", (req, res) => {
   try {
     const status = updateHealth();
-    res.json({
+    return res.json({
       timestamp: new Date().toISOString(),
       status: "success",
       data: status
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       timestamp: new Date().toISOString(),
       status: "error",
       message: "Health check failed",
@@ -46,7 +48,7 @@ router.get("/health", (req, res) => {
 router.get("/health/summary", (req, res) => {
   try {
     const summary = getHealthSummary();
-    res.json({
+    return res.json({
       timestamp: new Date().toISOString(),
       status: "success",
       data: {
@@ -56,7 +58,7 @@ router.get("/health/summary", (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       timestamp: new Date().toISOString(),
       status: "error",
       message: "Health summary failed",
@@ -70,13 +72,13 @@ router.get("/health/summary", (req, res) => {
 --------------------------------------------------------- */
 router.get("/health/services", (req, res) => {
   try {
-    res.json({
+    return res.json({
       timestamp: new Date().toISOString(),
       status: "success",
       data: HealthStatus.services
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       timestamp: new Date().toISOString(),
       status: "error",
       message: "Services status failed",
@@ -99,13 +101,13 @@ router.get("/health/services/:serviceName", (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       timestamp: new Date().toISOString(),
       status: "success",
       data: { ...s }
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       timestamp: new Date().toISOString(),
       status: "error",
       message: "Service status failed",
@@ -115,22 +117,31 @@ router.get("/health/services/:serviceName", (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   MONITOR SUMMARY — engine metrics + system info + WS
+   MONITOR SUMMARY — engine + system + WS metrics
 --------------------------------------------------------- */
-router.get("/monitor/summary", (req, res) => {
-  res.json({
-    engine: metrics.getSummary(),
-    system: {
-      uptime: process.uptime(),
-      rss: process.memoryUsage().rss,
-      heap: process.memoryUsage().heapUsed
-    },
-    ws: getWsSummary()   // ✅ now always available
-  });
+router.get('/monitor/summary', (req, res) => {
+  try {
+    return res.json({
+      engine: metrics.getSummary(),
+      system: {
+        uptime: process.uptime(),
+        rss: process.memoryUsage().rss,
+        heap: process.memoryUsage().heapUsed
+      },
+      ws: getWsSummary()   // <--- FIXED: sada radi 100%
+    });
+  } catch (err) {
+    return res.status(500).json({
+      timestamp: new Date().toISOString(),
+      status: "error",
+      message: "Monitor summary failed",
+      error: err.message
+    });
+  }
 });
 
 /* ---------------------------------------------------------
-   MONITOR LOGS — last lines of pm2-engine-out.log
+   MONITOR LOGS — poslednje linije iz pm2-engine-out.log
 --------------------------------------------------------- */
 router.get("/monitor/logs", (req, res) => {
   const lines = parseInt(req.query.lines, 10) || 200;
@@ -141,7 +152,7 @@ router.get("/monitor/logs", (req, res) => {
       return res.json({
         ok: false,
         error: err.message,
-        lines: []
+        lines: [],
       });
     }
 
@@ -151,9 +162,10 @@ router.get("/monitor/logs", (req, res) => {
     res.json({
       ok: true,
       file: "pm2-engine-out.log",
-      lines: tail
+      lines: tail,
     });
   });
 });
 
 export default router;
+
