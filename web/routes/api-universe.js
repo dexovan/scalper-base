@@ -1,78 +1,32 @@
 // web/routes/api-universe.js
 import express from "express";
 import { readUniverseFromDisk } from "../../src/market/universeFile.js";
-import { loadProfile } from "../../src/market/symbolProfile.js";
 
 const router = express.Router();
 
-// ============================
-// GET /api/universe
-// ============================
-router.get("/universe", (req, res) => {
+// /api/universe
+router.get("/", (req, res) => {
   const uni = readUniverseFromDisk();
 
-  if (!uni) {
-    return res.status(500).json({ error: "Universe not initialized" });
-  }
-
-  const result = {
+  return res.json({
     fetchedAt: uni.fetchedAt,
-    totalSymbols: uni.stats.totalSymbols,
-    primeCount: uni.stats.primeCount,
-    normalCount: uni.stats.normalCount,
-    wildCount: uni.stats.wildCount,
-    symbols: Object.values(uni.symbols).map(s => ({
-      symbol: s.symbol,
-      category: s.category,
-      status: s.status,
-      baseAsset: s.baseAsset,
-      quoteAsset: s.quoteAsset,
-      isNewListing: s.isNewListing,
-      maxLeverage: s.maxLeverage
-    }))
-  };
-
-  res.json(result);
+    totalSymbols: uni.totalSymbols || 0,
+    primeCount: uni.primeCount || 0,
+    normalCount: uni.normalCount || 0,
+    wildCount: uni.wildCount || 0,
+    symbols: uni.symbols || []
+  });
 });
 
-// ============================
-// GET /api/universe/categories
-// ============================
-router.get("/universe/categories", (req, res) => {
+// /api/universe/categories
+router.get("/categories", (req, res) => {
   const uni = readUniverseFromDisk();
 
-  if (!uni) {
-    return res.status(500).json({ error: "Universe not initialized" });
-  }
-
-  const result = {
-    totalSymbols: uni.stats.totalSymbols,
-    prime: Object.values(uni.symbols).filter(s => s.category === "Prime").map(s => s.symbol),
-    normal: Object.values(uni.symbols).filter(s => s.category === "Normal").map(s => s.symbol),
-    wild: Object.values(uni.symbols).filter(s => s.category === "Wild").map(s => s.symbol),
-  };
-
-  res.json(result);
-});
-
-// ============================
-// GET /api/symbol/:symbol/basic
-// ============================
-router.get("/symbol/:symbol/basic", async (req, res) => {
-  const symbol = req.params.symbol.toUpperCase();
-
-  const uni = readUniverseFromDisk();
-  const meta = uni?.symbols?.[symbol];
-  if (!meta) {
-    return res.status(404).json({ error: "Symbol not found" });
-  }
-
-  const profile = await loadProfile(symbol);
-
-  res.json({
-    symbol,
-    meta,
-    profile
+  return res.json({
+    totalSymbols: uni.totalSymbols || 0,
+    prime: uni.symbols.filter(s => s.category === "prime"),
+    normal: uni.symbols.filter(s => s.category === "normal"),
+    wild: uni.symbols.filter(s => s.category === "wild"),
   });
 });
 
