@@ -1,50 +1,47 @@
-<div class="grid md:grid-cols-3 gap-6">
-
-    <!-- STATUS SISTEMA -->
-    <div class="glass p-6 rounded-xl border border-white/10">
-        <h3 class="text-lg font-semibold mb-2 flex items-center gap-2">
-            📡 Sistem Status
-        </h3>
-
-        <div class="text-3xl font-bold text-green-400">Online</div>
-        <p class="text-white/60 mt-2">Svi sistemi rade normalno</p>
-    </div>
-
-    <!-- PORTFOLIO -->
-    <div class="glass p-6 rounded-xl border border-white/10">
-        <h3 class="text-lg font-semibold mb-2">💰 Vrednost Portfolija</h3>
-        <div class="text-3xl font-bold">12,847.50 USDT</div>
-        <p class="text-green-400 mt-2">+2.45% danas</p>
-    </div>
-
-    <!-- TRADES -->
-    <div class="glass p-6 rounded-xl border border-white/10">
-        <h3 class="text-lg font-semibold mb-2">📈 Aktivni Trade-ovi</h3>
-        <div class="text-3xl font-bold">7</div>
-        <p class="text-white/60 mt-2">AI trenutno prati tržišne prilike</p>
-    </div>
-
+<div class="text-center mb-10">
+    <h1 class="text-4xl font-bold text-blue-400">Trading Dashboard</h1>
+    <p class="text-gray-400 mt-2">AI-powered scalping engine</p>
+    <p class="text-gray-500 text-sm mt-2">Last update: <%= currentTime %></p>
 </div>
 
-<!-- DONJI GRID -->
-<div class="grid md:grid-cols-3 gap-6 mt-6">
+<!-- GRID -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-    <div class="glass p-6 rounded-xl border border-white/10">
-        <h3 class="text-lg font-semibold mb-2">🎯 Uspešnost</h3>
-        <div class="text-3xl font-bold text-primary">87.3%</div>
-        <p class="text-white/60 mt-2">Poslednjih 30 dana</p>
+    <!-- System Status -->
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
+        <h3 class="text-xl font-semibold">System Status</h3>
+        <p class="text-green-400 text-3xl font-bold mt-2">Online</p>
     </div>
 
-    <div class="glass p-6 rounded-xl border border-white/10">
-        <h3 class="text-lg font-semibold mb-2">⚡ AI Motor</h3>
-        <div class="text-2xl font-bold text-green-400">Aktivan</div>
-        <p class="text-white/60 mt-2">Procesiranje tržišnih mikro podataka</p>
+    <!-- Portfolio -->
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
+        <h3 class="text-xl font-semibold">Portfolio Value</h3>
+        <p class="text-blue-400 text-3xl font-bold mt-2">$12,847.50</p>
+        <p class="text-green-400 mt-1">+2.45% today</p>
     </div>
 
-    <div class="glass p-6 rounded-xl border border-white/10">
-        <h3 class="text-lg font-semibold mb-2">🔔 Upozorenja</h3>
-        <div class="text-3xl font-bold">3</div>
-        <p class="text-white/60 mt-2">Nova trgovinska prilika</p>
+    <!-- Active Trades -->
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
+        <h3 class="text-xl font-semibold">Active Trades</h3>
+        <p class="text-blue-400 text-3xl font-bold mt-2">7</p>
+    </div>
+
+    <!-- Success Rate -->
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
+        <h3 class="text-xl font-semibold">Success Rate</h3>
+        <p class="text-blue-400 text-3xl font-bold mt-2">87.3%</p>
+    </div>
+
+    <!-- AI Engine -->
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
+        <h3 class="text-xl font-semibold">AI Engine</h3>
+        <p class="text-green-400 text-3xl font-bold mt-2">Active</p>
+    </div>
+
+    <!-- Alerts -->
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow">
+        <h3 class="text-xl font-semibold">Alerts</h3>
+        <p class="text-blue-400 text-3xl font-bold mt-2">3</p>
     </div>
 
 </div>

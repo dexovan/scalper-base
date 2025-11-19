@@ -1,35 +1,48 @@
-<div class="min-h-screen flex items-center justify-center bg-darkbg px-4">
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dexovan Login</title>
 
-    <div class="w-full max-w-sm glass p-8 rounded-2xl shadow-lg border border-white/10">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
 
-        <h2 class="text-2xl font-bold text-center mb-6">Prijava u sistem</h2>
+<body class="h-full flex items-center justify-center">
+
+    <div class="w-full max-w-sm bg-gray-800 p-8 rounded-xl shadow-xl border border-gray-700">
+
+        <h2 class="text-center text-3xl font-bold text-blue-400 mb-6">DTrade Login</h2>
 
         <% if (error) { %>
-        <div class="mb-4 text-red-400 text-center font-semibold">
-            <%= error %>
-        </div>
+            <p class="text-red-400 text-center mb-4"><%= error %></p>
         <% } %>
 
         <form method="POST" action="/login" class="space-y-4">
+            <input
+                type="text"
+                name="username"
+                placeholder="Username"
+                class="w-full px-4 py-2 rounded-md bg-gray-700 text-white focus:ring-2 focus:ring-blue-400"
+                required
+            />
 
-            <div>
-                <label class="block mb-1 text-white/70">Korisničko ime</label>
-                <input type="text" name="username" required
-                       class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-primary outline-none">
-            </div>
+            <input
+                type="password"
+                name="password"
+                placeholder="Password"
+                class="w-full px-4 py-2 rounded-md bg-gray-700 text-white focus:ring-2 focus:ring-blue-400"
+                required
+            />
 
-            <div>
-                <label class="block mb-1 text-white/70">Lozinka</label>
-                <input type="password" name="password" required
-                       class="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 focus:border-primary outline-none">
-            </div>
-
-            <button type="submit"
-                    class="w-full py-2 mt-4 bg-primary rounded-lg text-darkbg font-bold hover:opacity-90 transition">
-                Prijavi se
+            <button
+                type="submit"
+                class="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded-md text-white font-semibold transition"
+            >
+                Login
             </button>
-
         </form>
-
     </div>
-</div>
+
+</body>
+</html>
