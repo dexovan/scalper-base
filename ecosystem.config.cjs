@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   apps: [
     {
       name: "dashboard",
@@ -7,11 +7,7 @@ export default {
       instances: 1,
       exec_mode: "fork",
       watch: false,
-      ignore_watch: [
-        "node_modules",
-        "logs",
-        "data"
-      ],
+      ignore_watch: ["node_modules", "logs", "data"],
       env: {
         NODE_ENV: "production",
         PORT: "8080"
@@ -31,11 +27,7 @@ export default {
       instances: 1,
       exec_mode: "fork",
       watch: false,
-      ignore_watch: [
-        "node_modules",
-        "logs",
-        "data"
-      ],
+      ignore_watch: ["node_modules", "logs", "data"],
       env: {
         NODE_ENV: "production"
       },
