@@ -8,6 +8,11 @@ import WebSocket from "ws";
 import EventEmitter from "events";
 import fetch from "node-fetch";
 import CONFIG from "../config/index.js";
+import {
+  storeTicker,
+  storeTrade,
+  storeOrderbook
+} from "../ws/storage.js";
 
 // -----------------------------------------------
 // REST: fetchInstrumentsUSDTPerp  (TVOJ POSTOJEĆI KOD)
@@ -214,8 +219,31 @@ export function initPublicConnection() {
     try {
       const msg = JSON.parse(raw);
 
-      // Emit for Engine, OrderbookWatcher, TickFlow
-      publicEmitter.emit("ws", msg);
+      const topic = msg?.topic;
+      const data = msg?.data;
+
+      if (!topic) return;
+
+      // TICKERS
+      if (topic.startsWith("tickers.")) {
+        const symbol = topic.split(".")[1];
+        storeTicker(symbol, data);
+        return;
+      }
+
+      // TRADES
+      if (topic.startsWith("publicTrade.")) {
+        const symbol = topic.split(".")[1];
+        storeTrade(symbol, data[0]);   // Bybit šalje array
+        return;
+      }
+
+      // ORDERBOOK
+      if (topic.startsWith("orderbook.50.")) {
+        const symbol = topic.split(".")[2];
+        storeOrderbook(symbol, data);
+        return;
+      }
 
     } catch (err) {
       console.error("❌ WS parse error:", err);
