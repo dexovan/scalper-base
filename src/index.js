@@ -1,5 +1,10 @@
 // tests/test-universe-refresh-interval.js
-import { initUniverse, refreshUniversePeriodically, UniverseState } from "../src/market/universe.js";
+
+import {
+  initUniverse,
+  refreshUniversePeriodically,
+  getUniverse
+} from "../src/market/universe.js";
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -11,24 +16,22 @@ function sleep(ms) {
   console.log("➡️ 1) Initializing universe...");
   await initUniverse();
 
+  let first = getUniverse().fetchedAt;
+  console.log("⏳ Initial fetchedAt:", first);
+
   console.log("➡️ 2) Starting periodic refresh...");
   refreshUniversePeriodically();
 
-  await sleep(2000);
-
-  const firstTimestamp = UniverseState.lastRefresh;
-  console.log("⏳ Initial refresh timestamp:", firstTimestamp);
-
-  console.log("➡️ Waiting 20 seconds for next refresh...");
+  console.log("➡️ Waiting 20 seconds...");
   await sleep(20000);
 
-  const secondTimestamp = UniverseState.lastRefresh;
-  console.log("⏳ After 20 seconds:", secondTimestamp);
+  let second = getUniverse().fetchedAt;
+  console.log("⏳ After 20 seconds:", second);
 
-  if (secondTimestamp !== firstTimestamp) {
-    console.log("✅ PASS: Universe refresh interval is working correctly!");
+  if (first !== second) {
+    console.log("✅ PASS: Universe refresh is working!");
   } else {
-    console.log("❌ FAIL: Universe did NOT refresh in 15 seconds.");
+    console.log("❌ FAIL: Refresh did NOT update fetchedAt");
   }
 
   process.exit(0);
