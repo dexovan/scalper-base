@@ -118,29 +118,47 @@ let sessionConfig = {
   },
 };
 
-// Try SQLite store, fallback to memory store
+// Explicit SQLite database initialization
+const dbPath = path.join(sessionsDir, "sessions.db");
+console.log("🔍 SQLite path:", dbPath);
+
+// Ensure database file can be created
 try {
-  const sqliteStore = new SQLiteStore({
-    db: "sessions.db",
-    dir: sessionsDir,
-    table: "sessions",
-    concurrentDB: true,
-    timeout: 10000
-  });
+  // Create empty database if it doesn't exist
+  if (!fs.existsSync(dbPath)) {
+    fs.writeFileSync(dbPath, "");
+    console.log("📝 Created SQLite database file");
+  }
 
-  // Suppress SQLite error spam
-  sqliteStore.on('error', (err) => {
-    if (err.code !== 'SQLITE_CANTOPEN') {
-      console.error('SQLite Store Error:', err);
-    }
-  });
+  // Test write permissions
+  fs.accessSync(dbPath, fs.constants.R_OK | fs.constants.W_OK);
+  console.log("✅ SQLite file permissions OK");
 
-  sessionConfig.store = sqliteStore;
-  console.log("✅ Using SQLite session store");
 } catch (error) {
-  console.warn("⚠️ SQLite store failed, using memory store:", error.message);
-  // Memory store (sessions lost on restart, but works)
+  console.error("❌ SQLite file access failed:", error.message);
+  throw new Error(`Cannot access SQLite database: ${error.message}`);
 }
+
+// Initialize SQLite store
+const sqliteStore = new SQLiteStore({
+  db: "sessions.db",
+  dir: sessionsDir,
+  table: "sessions",
+  concurrentDB: true,
+  timeout: 20000
+});
+
+// Handle SQLite store events
+sqliteStore.on('error', (err) => {
+  console.error('❌ SQLite Store Error:', err);
+});
+
+sqliteStore.on('connect', () => {
+  console.log('✅ SQLite Store Connected');
+});
+
+sessionConfig.store = sqliteStore;
+console.log("✅ Using SQLite session store at:", dbPath);
 
 app.use(session(sessionConfig));
 
