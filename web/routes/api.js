@@ -10,7 +10,7 @@ import HealthStatus, {
 } from "../../src/monitoring/health.js";
 
 import metrics from '../../src/core/metrics.js';
-import { getWsSummary } from "../../src/monitoring/wsMetrics.js";
+import { getWsSummary } from "../../../src/monitoring/wsMetrics.js";
 
 const router = express.Router();
 
