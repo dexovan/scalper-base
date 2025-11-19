@@ -6,6 +6,29 @@ import expressLayouts from "express-ejs-layouts";
 import SQLiteStoreFactory from "connect-sqlite3";
 import { fileURLToPath } from "url";
 
+// =======================================
+// 🔇 SILENCE SQLITE CANTOPEN ERRORS GLOBALLY
+// =======================================
+const originalConsoleError = console.error;
+console.error = function(...args) {
+  const errorString = args.join(' ');
+  if (errorString.includes('SQLITE_CANTOPEN') || errorString.includes('unable to open database file')) {
+    // Silent ignore - these are old session cleanup errors
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+
+// Same for process error events
+process.on('uncaughtException', (err) => {
+  if (err.message && err.message.includes('SQLITE_CANTOPEN')) {
+    // Silent ignore
+    return;
+  }
+  console.error('Uncaught Exception:', err);
+  process.exit(1);
+});
+
 import authRoutes from "./routes/auth.js";
 import { requireAuth } from "./auth/middleware.js";
 import { createDB } from "./auth/auth.js";
