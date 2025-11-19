@@ -58,25 +58,25 @@ app.set("trust proxy", false);
 // 💾 SESSION STORAGE – SQLite (apsolutni path FIX)
 // =======================================
 const SQLiteStore = SQLiteStoreFactory(session);
-
 const SESSION_SECRET = "a909d8a1c1db4af6b0e3b4c8bbd9a514-super-strong-secret";
-
 app.use(
   session({
     store: new SQLiteStore({
-  db: "sessions.db",
-  dir: "./web/auth"
-}),
+      db: "sessions.db",
+      dir: path.join(paths.DATA_DIR, "sessions"),   // ← OVO JE NOVO!
+      table: "sessions",
+      concurrentDB: true
+    }),
     secret: SESSION_SECRET,
-    name: "sid",
+    name: "connect.sid",
     resave: false,
     saveUninitialized: false,
-    rolling: true, // produžava sesiju na svaki request
+    rolling: true,
     cookie: {
       httpOnly: true,
-      secure: false,   // IP + HTTP → mora biti false
+      secure: false,
       sameSite: "lax",
-      maxAge: 30 * 60 * 1000 // 30 min
+      maxAge: 30 * 60 * 1000,
     },
   })
 );
