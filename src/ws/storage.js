@@ -1,7 +1,7 @@
-// ================================================
+// =======================================================
 // src/ws/storage.js
-// Centralized WS Storage
-// ================================================
+// CENTRALIZED WS STORAGE
+// =======================================================
 
 export const STORAGE = {
   tickers: {},
@@ -9,7 +9,7 @@ export const STORAGE = {
   orderbooks: {}
 };
 
-// ---------- STORE TICKER ----------
+// ---------------------- STORE TICKER ---------------------
 export function storeTicker(symbol, data) {
   STORAGE.tickers[symbol] = {
     symbol,
@@ -21,7 +21,7 @@ export function storeTicker(symbol, data) {
   };
 }
 
-// ---------- STORE TRADE ----------
+// ---------------------- STORE TRADE ---------------------
 export function storeTrade(symbol, data) {
   STORAGE.trades[symbol] = {
     symbol,
@@ -32,7 +32,7 @@ export function storeTrade(symbol, data) {
   };
 }
 
-// ---------- STORE ORDERBOOK ----------
+// ---------------------- STORE ORDERBOOK ------------------
 export function storeOrderbook(symbol, ob) {
   STORAGE.orderbooks[symbol] = {
     symbol,
@@ -42,7 +42,7 @@ export function storeOrderbook(symbol, ob) {
   };
 }
 
-// ---------- GETTERS ----------
+// ---------------------- GETTERS --------------------------
 export function getTicker(symbol) {
   return STORAGE.tickers[symbol] || null;
 }
@@ -53,6 +53,7 @@ export function getTrade(symbol) {
 
 export function getOrderbook(symbol) {
   return STORAGE.orderbooks[symbol] || {
+    symbol,
     bids: [],
     asks: [],
     ts: null

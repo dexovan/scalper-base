@@ -1,6 +1,6 @@
-// ================================================
+// =======================================================
 // src/ws/orderbookWatcher.js
-// ================================================
+// =======================================================
 
 const ORDERBOOK = {};
 
@@ -9,6 +9,7 @@ export function handleOrderbookEvent(symbol, msg) {
   if (!data || !data.b || !data.a) return;
 
   ORDERBOOK[symbol] = {
+    symbol,
     bids: data.b.map(([p, q]) => ({ price: Number(p), qty: Number(q) })),
     asks: data.a.map(([p, q]) => ({ price: Number(p), qty: Number(q) })),
     ts: Date.now()
@@ -17,6 +18,7 @@ export function handleOrderbookEvent(symbol, msg) {
 
 export function getOrderbook(symbol) {
   return ORDERBOOK[symbol] || {
+    symbol,
     bids: [],
     asks: [],
     ts: null
