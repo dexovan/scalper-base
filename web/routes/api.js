@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import paths from "../../src/config/paths.js";
+
 import HealthStatus, {
   updateHealth,
   getHealthSummary,
@@ -12,18 +13,9 @@ import HealthStatus, {
 
 import metrics from "../../src/core/metrics.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// ---------------------------------------------------------
-// FIXED WS IMPORT (abs path, never breaks)
-// ---------------------------------------------------------
-let getWsSummary;
-(async () => {
-  const wsPath = path.join(paths.PROJECT_ROOT, "src/monitoring/wsMetrics.js");
-  const wsMetrics = await import(wsPath);
-  getWsSummary = wsMetrics.getWsSummary;
-})();
+import {
+  getWsSummary
+} from "../../src/monitoring/wsMetrics.js";   // ✅ FIXED PATH — THIS IS CORRECT
 
 const router = express.Router();
 
@@ -33,13 +25,13 @@ const router = express.Router();
 router.get("/health", (req, res) => {
   try {
     const status = updateHealth();
-    return res.json({
+    res.json({
       timestamp: new Date().toISOString(),
       status: "success",
       data: status
     });
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       timestamp: new Date().toISOString(),
       status: "error",
       message: "Health check failed",
@@ -49,12 +41,12 @@ router.get("/health", (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   GET /api/health/summary
+   GET /api/health/summary – Overview
 --------------------------------------------------------- */
 router.get("/health/summary", (req, res) => {
   try {
     const summary = getHealthSummary();
-    return res.json({
+    res.json({
       timestamp: new Date().toISOString(),
       status: "success",
       data: {
@@ -64,7 +56,7 @@ router.get("/health/summary", (req, res) => {
       }
     });
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       timestamp: new Date().toISOString(),
       status: "error",
       message: "Health summary failed",
@@ -74,17 +66,17 @@ router.get("/health/summary", (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   GET /api/health/services
+   GET /api/health/services – List of services
 --------------------------------------------------------- */
 router.get("/health/services", (req, res) => {
   try {
-    return res.json({
+    res.json({
       timestamp: new Date().toISOString(),
       status: "success",
       data: HealthStatus.services
     });
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       timestamp: new Date().toISOString(),
       status: "error",
       message: "Services status failed",
@@ -107,13 +99,13 @@ router.get("/health/services/:serviceName", (req, res) => {
       });
     }
 
-    return res.json({
+    res.json({
       timestamp: new Date().toISOString(),
       status: "success",
       data: { ...s }
     });
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       timestamp: new Date().toISOString(),
       status: "error",
       message: "Service status failed",
@@ -122,10 +114,10 @@ router.get("/health/services/:serviceName", (req, res) => {
   }
 });
 
-// ---------------------------------------------------------
-// MONITOR SUMMARY
-// ---------------------------------------------------------
-router.get("/monitor/summary", async (req, res) => {
+/* ---------------------------------------------------------
+   MONITOR SUMMARY — engine metrics + system info + WS
+--------------------------------------------------------- */
+router.get("/monitor/summary", (req, res) => {
   res.json({
     engine: metrics.getSummary(),
     system: {
@@ -133,13 +125,13 @@ router.get("/monitor/summary", async (req, res) => {
       rss: process.memoryUsage().rss,
       heap: process.memoryUsage().heapUsed
     },
-    ws: getWsSummary ? getWsSummary() : { status: "loading" }
+    ws: getWsSummary()   // ✅ now always available
   });
 });
 
-// ---------------------------------------------------------
-// MONITOR LOGS
-// ---------------------------------------------------------
+/* ---------------------------------------------------------
+   MONITOR LOGS — last lines of pm2-engine-out.log
+--------------------------------------------------------- */
 router.get("/monitor/logs", (req, res) => {
   const lines = parseInt(req.query.lines, 10) || 200;
   const logFile = path.join(paths.PROJECT_ROOT, "logs", "pm2-engine-out.log");
