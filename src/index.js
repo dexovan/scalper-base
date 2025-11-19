@@ -15,6 +15,8 @@ import {
   subscribeSymbols
 } from "./connectors/bybitPublic.js";
 
+import { initEventHub } from "./ws/eventHub.js";
+
 import CONFIG from "./config/index.js";
 
 async function startEngine() {
@@ -25,6 +27,8 @@ async function startEngine() {
 
   // 2. Start WS
   initPublicConnection();
+
+  initEventHub();
 
   // 3. Subscribe PRIME symbols on startup
   const primeSymbols = getSymbolsByCategory("Prime");
