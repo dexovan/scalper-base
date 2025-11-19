@@ -4,9 +4,9 @@ import fs from "fs";
 import path from "path";
 import { fetchInstrumentsUSDTPerp } from "../connectors/bybitPublic.js";
 import CONFIG from "../config/index.js";
-import PATHS from "../config/paths.js";
+import paths from "../config/paths.js";
 
-const UNIVERSE_FILE = path.join(PATHS.SYSTEM_DIR, "universe.json");
+const UNIVERSE_FILE = path.join(paths.SYSTEM_DIR, "universe.json");
 
 // In-memory state
 let UniverseState = {
