@@ -281,9 +281,21 @@ export function getWsStatus() {
 publicEmitter.on("ws", (msg) => {
   if (!msg.topic || !msg.data) return;
 
-  // ORDERBOOK 50 event
+  // ORDERBOOK 50 handler
   if (msg.topic.startsWith("orderbook.50.")) {
     const symbol = msg.topic.split(".")[2];
     handleOrderbookEvent(symbol, msg);
+  }
+
+  // TICKER handler
+  if (msg.topic.startsWith("tickers.")) {
+    const symbol = msg.topic.split(".")[1];
+    // handleTickerEvent(symbol, msg); // TODO: implement tickerWatcher
+  }
+
+  // TRADE handler
+  if (msg.topic.startsWith("publicTrade.")) {
+    const symbol = msg.topic.split(".")[1];
+    // handleTradeEvent(symbol, msg); // TODO: implement tradeWatcher
   }
 });
