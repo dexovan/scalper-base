@@ -13,7 +13,8 @@ import {
 } from "../../monitoring/wsMetrics.js";
 
 // MUST BE EXACT – Linear cluster
-const WS_URL = "wss://stream.bybit.com/v5/public/linear";
+//const WS_URL = "wss://stream.bybit.com/v5/public/linear";
+const WS_URL = "wss://stream.bybit.com/v5/public/linear?category=linear";//
 
 export class BybitPublicWS {
   constructor() {
