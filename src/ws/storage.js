@@ -52,5 +52,9 @@ export function getTrade(symbol) {
 }
 
 export function getOrderbook(symbol) {
-  return STORAGE.orderbooks[symbol] || null;
+  return STORAGE.orderbooks[symbol] || {
+    bids: [],
+    asks: [],
+    ts: null
+  };
 }

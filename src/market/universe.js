@@ -195,3 +195,14 @@ export function getSymbolMeta(symbol) {
         : "normal"
   };
 }
+
+export function getUniverseSnapshot() {
+  return {
+    fetchedAt: UNIVERSE.fetchedAt,
+    total: UNIVERSE.totalSymbols,
+    symbols: UNIVERSE.symbols,
+    prime: UNIVERSE.prime,
+    normal: UNIVERSE.normal,
+    wild: UNIVERSE.wild
+  };
+}
