@@ -1,4 +1,8 @@
+// =======================================================
 // src/ws/eventHub.js
+// CENTRAL WS EVENT DISPATCHER
+// =======================================================
+
 import { publicEmitter } from "../connectors/bybitPublic.js";
 import { handleTickerEvent } from "./tickerHub.js";
 import { handleTradeEvent } from "./tradeFlow.js";
@@ -8,31 +12,25 @@ export function initEventHub() {
   console.log("📡 [EVENT-HUB] Initializing...");
 
   publicEmitter.on("ws", (msg) => {
-    if (!msg || !msg.topic) return;
+    if (!msg?.topic) return;
 
     const topic = msg.topic;
 
-    // -----------------------------
-    // 1. TICKERS
-    // -----------------------------
+    // Tickers
     if (topic.startsWith("tickers.")) {
       const symbol = topic.split(".")[1];
       handleTickerEvent(symbol, msg);
       return;
     }
 
-    // -----------------------------
-    // 2. TRADES
-    // -----------------------------
+    // Trades
     if (topic.startsWith("publicTrade.")) {
       const symbol = topic.split(".")[1];
       handleTradeEvent(symbol, msg);
       return;
     }
 
-    // -----------------------------
-    // 3. ORDERBOOK 50
-    // -----------------------------
+    // Orderbook
     if (topic.startsWith("orderbook.50.")) {
       const symbol = topic.split(".")[2];
       handleOrderbookEvent(symbol, msg);
