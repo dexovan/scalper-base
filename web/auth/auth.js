@@ -24,7 +24,27 @@ export async function createDB() {
         );
     `);
 
+    // Create default test user if none exists
+    await createDefaultUser(db);
+
     return db;
+}
+
+async function createDefaultUser(db) {
+    try {
+        const existingUser = await db.get("SELECT COUNT(*) as count FROM users");
+
+        if (existingUser.count === 0) {
+            const hash = await bcrypt.hash("admin123", 10);
+            await db.run(
+                "INSERT INTO users (username, password) VALUES (?, ?)",
+                ["admin", hash]
+            );
+            console.log("✅ Created default user: admin/admin123");
+        }
+    } catch (error) {
+        console.warn("⚠️ Could not create default user:", error.message);
+    }
 }
 
 export async function registerUser(db, username, password) {
