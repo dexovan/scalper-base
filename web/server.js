@@ -45,7 +45,7 @@ import { requireAuth } from "./auth/middleware.js";
 import { createDB } from "./auth/auth.js";
 
 import apiRoutes from "./routes/api.js";
-import apiUniverse from "./routes/api-universe.js";
+import universeAPI from "./routes/api-universe.js";
 import paths from "../src/config/paths.js";
 import { initHealth } from "../src/monitoring/health.js";
 
@@ -160,7 +160,7 @@ app.use((req, res, next) => {
 // =======================================
 app.use(authRoutes);
 app.use("/api", apiRoutes);
-app.use("/api", apiUniverse);
+app.use("/api/universe", universeAPI);
 
 // =======================================
 // DASHBOARD
