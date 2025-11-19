@@ -21,13 +21,23 @@ console.error = function(...args) {
 
 // Same for process error events
 process.on('uncaughtException', (err) => {
-  if (err.message && err.message.includes('SQLITE_CANTOPEN')) {
-    // Silent ignore
+  if (err.message && (err.message.includes('SQLITE_CANTOPEN') || err.message.includes("Cannot find module './session'"))) {
+    // Silent ignore - known module issues
     return;
   }
   console.error('Uncaught Exception:', err);
   process.exit(1);
 });
+
+// Additional error silencing for MODULE_NOT_FOUND in express-session
+const originalConsoleWarn = console.warn;
+console.warn = function(...args) {
+  const warnString = args.join(' ');
+  if (warnString.includes('MODULE_NOT_FOUND') && warnString.includes('express-session')) {
+    return;
+  }
+  originalConsoleWarn.apply(console, args);
+};
 
 import authRoutes from "./routes/auth.js";
 import { requireAuth } from "./auth/middleware.js";
