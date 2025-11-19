@@ -62,34 +62,60 @@ app.set("trust proxy", false);
 const SQLiteStore = SQLiteStoreFactory(session);
 const SESSION_SECRET = "a909d8a1c1db4af6b0e3b4c8bbd9a514-super-strong-secret";
 
-// Kreiraj sessions direktorijum
-const sessionsDir = path.join(paths.DATA_DIR, "sessions");
-if (!fs.existsSync(sessionsDir)) {
-  fs.mkdirSync(sessionsDir, { recursive: true });
-  console.log("✅ Created sessions directory:", sessionsDir);
+// Kreiraj sessions direktorijum sa fallback
+let sessionsDir;
+try {
+  // Prvi pokušaj: data/sessions
+  sessionsDir = path.join(paths.DATA_DIR, "sessions");
+  if (!fs.existsSync(sessionsDir)) {
+    fs.mkdirSync(sessionsDir, { recursive: true, mode: 0o755 });
+  }
+  // Test write permissions
+  const testFile = path.join(sessionsDir, 'test.tmp');
+  fs.writeFileSync(testFile, 'test');
+  fs.unlinkSync(testFile);
+  console.log("✅ Sessions directory OK:", sessionsDir);
+} catch (error) {
+  // Fallback: web/auth directory
+  console.warn("⚠️ Cannot use data/sessions, fallback to web/auth:", error.message);
+  sessionsDir = path.join(__dirname, "auth");
+  if (!fs.existsSync(sessionsDir)) {
+    fs.mkdirSync(sessionsDir, { recursive: true, mode: 0o755 });
+  }
+  console.log("✅ Fallback sessions directory:", sessionsDir);
 }
 
-app.use(
-  session({
-    store: new SQLiteStore({
-      db: "sessions.db",
-      dir: sessionsDir,
-      table: "sessions",
-      concurrentDB: true
-    }),
-    secret: SESSION_SECRET,
-    name: "connect.sid",
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    cookie: {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 30 * 60 * 1000,
-    },
-  })
-);
+// Session configuration with SQLite store + fallback
+let sessionConfig = {
+  secret: SESSION_SECRET,
+  name: "connect.sid",
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+    maxAge: 30 * 60 * 1000,
+  },
+};
+
+// Try SQLite store, fallback to memory store
+try {
+  sessionConfig.store = new SQLiteStore({
+    db: "sessions.db",
+    dir: sessionsDir,
+    table: "sessions",
+    concurrentDB: true,
+    timeout: 10000
+  });
+  console.log("✅ Using SQLite session store");
+} catch (error) {
+  console.warn("⚠️ SQLite store failed, using memory store:", error.message);
+  // Memory store (sessions lost on restart, but works)
+}
+
+app.use(session(sessionConfig));
 
 
 // =======================================
