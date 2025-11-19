@@ -37,3 +37,13 @@ export function getWsStatus() {
     messageCount,
   };
 }
+
+// 🚀 ADD THIS — Dashboard API uses this name!
+export function getWsSummary() {
+  return {
+    status: wsStatus,
+    lastMessageAt,
+    reconnectAttempts,
+    messageCount,
+  };
+}
