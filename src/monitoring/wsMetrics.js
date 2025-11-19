@@ -1,51 +1,39 @@
-// src/monitoring/wsMetrics.js
-
-const state = {
-  status: "disconnected", // "connecting" | "connected" | "disconnected" | "error"
-  lastMessageAt: null,
-  reconnects: 0,
-  msgTimestamps: [], // unix ms timestamps
-};
+// Global WS metrics state
+let wsStatus = "unknown";
+let lastMessageAt = null;
+let reconnectAttempts = 0;
+let messageCount = 0;
 
 export function wsMarkConnecting() {
-  state.status = "connecting";
+  wsStatus = "connecting";
 }
 
 export function wsMarkConnected() {
-  state.status = "connected";
+  wsStatus = "connected";
 }
 
 export function wsMarkDisconnected() {
-  state.status = "disconnected";
+  wsStatus = "disconnected";
 }
 
 export function wsMarkError() {
-  state.status = "error";
+  wsStatus = "error";
 }
 
 export function wsMarkReconnect() {
-  state.reconnects++;
+  reconnectAttempts++;
 }
 
 export function wsMarkMessage() {
-  const now = Date.now();
-  state.lastMessageAt = now;
-  state.msgTimestamps.push(now);
-
-  const cutoff = now - 60_000;
-  state.msgTimestamps = state.msgTimestamps.filter((t) => t >= cutoff);
+  messageCount++;
+  lastMessageAt = Date.now();
 }
 
-export function getWsSummary() {
-  const now = Date.now();
-  const msgsLast60s = state.msgTimestamps.filter(
-    (t) => now - t <= 60_000
-  ).length;
-
+export function getWsStatus() {
   return {
-    status: state.status,
-    lastMessageAt: state.lastMessageAt,
-    reconnects: state.reconnects,
-    msgPer60s: msgsLast60s,
+    status: wsStatus,
+    lastMessageAt,
+    reconnectAttempts,
+    messageCount,
   };
 }
