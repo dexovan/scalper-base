@@ -1,8 +1,9 @@
 ﻿import express from "express";
 import session from "express-session";
-import path from "path";
+import path, { join } from "path";
 import expressLayouts from "express-ejs-layouts";
 import SQLiteStoreFactory from "connect-sqlite3";
+import { fileURLToPath } from "url";
 
 import authRoutes from "./routes/auth.js";
 import { requireAuth } from "./auth/middleware.js";
@@ -14,25 +15,23 @@ import { initHealth } from "../src/monitoring/health.js";
 
 
 // =======================================
+// 🔍 FIX: apsolutni path (kritično za PM2!)
+// =======================================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+
+// =======================================
 // 🔍 PATH TEST
 // =======================================
 console.log("\n🧪 FAZA 1 - PATHS TEST:");
+console.log("SERVER FILE DIR:", __dirname);
+console.log("AUTH DIR:", join(__dirname, "auth"));
 console.log("ROOT:", paths.PROJECT_ROOT);
 console.log("DATA:", paths.DATA_DIR);
-console.log("SYSTEM:", paths.SYSTEM_DIR);
-console.log("LOGS:", paths.LOG_DIR);
-console.log("PROFILES:", paths.PROFILES_DIR);
 console.log("TMP:", paths.TMP_DIR);
 
-const isAbsolutePath = (p) => path.isAbsolute(p);
-const hasFileProtocol = (p) => p.includes("file://");
-const isRelativePath = (p) => p.startsWith("./") || p.startsWith("../");
-
-console.log("\n✅ VALIDATION:");
-console.log("✔ Absolute paths:", isAbsolutePath(paths.PROJECT_ROOT) && isAbsolutePath(paths.DATA_DIR));
-console.log("✔ No file protocol:", !hasFileProtocol(paths.PROJECT_ROOT) && !hasFileProtocol(paths.DATA_DIR));
-console.log("✔ No relative paths:", !isRelativePath(paths.PROJECT_ROOT) && !isRelativePath(paths.DATA_DIR));
-console.log("✅ Paths test complete!\n");
+console.log("=======================================\n");
 
 
 // =======================================
@@ -51,12 +50,12 @@ app.set("layout", "layout");
 app.use(express.static("./web/public"));
 app.use(express.urlencoded({ extended: true }));
 
-// ❗ VRLO VAŽNO — NEMA NGINX PROXY → PROXY MORA BITI ISKLJUČEN!
+// ❗ VRLO VAŽNO — NEMAMO NGINX PROXY
 app.set("trust proxy", false);
 
 
 // =======================================
-// 💾 SESSION STORAGE – SQLite
+// 💾 SESSION STORAGE – SQLite (apsolutni path FIX)
 // =======================================
 const SQLiteStore = SQLiteStoreFactory(session);
 
@@ -66,24 +65,23 @@ app.use(
   session({
     store: new SQLiteStore({
       db: "sessions.db",
-      dir: "./web/auth",
-      table: "sessions",         // eksplicitno ime tabele
-      concurrentDB: true         // bolje performanse
+      dir: join(__dirname, "auth"),    // <-- APSOLUTNA PUTANJA (PM2 FIX!)
+      table: "sessions",
+      concurrentDB: true
     }),
     secret: SESSION_SECRET,
-    name: "connect.sid",          // standardno Express ime
+    name: "sid",
     resave: false,
     saveUninitialized: false,
-    rolling: true,               // obnovi cookie na svaki request
+    rolling: true, // produžava sesiju na svaki request
     cookie: {
       httpOnly: true,
-      secure: false,
+      secure: false,   // IP + HTTP → mora biti false
       sameSite: "lax",
-      maxAge: 30 * 60 * 1000,    // 30 minuta umesto 7 dana za test
+      maxAge: 30 * 60 * 1000 // 30 min
     },
   })
 );
-
 
 
 // =======================================
@@ -109,14 +107,14 @@ console.log("✅ Phase 1 Health Monitoring initialized!\n");
 // =======================================
 app.use((req, res, next) => {
   console.log("🔍 SESSION DEBUG:", {
-    sessionID: req.sessionID,
+    sid: req.sessionID,
     hasSession: !!req.session,
-    hasUser: !!req.session?.user,
-    username: req.session?.user?.username,
+    user: req.session?.user,
     cookie: req.session?.cookie
   });
   next();
 });
+
 
 // =======================================
 // 🔐 ROUTES
