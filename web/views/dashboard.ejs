@@ -1,298 +1,50 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Scalper Dashboard</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+<div class="grid md:grid-cols-3 gap-6">
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
-            color: #ffffff;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
+    <!-- STATUS SISTEMA -->
+    <div class="glass p-6 rounded-xl border border-white/10">
+        <h3 class="text-lg font-semibold mb-2 flex items-center gap-2">
+            📡 Sistem Status
+        </h3>
 
-        .header {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .logo {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #00d4ff;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .user-name {
-            background: linear-gradient(45deg, #00d4ff, #0099cc);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 600;
-        }
-
-        .logout-btn {
-            background: linear-gradient(45deg, #ff4757, #ff3742);
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            color: white;
-            text-decoration: none;
-            font-weight: 500;
-            transition: transform 0.2s;
-        }
-
-        .logout-btn:hover {
-            transform: translateY(-2px);
-        }
-
-        .main-content {
-            padding: 2rem;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 2rem;
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(0, 212, 255, 0.1);
-        }
-
-        .card-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-
-        .card-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(45deg, #00d4ff, #0099cc);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 1rem;
-            font-size: 1.2rem;
-        }
-
-        .card-title {
-            font-size: 1.2rem;
-            font-weight: 600;
-        }
-
-        .stat-number {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #00d4ff;
-            margin: 1rem 0;
-        }
-
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 0.5rem;
-        }
-
-        .status-online {
-            background: #2ed573;
-            box-shadow: 0 0 10px #2ed573;
-        }
-
-        .status-offline {
-            background: #ff4757;
-        }
-
-        .welcome-section {
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-
-        .welcome-title {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(45deg, #00d4ff, #ffffff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .welcome-subtitle {
-            color: #a0a0a0;
-            font-size: 1.1rem;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 1rem;
-            margin-top: 2rem;
-            flex-wrap: wrap;
-        }
-
-        .action-btn {
-            background: linear-gradient(45deg, #00d4ff, #0099cc);
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .action-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0, 212, 255, 0.3);
-        }
-
-        .time-info {
-            color: #a0a0a0;
-            font-size: 0.9rem;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="logo">🤖 AI Scalper</div>
-        <div class="user-info">
-            <span class="user-name">Welcome, <%= user %>!</span>
-            <a href="/logout" class="logout-btn">Logout</a>
-        </div>
+        <div class="text-3xl font-bold text-green-400">Online</div>
+        <p class="text-white/60 mt-2">Svi sistemi rade normalno</p>
     </div>
 
-    <div class="main-content">
-        <div class="welcome-section">
-            <h1 class="welcome-title">Trading Dashboard</h1>
-            <p class="welcome-subtitle">Monitor your AI-powered trading performance</p>
-            <div class="time-info">Last updated: <%= currentTime %></div>
-        </div>
-
-        <div class="dashboard-grid">
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-icon">📊</div>
-                    <div class="card-title">System Status</div>
-                </div>
-                <div class="stat-number">
-                    <span class="status-indicator status-online pulse"></span>
-                    Online
-                </div>
-                <p>All systems operational and ready for trading</p>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-icon">💰</div>
-                    <div class="card-title">Portfolio Value</div>
-                </div>
-                <div class="stat-number">$12,847.50</div>
-                <p style="color: #2ed573;">+2.45% today</p>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-icon">📈</div>
-                    <div class="card-title">Active Trades</div>
-                </div>
-                <div class="stat-number">7</div>
-                <p>Monitoring market opportunities</p>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-icon">🎯</div>
-                    <div class="card-title">Success Rate</div>
-                </div>
-                <div class="stat-number">87.3%</div>
-                <p>Based on last 30 days performance</p>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-icon">⚡</div>
-                    <div class="card-title">AI Engine</div>
-                </div>
-                <div class="stat-number">
-                    <span class="status-indicator status-online pulse"></span>
-                    Active
-                </div>
-                <p>Neural networks processing market data</p>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-icon">🔔</div>
-                    <div class="card-title">Alerts</div>
-                </div>
-                <div class="stat-number">3</div>
-                <p>New trading opportunities detected</p>
-            </div>
-        </div>
-
-        <div class="action-buttons">
-            <button class="action-btn">Start Trading</button>
-            <button class="action-btn">View Reports</button>
-            <button class="action-btn">Settings</button>
-            <button class="action-btn">Market Analysis</button>
-        </div>
+    <!-- PORTFOLIO -->
+    <div class="glass p-6 rounded-xl border border-white/10">
+        <h3 class="text-lg font-semibold mb-2">💰 Vrednost Portfolija</h3>
+        <div class="text-3xl font-bold">12,847.50 USDT</div>
+        <p class="text-green-400 mt-2">+2.45% danas</p>
     </div>
 
-    <script>
-        // Auto-refresh every 30 seconds
-        setTimeout(() => {
-            location.reload();
-        }, 30000);
+    <!-- TRADES -->
+    <div class="glass p-6 rounded-xl border border-white/10">
+        <h3 class="text-lg font-semibold mb-2">📈 Aktivni Trade-ovi</h3>
+        <div class="text-3xl font-bold">7</div>
+        <p class="text-white/60 mt-2">AI trenutno prati tržišne prilike</p>
+    </div>
 
-        // Add click handlers for action buttons
-        document.querySelectorAll('.action-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                alert('Feature coming soon!');
-            });
-        });
-    </script>
-</body>
-</html>
+</div>
+
+<!-- DONJI GRID -->
+<div class="grid md:grid-cols-3 gap-6 mt-6">
+
+    <div class="glass p-6 rounded-xl border border-white/10">
+        <h3 class="text-lg font-semibold mb-2">🎯 Uspešnost</h3>
+        <div class="text-3xl font-bold text-primary">87.3%</div>
+        <p class="text-white/60 mt-2">Poslednjih 30 dana</p>
+    </div>
+
+    <div class="glass p-6 rounded-xl border border-white/10">
+        <h3 class="text-lg font-semibold mb-2">⚡ AI Motor</h3>
+        <div class="text-2xl font-bold text-green-400">Aktivan</div>
+        <p class="text-white/60 mt-2">Procesiranje tržišnih mikro podataka</p>
+    </div>
+
+    <div class="glass p-6 rounded-xl border border-white/10">
+        <h3 class="text-lg font-semibold mb-2">🔔 Upozorenja</h3>
+        <div class="text-3xl font-bold">3</div>
+        <p class="text-white/60 mt-2">Nova trgovinska prilika</p>
+    </div>
+
+</div>

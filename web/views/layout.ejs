@@ -1,78 +1,110 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sr">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Default title fallback (sprečava 500 error) -->
-    <title><%= typeof title !== 'undefined' ? title : 'AI Scalper' %> | AI Scalper</title>
+    <title><%= title || "AI Scalper" %></title>
 
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom Tailwind config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#00d4ff",
+                        darkbg: "#0f172a",
+                        darkpanel: "#1e293b",
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Custom styles -->
     <style>
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', sans-serif;
-            background: #0f0f23;
-            color: #ffffff;
-        }
-        header {
-            background: #11192e;
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #1e2a4a;
-        }
-        .nav-links a {
-            margin-right: 1.5rem;
-            text-decoration: none;
-            color: #9bbcff;
-            font-weight: 500;
-        }
-        .nav-links a:hover {
-            color: #ffffff;
-        }
-        footer {
-            margin-top: 40px;
-            padding: 2rem;
-            background: #11192e;
-            border-top: 1px solid #1e2a4a;
-            text-align: center;
-            color: #6d89c6;
-        }
-        .main-container {
-            padding: 2rem;
-            max-width: 1400px;
-            margin: 0 auto;
+        .glass {
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(12px);
         }
     </style>
 </head>
+<body class="bg-darkbg text-white">
 
-<body>
+<!-- MOBILE SIDEBAR OVERLAY -->
+<div id="mobileOverlay" class="hidden fixed inset-0 bg-black/50 z-30"></div>
 
-<header>
-    <div class="logo">🤖 <strong>AI Scalper</strong></div>
+<!-- SIDEBAR -->
+<aside id="sidebar"
+       class="fixed top-0 left-0 h-full w-64 bg-darkpanel shadow-xl z-40 transform -translate-x-full md:translate-x-0 transition-transform duration-300">
 
-    <nav class="nav-links">
-        <a href="/">Dashboard</a>
-        <a href="/trades">Trades</a>
-        <a href="/engine">Engine</a>
-        <a href="/settings">Settings</a>
-    </nav>
-
-    <div>
-        <!-- Default user fallback so login page works -->
-        <span style="margin-right: 1rem;">👤 <%= typeof user !== 'undefined' ? user : 'Guest' %></span>
-        <a href="/logout" style="color:red; text-decoration:none;">Logout</a>
+    <div class="p-6 border-b border-white/10">
+        <h1 class="text-2xl font-bold text-primary flex items-center gap-2">
+            🤖 AI Scalper
+        </h1>
     </div>
-</header>
 
-<div class="main-container">
-    <%- body %>
+    <nav class="mt-6 flex flex-col space-y-2 px-4">
+        <a href="/" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">📊 Dashboard</a>
+        <a href="/trades" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">💹 Trades</a>
+        <a href="/engine" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">⚙️ Engine</a>
+        <a href="/settings" class="px-4 py-2 rounded-lg hover:bg-white/10 transition">🔧 Settings</a>
+
+        <a href="/logout"
+           class="px-4 py-2 mt-6 rounded-lg bg-red-600 text-center hover:bg-red-700 transition">
+            🚪 Logout
+        </a>
+    </nav>
+</aside>
+
+<!-- PAGE WRAPPER -->
+<div class="md:ml-64 transition-all">
+
+    <!-- HEADER -->
+    <header class="glass sticky top-0 z-20 flex items-center justify-between px-6 py-4 border-b border-white/10">
+
+        <!-- Mobile menu button -->
+        <button id="menuBtn" class="md:hidden text-2xl">
+            ☰
+        </button>
+
+        <h2 class="text-xl font-semibold"><%= title || "Dashboard" %></h2>
+
+        <div class="flex items-center gap-3">
+            <span class="text-primary font-semibold">👤 <%= user || "Guest" %></span>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="p-6">
+        <%- body %>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="text-center py-6 text-white/40 text-sm">
+        © <%= new Date().getFullYear() %> AI Scalper – All Rights Reserved
+    </footer>
 </div>
 
-<footer>
-    AI Scalper © <%= new Date().getFullYear() %> &mdash; Engine v1.0
-</footer>
+<!-- SCRIPT: mobile sidebar toggle -->
+<script>
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("mobileOverlay");
+    const btn = document.getElementById("menuBtn");
+
+    btn?.addEventListener("click", () => {
+        sidebar.classList.toggle("-translate-x-full");
+        overlay.classList.toggle("hidden");
+    });
+
+    overlay?.addEventListener("click", () => {
+        sidebar.classList.add("-translate-x-full");
+        overlay.classList.add("hidden");
+    });
+</script>
 
 </body>
 </html>
