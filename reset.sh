@@ -1,47 +1,29 @@
 #!/bin/bash
 
-echo "======================================"
-echo "🔄 AI SCALPER — FULL CLEAN RESET"
-echo "======================================"
+echo "======================================="
+echo "🔄 RESETUJEM PM2 + CACHE + LOGOVE"
+echo "======================================="
 
-# Stop all PM2 apps
-pm2 stop all >/dev/null 2>&1
+echo "📌 Zaustavljam PM2..."
+pm2 delete all || true
+pm2 kill || true
 
-# Delete all apps
-pm2 delete all >/dev/null 2>&1
+echo "🧹 Brišem PM2 cache i dump..."
+rm -rf ~/.pm2
 
-# Flush logs
-pm2 flush >/dev/null 2>&1
+echo "🧹 Brišem local logs..."
+rm -rf /home/aiuser/scalper-base/logs/*
+mkdir -p /home/aiuser/scalper-base/logs
 
-# Remove old logs entirely (to avoid historical errors)
-rm -f /home/aiuser/scalper-base/logs/*.log
+echo "🧹 Brišem data/tmp i data/sessions..."
+rm -rf /home/aiuser/scalper-base/data/tmp/*
+rm -rf /home/aiuser/scalper-base/data/sessions/*
 
-# Recreate empty logs
-touch /home/aiuser/scalper-base/logs/pm2-engine-out.log
-touch /home/aiuser/scalper-base/logs/pm2-engine-error.log
-touch /home/aiuser/scalper-base/logs/pm2-dashboard-out.log
-touch /home/aiuser/scalper-base/logs/pm2-dashboard-error.log
-
-echo "🧹 Logs cleared and recreated."
-
-# Remove PM2 dump (so old configuration is not restored)
-rm -f /home/aiuser/.pm2/dump.pm2
-
-echo "🧽 PM2 dump cleaned."
-
-# Start fresh ecosystem
+echo "🔄 Restartujem engine + dashboard..."
 pm2 start /home/aiuser/scalper-base/ecosystem.config.cjs
 
-echo "🚀 Started fresh PM2 processes."
+pm2 save
 
-# Save new PM2 state
-pm2 save >/dev/null 2>&1
-
-echo "💾 Saved PM2 state."
-
-# Print engine logs
-sleep 1
-echo "======================================"
-echo "📜 LAST 50 LINES OF ENGINE LOGS"
-echo "======================================"
-pm2 logs engine --lines 50
+echo "======================================="
+echo "   ✅ RESET GOTOV – SISTEM JE CLEAN"
+echo "======================================="
