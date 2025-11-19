@@ -166,6 +166,11 @@ app.use("/api/universe", universeAPI);
 app.use("/api", apiRoutes);
 app.use("/api/test", apiTest);
 
+// 2️⃣ LOGIN PAGE ROUTE (BEFORE AUTH ROUTES)
+app.get("/login", (req, res) => {
+   res.render("login", { title: "Login", error: null });
+});
+
 // 2️⃣ AUTH ROUTES
 app.use(authRoutes);
 
