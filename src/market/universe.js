@@ -1,6 +1,6 @@
 /* =========================================================
    src/market/universe.js
-   AI Scalper – Universe Service (OPCIJA A)
+   AI Scalper – Universe Service (REFABRIKOVANO, stabilno)
    ========================================================= */
 
 import fs from "fs";
@@ -11,7 +11,9 @@ import paths from "../config/paths.js";
 
 const UNIVERSE_FILE = path.join(paths.SYSTEM_DIR, "universe.json");
 
-// In-memory cache
+/* ---------------------------------------------------------
+   IN-MEMORY CACHE
+--------------------------------------------------------- */
 let UNIVERSE = {
   fetchedAt: null,
   symbols: [],
@@ -22,7 +24,7 @@ let UNIVERSE = {
 };
 
 /* ---------------------------------------------------------
-   Helper: Save universe to disk
+   Save universe to disk
 --------------------------------------------------------- */
 function saveUniverseToDisk() {
   try {
@@ -37,19 +39,23 @@ function saveUniverseToDisk() {
 }
 
 /* ---------------------------------------------------------
-   Helper: Determine category for a symbol
+   Categorization logic
 --------------------------------------------------------- */
-function categorizeSymbol(s) {
-  const symbol = s.symbol;
+function categorizeSymbol(item) {
+  const symbol = item.symbol;
 
+  // PRIME: ručna lista definisana u configu
   if (CONFIG.primeSymbols.includes(symbol)) return "prime";
 
-  // Detect new listings ("Wild")
-  const isWild =
-    Number(s.volume24h) < 1000000 ||
-    Number(s.lastPrice) < 0.0001;
+  // WILD heuristika – na osnovu volumena i cene
+  const vol = Number(item.volume24h || 0);
+  const price = Number(item.lastPrice || 0);
 
-  return isWild ? "wild" : "normal";
+  if (vol < 1_000_000) return "wild";     // niska likvidnost
+  if (price < 0.0001) return "wild";      // micro-coini
+  if (symbol.includes("1000") || symbol.includes("10000")) return "wild";
+
+  return "normal";
 }
 
 /* ---------------------------------------------------------
@@ -65,46 +71,47 @@ export async function initUniverse() {
     const response = await fetch(url);
     const json = await response.json();
 
-    if (!json || !json.result || !json.result.list) {
+    if (!json || !json.result || !Array.isArray(json.result.list)) {
       console.error("❌ [UNIVERSE] Bad response:", json);
       return;
     }
 
-    const symbols = json.result.list;
+    const list = json.result.list;
 
-    // Build full universe object
     const prime = [];
     const normal = [];
     const wild = [];
 
-    for (const s of symbols) {
-      const category = categorizeSymbol(s);
+    for (const item of list) {
+      const cat = categorizeSymbol(item);
 
-      if (category === "prime") prime.push(s.symbol);
-      else if (category === "wild") wild.push(s.symbol);
-      else normal.push(s.symbol);
+      if (cat === "prime") prime.push(item.symbol);
+      else if (cat === "wild") wild.push(item.symbol);
+      else normal.push(item.symbol);
     }
 
     UNIVERSE = {
       fetchedAt: new Date().toISOString(),
-      symbols: symbols.map((s) => s.symbol),
-      totalSymbols: symbols.length,
+      symbols: list.map(s => s.symbol),
+      totalSymbols: list.length,
       prime,
       normal,
       wild
     };
 
-    console.log(`🌍 [UNIVERSE] Loaded ${UNIVERSE.totalSymbols} symbols`);
-
     saveUniverseToDisk();
 
+    console.log(
+      `🌍 [UNIVERSE] Loaded ${UNIVERSE.totalSymbols} symbols → P:${prime.length} N:${normal.length} W:${wild.length}`
+    );
+
   } catch (err) {
-    console.error("❌ [UNIVERSE] Error:", err);
+    console.error("❌ [UNIVERSE] Error during fetch:", err);
   }
 }
 
 /* ---------------------------------------------------------
-   Periodic refresh
+   Auto-refresh (uses configured interval)
 --------------------------------------------------------- */
 export function refreshUniversePeriodically() {
   console.log("🌍 [UNIVERSE] Auto-refresh enabled...");
@@ -115,7 +122,7 @@ export function refreshUniversePeriodically() {
 }
 
 /* ---------------------------------------------------------
-   Exposed getter (used by engine)
+   Exposed getter
 --------------------------------------------------------- */
 export function getUniverse() {
   return UNIVERSE;
