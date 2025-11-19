@@ -4,23 +4,23 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 
 // -------------------------------------------------------
-// ABSOLUTE PROJECT ROOT (REAL PATH, NOT CWD)
+// ABSOLUTE PROJECT ROOT
 // -------------------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Two levels up → /home/aiuser/scalper-base
-const root = path.resolve(__dirname, "../../");
+// /home/aiuser/scalper-base
+const PROJECT_ROOT = path.resolve(__dirname, "../../");
 
 // -------------------------------------------------------
 // DIRECTORIES
 // -------------------------------------------------------
-const DATA_DIR = path.join(root, "data");
+const DATA_DIR = path.join(PROJECT_ROOT, "data");
 const SYSTEM_DIR = path.join(DATA_DIR, "system");
 const LOG_DIR = path.join(SYSTEM_DIR, "logs");
 const PROFILES_DIR = path.join(DATA_DIR, "profiles");
 const TMP_DIR = path.join(DATA_DIR, "tmp");
-const CONFIG_DIR = path.join(root, "config");
+const CONFIG_DIR = path.join(PROJECT_ROOT, "config");
 
 const ORDERBOOK_DIR = path.join(DATA_DIR, "orderbook");
 const TRADES_DIR = path.join(DATA_DIR, "trades");
@@ -29,7 +29,12 @@ const METRICS_DIR = path.join(DATA_DIR, "metrics");
 const CONFIG_FILE = path.join(CONFIG_DIR, "default.json");
 
 // -------------------------------------------------------
-// ENSURE DIRECTORIES EXIST
+// UNIVERSE FILE (CRUCIAL!)
+// -------------------------------------------------------
+const UNIVERSE_FILE = path.join(SYSTEM_DIR, "universe.json");
+
+// -------------------------------------------------------
+// CREATE DIRECTORIES IF MISSING
 // -------------------------------------------------------
 [
   DATA_DIR,
@@ -42,16 +47,14 @@ const CONFIG_FILE = path.join(CONFIG_DIR, "default.json");
   TRADES_DIR,
   METRICS_DIR
 ].forEach((dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
 // -------------------------------------------------------
-// EXPORT (root INCLUDED!)
+// EXPORT
 // -------------------------------------------------------
 export default {
-  root,                // <── OVO je najvažnije (dashboard koristi)
+  PROJECT_ROOT,
   DATA_DIR,
   SYSTEM_DIR,
   LOG_DIR,
@@ -61,5 +64,6 @@ export default {
   ORDERBOOK_DIR,
   TRADES_DIR,
   METRICS_DIR,
-  CONFIG_FILE
+  CONFIG_FILE,
+  UNIVERSE_FILE
 };
