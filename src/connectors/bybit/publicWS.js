@@ -1,4 +1,5 @@
 // ===========================================================
+// src/connectors/bybit/publicWS.js
 // Bybit Public WS v2 – Stable Metrics Connector (ESM)
 // ===========================================================
 
@@ -12,8 +13,7 @@ import {
   wsMarkMessage,
 } from "../../monitoring/wsMetrics.js";
 
-// MUST BE EXACT – Linear cluster
-//const WS_URL = "wss://stream.bybit.com/v5/public/linear";
+// PRAVILAN URL za linear USDT perp public feed
 const WS_URL = "wss://stream.bybit.com/v5/public/linear";
 
 export class BybitPublicWS {
@@ -21,20 +21,33 @@ export class BybitPublicWS {
     this.ws = null;
     this.url = WS_URL;
 
-    this.subscriptions = [];
-    this.onEvent = null;
+    this.subscriptions = [];      // npr. ["tickers.BTCUSDT", "publicTrade.BTCUSDT"]
+    this.onEvent = null;          // callback za engine/metrics
 
     this.reconnectAttempts = 0;
     this.pingTimer = null;
     this.reconnectTimer = null;
 
     this.connected = false;
+    this._messageCount = 0;       // lokalni counter za debug
   }
 
-  connect({ symbols = [], channels = [], onEvent = null } = {}) {
+  /**
+   * Start WS konekcije.
+   * options:
+   *  - symbols: ["BTCUSDT","ETHUSDT", ...]
+   *  - channels: ["tickers","publicTrade","orderbook.50"]
+   *  - onEvent: (eventObj) => void
+   */
+  connect({
+    symbols = ["BTCUSDT", "ETHUSDT"],
+    channels = ["tickers"],
+    onEvent = null,
+  } = {}) {
     this.subscriptions = this._buildTopics(symbols, channels);
     this.onEvent = onEvent || (() => {});
-    console.log("📡 [METRICS-WS] connect() invoked → topics:", this.subscriptions);
+
+    console.log("📡 [METRICS-WS] connect() → topics:", this.subscriptions);
     this._open();
   }
 
@@ -49,14 +62,14 @@ export class BybitPublicWS {
   }
 
   _open() {
+    // ako je već otvoren, ne otvaraj opet
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
-    console.log("📡 [METRICS-WS] _open() called → URL:", this.url);
+    console.log("📡 [METRICS-WS] _open() → URL:", this.url);
     wsMarkConnecting();
     this.connected = false;
 
     try {
-      console.log("📡 [WS-METRICS] Opening WS:", this.url);
       this.ws = new WebSocket(this.url);
 
       // ------------- OPEN -------------
@@ -64,6 +77,7 @@ export class BybitPublicWS {
         console.log("🟢 [METRICS-WS] Connected!");
         this.reconnectAttempts = 0;
         this.connected = true;
+        this._messageCount = 0;
         wsMarkConnected();
 
         this._sendSubscribe();
@@ -72,31 +86,36 @@ export class BybitPublicWS {
 
       // ----------- MESSAGE ------------
       this.ws.on("message", (raw) => {
-        console.log("📨 [METRICS-WS] Message received");
         wsMarkMessage();
+        this._messageCount++;
 
         let msg = null;
         try {
           msg = JSON.parse(raw.toString());
         } catch (err) {
-          console.error("[WS-METRICS] JSON error:", err);
+          console.error("❌ [METRICS-WS] JSON parse error:", err.message);
           return;
         }
 
-        // bybit v5 ping
+        // Bybit ponekad koristi ping/pong protokol
         if (msg.op === "ping" || msg.req_id === "ping") {
           this._sendPong();
           return;
         }
 
         if (msg.topic) {
-          this.onEvent(msg);
+          // prosledi event napolje (eventHub / metrics)
+          try {
+            this.onEvent(msg);
+          } catch (err) {
+            console.error("❌ [METRICS-WS] onEvent handler error:", err);
+          }
         }
       });
 
       // ------------- CLOSE -------------
-      this.ws.on("close", (code) => {
-        console.warn("🔴 [WS-METRICS] Closed:", code);
+      this.ws.on("close", (code, reason) => {
+        console.warn("🔴 [METRICS-WS] Closed:", code, reason?.toString());
         wsMarkDisconnected();
         this._cleanupWS();
         this._scheduleReconnect();
@@ -104,14 +123,13 @@ export class BybitPublicWS {
 
       // ------------- ERROR -------------
       this.ws.on("error", (err) => {
-        console.error("❌ [WS-METRICS] Error:", err.message);
+        console.error("❌ [METRICS-WS] Error:", err.message);
         wsMarkError();
         this._cleanupWS();
         this._scheduleReconnect();
       });
-
     } catch (err) {
-      console.error("❌ [WS-METRICS] Open exception:", err);
+      console.error("❌ [METRICS-WS] Open exception:", err);
       wsMarkError();
       this._scheduleReconnect();
     }
@@ -121,17 +139,20 @@ export class BybitPublicWS {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
     if (!this.subscriptions.length) {
-      console.log("⚠️ [WS-METRICS] No topics to subscribe");
+      console.log("⚠️ [METRICS-WS] No topics to subscribe");
       return;
     }
 
-    const payload = { op: "subscribe", args: this.subscriptions };
+    const payload = {
+      op: "subscribe",
+      args: this.subscriptions,
+    };
 
     try {
       this.ws.send(JSON.stringify(payload));
-      console.log("📡 [WS-METRICS] Subscribed:", this.subscriptions);
+      console.log("📡 [METRICS-WS] Subscribed:", this.subscriptions);
     } catch (err) {
-      console.error("[WS-METRICS] Subscribe error:", err);
+      console.error("❌ [METRICS-WS] Subscribe error:", err.message);
     }
   }
 
@@ -139,16 +160,21 @@ export class BybitPublicWS {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       this.ws.send(JSON.stringify({ op: "pong" }));
-    } catch {}
+    } catch (err) {
+      console.error("❌ [METRICS-WS] Pong error:", err.message);
+    }
   }
 
   _startHeartbeat() {
     this._stopHeartbeat();
+    // 20s ping je sasvim ok za Bybit v5
     this.pingTimer = setInterval(() => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
       try {
         this.ws.send(JSON.stringify({ op: "ping", req_id: "ping" }));
-      } catch {}
+      } catch (err) {
+        console.error("❌ [METRICS-WS] Ping error:", err.message);
+      }
     }, 20_000);
   }
 
@@ -165,8 +191,8 @@ export class BybitPublicWS {
     this.reconnectAttempts++;
     wsMarkReconnect();
 
-    const delay = Math.min(2000 * this.reconnectAttempts, 30000);
-    console.log(`🔁 [WS-METRICS] Reconnecting in ${delay}ms...`);
+    const delay = Math.min(2_000 * this.reconnectAttempts, 30_000);
+    console.log(`🔁 [METRICS-WS] Reconnecting in ${delay}ms...`);
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -181,8 +207,9 @@ export class BybitPublicWS {
       try {
         this.ws.removeAllListeners();
         this.ws.close();
-      } catch {}
-
+      } catch (_) {
+        // ignore
+      }
       this.ws = null;
     }
 
@@ -200,13 +227,17 @@ export class BybitPublicWS {
     if (this.ws) {
       try {
         this.ws.close();
-      } catch {}
+      } catch (_) {
+        // ignore
+      }
     }
 
     wsMarkDisconnected();
     this.connected = false;
+    console.log("⏹️ [METRICS-WS] Disconnected by request.");
   }
 }
 
+// default singleton (ako ti nekad zatreba globalno)
 const bybitPublicWS = new BybitPublicWS();
 export default bybitPublicWS;
