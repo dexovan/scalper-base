@@ -75,7 +75,7 @@ app.use(
     cookie: {
       httpOnly: true,
       secure: false,
-      signed: true,              // 🔥 KLJUČNO — bez ovoga Express neće verifikovati cookie
+      signed: false,             // 🔧 ISPRAVKA - bez signed jer nema cookie-parser
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
