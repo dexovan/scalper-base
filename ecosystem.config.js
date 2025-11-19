@@ -23,6 +23,29 @@
       "merge_logs": true,
       "max_memory_restart": "500M",
       "node_args": "--max-old-space-size=512"
+    },
+    {
+      "name": "engine",
+      "script": "/home/aiuser/scalper-base/src/index.js",
+      "cwd": "/home/aiuser/scalper-base",
+      "instances": 1,
+      "exec_mode": "fork",
+      "watch": false,
+      "ignore_watch": [
+        "node_modules",
+        "logs",
+        "data"
+      ],
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "log_file": "/home/aiuser/scalper-base/logs/pm2-engine.log",
+      "out_file": "/home/aiuser/scalper-base/logs/pm2-engine-out.log",
+      "error_file": "/home/aiuser/scalper-base/logs/pm2-engine-error.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true,
+      "max_memory_restart": "700M",
+      "node_args": "--max-old-space-size=768"
     }
   ]
 }
