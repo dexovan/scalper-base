@@ -64,11 +64,9 @@ const SESSION_SECRET = "a909d8a1c1db4af6b0e3b4c8bbd9a514-super-strong-secret";
 app.use(
   session({
     store: new SQLiteStore({
-      db: "sessions.db",
-      dir: join(__dirname, "auth"),    // <-- APSOLUTNA PUTANJA (PM2 FIX!)
-      table: "sessions",
-      concurrentDB: true
-    }),
+  db: "sessions.db",
+  dir: "./web/auth"
+}),
     secret: SESSION_SECRET,
     name: "sid",
     resave: false,
