@@ -60,16 +60,17 @@ async function startEngine() {
   // -------------------------------------------------------
   //   WS-METRICS CONNECTOR – fixed shared instance
   // -------------------------------------------------------
-  console.log("📡 [WS-METRICS] Starting...");
+  console.log("=============================");
+  console.log("📡 METRICS: Creating WS...");
+  console.log("=============================");
 
   const metricsWS = new BybitPublicWS();
 
+  console.log("📡 METRICS: Calling connect() now...");
   metricsWS.connect({
     symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
     channels: ["tickers", "publicTrade"],
-    onEvent: (msg) => {
-      wsMetrics.wsMarkMessage();
-    }
+    onEvent: () => wsMetrics.wsMarkMessage()
   });
 
   console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);

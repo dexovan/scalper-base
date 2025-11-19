@@ -34,6 +34,7 @@ export class BybitPublicWS {
   connect({ symbols = [], channels = [], onEvent = null } = {}) {
     this.subscriptions = this._buildTopics(symbols, channels);
     this.onEvent = onEvent || (() => {});
+    console.log("📡 [METRICS-WS] connect() invoked → topics:", this.subscriptions);
     this._open();
   }
 
@@ -50,6 +51,7 @@ export class BybitPublicWS {
   _open() {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
+    console.log("📡 [METRICS-WS] _open() called → URL:", this.url);
     wsMarkConnecting();
     this.connected = false;
 
@@ -59,7 +61,7 @@ export class BybitPublicWS {
 
       // ------------- OPEN -------------
       this.ws.on("open", () => {
-        console.log("🟢 [WS-METRICS] Connected");
+        console.log("🟢 [METRICS-WS] Connected!");
         this.reconnectAttempts = 0;
         this.connected = true;
         wsMarkConnected();
@@ -70,6 +72,7 @@ export class BybitPublicWS {
 
       // ----------- MESSAGE ------------
       this.ws.on("message", (raw) => {
+        console.log("📨 [METRICS-WS] Message received");
         wsMarkMessage();
 
         let msg = null;
