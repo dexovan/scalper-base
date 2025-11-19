@@ -60,20 +60,24 @@ app.set("trust proxy", false);
 // =======================================
 const SQLiteStore = SQLiteStoreFactory(session);
 
+const SESSION_SECRET = "a909d8a1c1db4af6b0e3b4c8bbd9a514-super-strong-secret";
+
 app.use(
   session({
     store: new SQLiteStore({
       db: "sessions.db",
       dir: "./web/auth",
     }),
-    secret: "gTu93#A!2h^F1!dfX4pQ0z!vA8F$u2kW9m%PqZsR7nL#hE0cS!jU7bG1xK3dR",
+    secret: SESSION_SECRET,
+    name: "sid",                 // OBAVEZNO → da Express čita cookie ispravno
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
       secure: false,
+      signed: true,              // 🔥 KLJUČNO — bez ovoga Express neće verifikovati cookie
       sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   })
 );
