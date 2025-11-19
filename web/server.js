@@ -67,17 +67,19 @@ app.use(
     store: new SQLiteStore({
       db: "sessions.db",
       dir: "./web/auth",
+      table: "sessions",         // eksplicitno ime tabele
+      concurrentDB: true         // bolje performanse
     }),
     secret: SESSION_SECRET,
-    name: "sid",                 // OBAVEZNO → da Express čita cookie ispravno
+    name: "connect.sid",          // standardno Express ime
     resave: false,
     saveUninitialized: false,
+    rolling: true,               // obnovi cookie na svaki request
     cookie: {
       httpOnly: true,
       secure: false,
-      signed: false,             // 🔧 ISPRAVKA - bez signed jer nema cookie-parser
       sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: 30 * 60 * 1000,    // 30 minuta umesto 7 dana za test
     },
   })
 );
@@ -101,6 +103,20 @@ app.use((req, res, next) => {
 initHealth();
 console.log("✅ Phase 1 Health Monitoring initialized!\n");
 
+
+// =======================================
+// 🔍 SESSION DEBUG MIDDLEWARE
+// =======================================
+app.use((req, res, next) => {
+  console.log("🔍 SESSION DEBUG:", {
+    sessionID: req.sessionID,
+    hasSession: !!req.session,
+    hasUser: !!req.session?.user,
+    username: req.session?.user?.username,
+    cookie: req.session?.cookie
+  });
+  next();
+});
 
 // =======================================
 // 🔐 ROUTES
