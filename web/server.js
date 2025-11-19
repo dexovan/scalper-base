@@ -52,6 +52,7 @@ import { createDB } from "./auth/auth.js";
 
 import apiRoutes from "./routes/api.js";
 import universeAPI from "./routes/api-universe.js";
+import apiTest from "./routes/api-test.js";
 
 import paths from "../src/config/paths.js";
 import { initHealth } from "../src/monitoring/health.js";
@@ -163,6 +164,7 @@ app.use((req, res, next) => {
 // 1️⃣ API FIRST (NE SME DA BUDE IZNAD AUTH!!!)
 app.use("/api/universe", universeAPI);
 app.use("/api", apiRoutes);
+app.use("/api/test", apiTest);
 
 // 2️⃣ AUTH ROUTES
 app.use(authRoutes);
