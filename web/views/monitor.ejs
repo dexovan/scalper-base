@@ -1,293 +1,312 @@
-<!-- web/views/monitor.ejs -->
-
-<div class="min-h-screen bg-[#0d1117] text-slate-100">
-  <div class="w-full p-6 space-y-6">
-
-    <!-- NASLOV + OPIS STRANE -->
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold text-sky-400 flex items-center gap-2">
-          <span>📡</span> System Monitor
-        </h1>
-        <p class="text-slate-400 mt-1 max-w-2xl">
-          Pregled rada <span class="font-semibold text-sky-300">DTrade engine-a</span>,
-          Bybit WebSocket konekcije i sistemskih resursa. Ovo je tvoja
-          kontrolna tabla da vidiš da li „ispod haube“ sve radi kako treba.
-        </p>
-      </div>
-
-      <div class="flex items-center gap-3">
-        <form method="GET" action="/monitor">
-          <button
-            type="submit"
-            class="px-4 py-2 rounded-md bg-sky-600 hover:bg-sky-500 text-sm font-semibold shadow-md transition"
-          >
-            🔄 Osveži sada
-          </button>
-        </form>
-        <div class="text-xs text-slate-500">
-          Last update:<br />
-          <span class="text-slate-300"><%= new Date(summary.timestamp).toLocaleString() %></span>
-        </div>
-      </div>
-    </div>
-
-    <!-- GRID: SYSTEM + WS + ENGINE -->
-    <div class="grid gap-6 md:grid-cols-3">
-
-      <!-- SYSTEM BOX -->
-      <section class="bg-[#111827] rounded-xl border border-slate-800 p-5 shadow-lg">
-        <h2 class="text-lg font-semibold text-sky-300 flex items-center gap-2 mb-2">
-          🖥️ System
-        </h2>
-        <p class="text-xs text-slate-400 mb-4">
-          Ovde pratiš resurse servera (CPU load, memorija, uptime).
-          Ako ovo polje „pobegne u crveno“, znaš da treba da proveriš server
-          pre nego što trejderu daš gas.
-        </p>
-
-        <div class="space-y-2 text-sm">
-          <div class="flex justify-between">
-            <span class="text-slate-400">Uptime:</span>
-            <span class="font-mono text-slate-100"><%= summary.system.uptimeHuman %></span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Load (1m):</span>
-            <span class="font-mono <%= summary.system.load1m > 3 ? 'text-amber-400' : 'text-emerald-400' %>">
-              <%= summary.system.load1m %>
-            </span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">RSS memorija:</span>
-            <span class="font-mono text-slate-100"><%= summary.system.memory.rssMB %> MB</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-slate-400">Heap used:</span>
-            <span class="font-mono text-slate-100"><%= summary.system.memory.heapUsedMB %> MB</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- BYBIT WS BOX -->
-      <section class="bg-[#111827] rounded-xl border border-slate-800 p-5 shadow-lg">
-        <h2 class="text-lg font-semibold text-sky-300 flex items-center gap-2 mb-2">
-          🌐 Bybit WS
-        </h2>
-        <p class="text-xs text-slate-400 mb-4">
-          Status konekcije ka Bybit public WebSocket feed-u.
-          Kada je sve u redu, očekuješ da je status <span class="text-emerald-400 font-semibold">Connected</span>
-          i da postoji normalan protok poruka (tick rate).
-        </p>
-
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-slate-400">Status:</span>
-          <% if (summary.ws.connected) { %>
-            <span class="inline-flex items-center gap-2 text-emerald-400 font-semibold">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Connected
-            </span>
-          <% } else { %>
-            <span class="inline-flex items-center gap-2 text-rose-400 font-semibold">
-              <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-              Disconnected
-            </span>
-          <% } %>
-        </div>
-
-        <div class="space-y-2 text-sm">
-          <div class="flex justify-between">
-            <span class="text-slate-400">Last connect:</span>
-            <span class="font-mono text-slate-100">
-              <%= summary.ws.lastConnectedAt ? new Date(summary.ws.lastConnectedAt).toLocaleTimeString() : '—' %>
-            </span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">Last message:</span>
-            <span class="font-mono text-slate-100">
-              <%= summary.ws.lastMessageAt ? new Date(summary.ws.lastMessageAt).toLocaleTimeString() : '—' %>
-            </span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">Reconnect attempts:</span>
-            <span class="font-mono text-slate-100"><%= summary.ws.reconnectAttempts %></span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">Tick rate (msg/s):</span>
-            <span class="font-mono text-slate-100">
-              <%= summary.ws.messagesPerSec != null ? summary.ws.messagesPerSec : 'N/A' %>
-            </span>
-          </div>
-        </div>
-
-        <div class="mt-4">
-          <h3 class="text-xs font-semibold text-slate-400 mb-1">
-            Aktivni streamovi:
-          </h3>
-          <% if (summary.ws.streams && summary.ws.streams.length > 0) { %>
-            <ul class="text-xs text-slate-300 space-y-1 max-h-24 overflow-y-auto">
-              <% summary.ws.streams.forEach(function (s) { %>
-                <li class="font-mono bg-slate-900/60 rounded px-2 py-1 border border-slate-800">
-                  <%= s %>
-                </li>
-              <% }) %>
-            </ul>
-          <% } else { %>
-            <p class="text-xs text-slate-500 italic">Trenutno nema aktivnih WS streamova.</p>
-          <% } %>
-        </div>
-
-        <% if (summary.ws.lastErrorMessage) { %>
-          <div class="mt-3 text-xs text-rose-400 bg-rose-950/40 border border-rose-700/60 rounded px-3 py-2">
-            <span class="font-semibold">Last error:</span>
-            <div class="mt-1 font-mono break-words">
-              <%= summary.ws.lastErrorMessage %>
-            </div>
-          </div>
-        <% } %>
-      </section>
-
-      <!-- ENGINE BOX -->
-      <section class="bg-[#111827] rounded-xl border border-slate-800 p-5 shadow-lg">
-        <h2 class="text-lg font-semibold text-sky-300 flex items-center gap-2 mb-2">
-          ⚙️ Engine
-        </h2>
-        <p class="text-xs text-slate-400 mb-4">
-          Ovo opisuje unutrašnji AI / scalper engine. Za sada koriste se
-          placeholder vrednosti (status / mode), a kasnije ćemo vezati
-          prave metrike iz core modula (<span class="font-mono text-sky-300">src/core/engine.js</span>).
-        </p>
-
-        <div class="space-y-2 text-sm">
-          <div class="flex justify-between">
-            <span class="text-slate-400">Status:</span>
-            <span class="font-mono <%= summary.engine.status === 'running' ? 'text-emerald-400' : 'text-amber-400' %>">
-              <%= summary.engine.status %>
-            </span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">Mode:</span>
-            <span class="font-mono text-slate-100"><%= summary.engine.mode %></span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">Decision rate (dec/s):</span>
-            <span class="font-mono text-slate-100">
-              <%= summary.engine.decisionRate != null ? summary.engine.decisionRate : 'N/A' %>
-            </span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">Last decision:</span>
-            <span class="font-mono text-slate-100">
-              <%= summary.engine.lastDecisionAt ? summary.engine.lastDecisionAt : '—' %>
-            </span>
-          </div>
-        </div>
-      </section>
-
-    </div>
-
-    <!-- GRID: EVENT METRICS + HEALTH -->
-    <div class="grid gap-6 md:grid-cols-2">
-
-      <!-- EVENT METRICS -->
-      <section class="bg-[#111827] rounded-xl border border-slate-800 p-5 shadow-lg">
-        <h2 class="text-lg font-semibold text-sky-300 flex items-center gap-2 mb-2">
-          📊 Event Metrics
-        </h2>
-        <p class="text-xs text-slate-400 mb-4">
-          Brojači bitnih događaja u sistemu. Ovo ti daje osećaj da li
-          se nešto „dešava“ ili je engine uspavan. Kasnije ćemo ovde
-          ubaciti prave vrednosti iz trade/execution sloja.
-        </p>
-
-        <div class="space-y-2 text-sm">
-          <div class="flex justify-between">
-            <span class="text-slate-400">WS messages total:</span>
-            <span class="font-mono text-slate-100"><%= summary.events.wsMessagesTotal %></span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">WS errors total:</span>
-            <span class="font-mono text-slate-100"><%= summary.events.wsErrorsTotal %></span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">Trades executed:</span>
-            <span class="font-mono text-slate-100"><%= summary.events.tradesExecuted %></span>
-          </div>
-
-          <div class="flex justify-between">
-            <span class="text-slate-400">Orders sent:</span>
-            <span class="font-mono text-slate-100"><%= summary.events.ordersSent %></span>
-          </div>
-        </div>
-      </section>
-
-      <!-- HEALTH SUMMARY -->
-      <section class="bg-[#111827] rounded-xl border border-slate-800 p-5 shadow-lg">
-        <h2 class="text-lg font-semibold text-sky-300 flex items-center gap-2 mb-2">
-          🧬 Health Summary
-        </h2>
-        <p class="text-xs text-slate-400 mb-4">
-          Sažetak stanja sistema – kombinacija sistema, WS konekcije i
-          engine statusa. Cilj je da ovde što češće vidiš status
-          <span class="font-semibold text-emerald-400">OK</span>.
-        </p>
-
-        <div class="mb-3">
-          <% if (summary.health.status === 'ok') { %>
-            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-900/40 border border-emerald-600 text-emerald-300 text-xs font-semibold">
-              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-              STATUS: OK
-            </span>
-          <% } else { %>
-            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/40 border border-amber-600 text-amber-300 text-xs font-semibold">
-              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-              STATUS: <%= summary.health.status.toUpperCase() %>
-            </span>
-          <% } %>
-        </div>
-
-        <ul class="space-y-2 text-xs text-slate-300">
-          <% summary.health.messages.forEach(function(msg) { %>
-            <li class="flex items-start gap-2">
-              <span class="mt-1 w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-              <span><%= msg %></span>
-            </li>
-          <% }) %>
-        </ul>
-      </section>
-
-    </div>
-
-    <!-- RAW JSON DEBUG -->
-    <section class="bg-[#020617] rounded-xl border border-slate-800 p-5 shadow-inner">
-      <div class="flex items-center justify-between mb-2">
-        <h2 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
-          📋 Raw JSON snapshot
-        </h2>
-        <a
-          href="/api/monitor/summary"
-          target="_blank"
-          class="text-xs text-sky-400 hover:text-sky-300 font-mono"
-        >
-          GET /api/monitor/summary
-        </a>
-      </div>
-
-      <p class="text-xs text-slate-500 mb-3">
-        Ovde možeš da vidiš isti summary u JSON formatu – idealno za debug,
-        API klijente ili future frontend integracije.
+<section class="mb-6">
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-slate-100">System Monitor</h1>
+      <p class="text-sm text-slate-400">
+        Pregled rada DTrade engine-a, Bybit WebSocket konekcije i sistema ispod haube.
       </p>
+    </div>
 
-      <pre class="text-xs bg-[#020617] border border-slate-800 rounded-lg p-3 text-slate-200 overflow-x-auto">
-<%= JSON.stringify(summary, null, 2) %>
+    <div class="flex items-center gap-3">
+      <span id="monitor-timestamp" class="text-xs text-slate-500">–</span>
+      <button
+        id="btn-refresh-now"
+        class="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white transition"
+      >
+        🔄 Osveži sada
+      </button>
+    </div>
+  </div>
+</section>
+
+<div class="grid lg:grid-cols-3 gap-6">
+  <!-- LEVA STRANA: SYSTEM / ENGINE / WS -->
+  <div class="lg:col-span-2 space-y-4">
+    <!-- SYSTEM CARD -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-sky-500/10 text-sky-400">
+            💻
+          </div>
+          <div>
+            <h2 class="text-sm font-semibold text-slate-100">System status</h2>
+            <p class="text-xs text-slate-400">Node proces na VPS-u (CPU, RAM, uptime)</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid sm:grid-cols-4 gap-3 text-sm mt-2">
+        <div>
+          <div class="text-xs text-slate-400">Uptime</div>
+          <div id="sys-uptime" class="font-semibold text-slate-100">–</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">Load (1m)</div>
+          <div id="sys-load" class="font-semibold text-slate-100">–</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">RSS (MB)</div>
+          <div id="sys-rss" class="font-semibold text-slate-100">–</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">Heap used (MB)</div>
+          <div id="sys-heap" class="font-semibold text-slate-100">–</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ENGINE CARD -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+            ⚙️
+          </div>
+          <div>
+            <h2 class="text-sm font-semibold text-slate-100">Engine status</h2>
+            <p class="text-xs text-slate-400">Glavni DTrade scalper core (decision loop)</p>
+          </div>
+        </div>
+        <span id="engine-badge"
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+          running
+        </span>
+      </div>
+
+      <div class="grid sm:grid-cols-3 gap-3 text-sm mt-2">
+        <div>
+          <div class="text-xs text-slate-400">Mode</div>
+          <div id="engine-mode" class="font-semibold text-slate-100">–</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">Total decisions</div>
+          <div id="engine-decisions" class="font-semibold text-slate-100">n/a</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">Trades executed</div>
+          <div id="engine-trades" class="font-semibold text-slate-100">n/a</div>
+        </div>
+      </div>
+
+      <p class="mt-3 text-xs text-slate-500">
+        ➜ Ovde pratiš da li je engine *živ*:
+        ako status pređe u <span class="text-amber-400 font-semibold">stopped/error</span> ili nema odluka duže vreme,
+        znači da DTrade ne radi entry/exit odluke.
+      </p>
+    </div>
+
+    <!-- WS CARD -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 flex items-center justify-center rounded-lg bg-purple-500/10 text-purple-400">
+            🌐
+          </div>
+          <div>
+            <h2 class="text-sm font-semibold text-slate-100">Bybit WebSocket</h2>
+            <p class="text-xs text-slate-400">Ticker, orderbook i trade stream konekcija</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <span id="ws-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="ws-status-text" class="text-slate-300">Unknown</span>
+        </div>
+      </div>
+
+      <div class="grid sm:grid-cols-3 gap-3 text-sm mt-2">
+        <div>
+          <div class="text-xs text-slate-400">Last message</div>
+          <div id="ws-last-message" class="font-semibold text-slate-100 truncate">–</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">Reconnect attempts</div>
+          <div id="ws-reconnects" class="font-semibold text-slate-100">–</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">Msg/60s (ako dostupno)</div>
+          <div id="ws-msg-rate" class="font-semibold text-slate-100">n/a</div>
+        </div>
+      </div>
+
+      <p class="mt-3 text-xs text-slate-500">
+        ➜ Ako je WS status <span class="text-red-400 font-semibold">Disconnected</span>,
+        engine ne vidi tržište (nema tickera, orderbook-a, trade-ova) i ne bi trebalo da otvara nove pozicije.
+      </p>
+    </div>
+
+    <!-- RAW JSON -->
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-sm font-semibold text-slate-100">Raw JSON snapshot</h2>
+        <code class="text-[11px] text-slate-500 break-all">/api/monitor/summary</code>
+      </div>
+      <pre id="raw-json"
+           class="mt-2 text-xs bg-slate-950 border border-slate-800 rounded-lg p-3 overflow-x-auto max-h-64 text-slate-300">
+Loading...
       </pre>
-    </section>
+    </div>
+  </div>
+
+  <!-- DESNA STRANA: LIVE LOG VIEWER -->
+  <div class="space-y-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 h-full flex flex-col">
+      <div class="flex items-center justify-between mb-2">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-100">Live engine logs</h2>
+          <p class="text-xs text-slate-400">
+            Poslednje linije iz <code class="text-[10px] text-slate-500">pm2-engine-out.log</code>.
+          </p>
+        </div>
+      </div>
+      <div class="mt-2 flex-1">
+        <pre id="log-output"
+             class="text-[11px] leading-snug bg-slate-950 border border-slate-800 rounded-lg p-3 overflow-y-auto max-h-[420px] text-slate-300">
+Loading logs...
+        </pre>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-500">
+        ➜ Ovde vidiš šta engine radi u realnom vremenu:
+        koji simbol obrađuje, da li ima error-a, reconnect-ove, itd.
+      </p>
+    </div>
   </div>
 </div>
+
+<!-- OBJAŠNjENjE METRIKA -->
+<section class="mt-8 grid md:grid-cols-3 gap-6 text-xs text-slate-400">
+  <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <h3 class="text-sm font-semibold text-slate-100 mb-2">System metrike</h3>
+    <ul class="space-y-1.5 list-disc list-inside">
+      <li><span class="font-semibold text-slate-200">Uptime</span> – koliko dugo tvoj DTrade backend radi bez restart-a.</li>
+      <li><span class="font-semibold text-slate-200">Load (1m)</span> – opterećenje CPU-a (oko 0.3–1.0 je zdravo za jedan core).</li>
+      <li><span class="font-semibold text-slate-200">RSS</span> – ukupna memorija procesa (RAM koji Node zauzima).</li>
+      <li><span class="font-semibold text-slate-200">Heap used</span> – JS memorija (bitno za leak-ove).</li>
+    </ul>
+  </div>
+
+  <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <h3 class="text-sm font-semibold text-slate-100 mb-2">Engine metrike</h3>
+    <ul class="space-y-1.5 list-disc list-inside">
+      <li><span class="font-semibold text-slate-200">Status</span> – da li je core petlja aktivna (running / stopped / error).</li>
+      <li><span class="font-semibold text-slate-200">Mode</span> – npr. scalper-core, backtest, dry-run.</li>
+      <li><span class="font-semibold text-slate-200">Total decisions</span> – koliko je puta engine doneo odluku.</li>
+      <li><span class="font-semibold text-slate-200">Trades executed</span> – koliko realnih trade-ova je prošlo kroz engine.</li>
+    </ul>
+  </div>
+
+  <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <h3 class="text-sm font-semibold text-slate-100 mb-2">WS / market metrike</h3>
+    <ul class="space-y-1.5 list-disc list-inside">
+      <li><span class="font-semibold text-slate-200">Connected</span> – da li smo spojeni na Bybit WS feed.</li>
+      <li><span class="font-semibold text-slate-200">Last message</span> – kada je poslednji put stigao ticker/orderbook/trade.</li>
+      <li><span class="font-semibold text-slate-200">Reconnect attempts</span> – koliko puta je WS morao da se vraća.</li>
+      <li><span class="font-semibold text-slate-200">Msg/60s</span> – koliko poruka u zadnjih 60 sekundi (ako ga izračunamo kasnije).</li>
+    </ul>
+  </div>
+</section>
+
+<script>
+  async function fetchSummary() {
+    try {
+      const res = await fetch("/api/monitor/summary");
+      const data = await res.json();
+
+      const sys = data.system || {};
+      const ws = data.ws || {};
+      const eng = data.engine || {};
+
+      // System
+      const uptimeHuman = sys.uptimeHuman || (sys.uptimeSeconds ? (sys.uptimeSeconds.toFixed(0) + "s") : "–");
+      document.getElementById("sys-uptime").textContent = uptimeHuman;
+      document.getElementById("sys-load").textContent = sys.load1m != null ? sys.load1m.toFixed(2) : "–";
+      if (sys.memory) {
+        document.getElementById("sys-rss").textContent = sys.memory.rssMB || "–";
+        document.getElementById("sys-heap").textContent = sys.memory.heapUsedMB || "–";
+      }
+
+      // Engine
+      const status = eng.status || "unknown";
+      const badge = document.getElementById("engine-badge");
+      badge.textContent = status;
+
+      badge.classList.remove(
+        "bg-emerald-500/10",
+        "text-emerald-400",
+        "border-emerald-500/30",
+        "bg-red-500/10",
+        "text-red-400",
+        "border-red-500/30",
+        "bg-amber-500/10",
+        "text-amber-400",
+        "border-amber-500/30",
+      );
+
+      if (status === "running") {
+        badge.classList.add("bg-emerald-500/10", "text-emerald-400", "border-emerald-500/30");
+      } else if (status === "error") {
+        badge.classList.add("bg-red-500/10", "text-red-400", "border-red-500/30");
+      } else {
+        badge.classList.add("bg-amber-500/10", "text-amber-400", "border-amber-500/30");
+      }
+
+      document.getElementById("engine-mode").textContent = eng.mode || "–";
+      document.getElementById("engine-decisions").textContent = eng.decisionsTotal != null ? eng.decisionsTotal : "n/a";
+      document.getElementById("engine-trades").textContent = eng.tradesExecuted != null ? eng.tradesExecuted : "n/a";
+
+      // WS
+      const wsConnected = !!ws.connected;
+      document.getElementById("ws-status-text").textContent = wsConnected ? "Connected" : "Disconnected";
+      const dot = document.getElementById("ws-dot");
+      dot.classList.remove("bg-slate-500", "bg-emerald-400", "bg-red-500");
+      dot.classList.add(wsConnected ? "bg-emerald-400" : "bg-red-500");
+
+      document.getElementById("ws-last-message").textContent =
+        ws.lastMessageAt || ws.lastConnectedAt || "–";
+      document.getElementById("ws-reconnects").textContent =
+        ws.reconnectAttempts != null ? ws.reconnectAttempts : "–";
+      document.getElementById("ws-msg-rate").textContent =
+        ws.messagesLast60s != null ? ws.messagesLast60s + " msg/60s" : "n/a";
+
+      // Raw JSON
+      document.getElementById("raw-json").textContent = JSON.stringify(data, null, 2);
+
+      // Timestamp
+      document.getElementById("monitor-timestamp").textContent =
+        "Last update: " + (data.timestamp || new Date().toISOString());
+    } catch (err) {
+      console.error("Monitor summary error:", err);
+    }
+  }
+
+  async function fetchLogs() {
+    try {
+      const res = await fetch("/api/monitor/logs?lines=200");
+      const data = await res.json();
+      const pre = document.getElementById("log-output");
+
+      if (!data.ok) {
+        pre.textContent = "Log error: " + (data.error || "unknown");
+        return;
+      }
+
+      pre.textContent = data.lines.join("\n");
+      pre.scrollTop = pre.scrollHeight;
+    } catch (err) {
+      console.error("Monitor logs error:", err);
+    }
+  }
+
+  document.getElementById("btn-refresh-now").addEventListener("click", () => {
+    fetchSummary();
+    fetchLogs();
+  });
+
+  // inicijalni load
+  fetchSummary();
+  fetchLogs();
+
+  // periodično osvežavanje
+  setInterval(fetchSummary, 3000);
+  setInterval(fetchLogs, 5000);
+</script>

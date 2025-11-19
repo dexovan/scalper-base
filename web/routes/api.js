@@ -1,5 +1,8 @@
 // web/routes/api.js
 import express from "express";
+import fs from "fs";
+import path from "path";
+import paths from "../../src/config/paths.js";
 import HealthStatus, {
   updateHealth,
   getHealthSummary,
@@ -101,6 +104,33 @@ router.get("/health/services/:serviceName", (req, res) => {
       error: error.message
     });
   }
+});
+
+// ---------------------------------------------------------
+// MONITOR LOGS — poslednje linije iz pm2-engine-out.log
+// ---------------------------------------------------------
+router.get("/monitor/logs", (req, res) => {
+  const lines = parseInt(req.query.lines, 10) || 200;
+  const logFile = path.join(paths.PROJECT_ROOT, "logs", "pm2-engine-out.log");
+
+  fs.readFile(logFile, "utf8", (err, text) => {
+    if (err) {
+      return res.json({
+        ok: false,
+        error: err.message,
+        lines: [],
+      });
+    }
+
+    const allLines = text.split("\n");
+    const tail = allLines.slice(-lines);
+
+    res.json({
+      ok: true,
+      file: "pm2-engine-out.log",
+      lines: tail,
+    });
+  });
 });
 
 export default router;

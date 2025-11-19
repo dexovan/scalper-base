@@ -50,8 +50,6 @@ import { createDB } from "./auth/auth.js";
 import apiRoutes from "./routes/api.js";
 import universeAPI from "./routes/api-universe.js";
 import apiTest from "./routes/api-test.js";
-import monitorApiRoutes from "./routes/api-monitor.js";
-import monitorRoutes from "./routes/monitor.js";
 
 import paths from "../src/config/paths.js";
 import { initHealth } from "../src/monitoring/health.js";
@@ -90,13 +88,6 @@ app.set("trust proxy", false);
 // ---------------------------------------
 app.use((req, res, next) => {
   res.locals.user = req.session?.user?.username || null;
-  next();
-});
-
-// Active page (sidebar highlight)
-app.use((req, res, next) => {
-  const seg = req.path.split("/")[1] || "dashboard";
-  res.locals.active = seg;
   next();
 });
 
@@ -178,11 +169,7 @@ app.use((req, res, next) => {
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/");
-  res.render("login", {
-    layout: false,      // ← OVO je najvažnije!
-    title: "Login",
-    error: null
-  });
+  res.render("login", { title: "Login", error: null, hideChrome: true });
 });
 
 // 2️⃣ API ROUTES (public)
@@ -190,21 +177,21 @@ app.use("/api/universe", universeAPI);
 app.use("/api", apiRoutes);
 app.use("/api/test", apiTest);
 
-// monitoring API (protected)
-app.use("/api/monitor", requireAuth, monitorApiRoutes);
-
-// 3️⃣ MONITOR ROUTES (protected, ali koristimo requireAuth unutar fajla)
-app.use(monitorRoutes);
-
-// 4️⃣ AUTH ROUTES (login, logout, register)
+// 3️⃣ AUTH ROUTES (login, logout, register)
 app.use(authRoutes);
 
-// 5️⃣ DASHBOARD (PROTECTED)
+// 4️⃣ DASHBOARD (PROTECTED)
 app.get("/", requireAuth, (req, res) => {
   res.render("dashboard", {
     title: "Dashboard",
     currentTime: new Date().toLocaleString(),
-    user: req.session.user?.username
+  });
+});
+
+// 5️⃣ SYSTEM MONITOR PAGE (PROTECTED)
+app.get("/monitor", requireAuth, (req, res) => {
+  res.render("monitor", {
+    title: "Monitor",
   });
 });
 

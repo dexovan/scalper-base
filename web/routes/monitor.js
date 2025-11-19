@@ -1,28 +1,34 @@
-// web/routes/monitor.js
 import express from "express";
-import { requireAuth } from "../auth/middleware.js";
-import { getMonitorSummary } from "../../src/monitoring/metricsTracker.js";
+import os from "os";
+import { engineMetrics } from "../../src/monitoring/engineMetrics.js";
+import { wsMetrics } from "../../src/monitoring/wsMetrics.js";
 
 const router = express.Router();
 
-/**
- * HTML monitoring panel (/monitor)
- */
-router.get("/monitor", requireAuth, (req, res) => {
-  const summary = getMonitorSummary();
-  res.render("monitor", {
-    title: "System Monitor",
-    summary,
-  });
-});
+router.get("/summary", (req, res) => {
+  const mem = process.memoryUsage();
 
-/**
- * JSON API summary (/api/monitor/summary)
- * Pogodno za debug, future frontend, itd.
- */
-router.get("/api/monitor/summary", requireAuth, (req, res) => {
-  const summary = getMonitorSummary();
-  res.json(summary);
+  res.json({
+    system: {
+      uptimeSeconds: process.uptime(),
+      load1m: os.loadavg()[0],
+      memory: {
+        rssMB: (mem.rss / 1024 / 1024).toFixed(1),
+        heapUsedMB: (mem.heapUsed / 1024 / 1024).toFixed(1),
+      }
+    },
+    ws: {
+      messagesLast60s: wsMetrics.messagesLast60s
+    },
+    engine: {
+      decisionsTotal: engineMetrics.decisionsTotal,
+      decisionRate: engineMetrics.decisionRate,
+      tradesExecuted: engineMetrics.tradesExecuted,
+      ordersSent: engineMetrics.ordersSent,
+      lastDecisionAt: engineMetrics.lastDecisionAt
+    },
+    timestamp: new Date().toISOString()
+  });
 });
 
 export default router;
