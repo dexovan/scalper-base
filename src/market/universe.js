@@ -1,6 +1,6 @@
 /* =========================================================
    src/market/universe.js
-   AI Scalper – Universe Service (PHASE 2 FULL VERSION)
+   AI Scalper – Universe Service (PHASE 2 – CLEAN VERSION)
    ========================================================= */
 
 import fs from "fs";
@@ -47,11 +47,13 @@ function saveUniverseToDisk() {
 function categorizeSymbol(item) {
   const sym = item.symbol;
 
+  // PRIME from config list
   if (CONFIG.primeSymbols.includes(sym)) return "Prime";
 
   const vol = Number(item.volume24h || 0);
   const price = Number(item.lastPrice || 0);
 
+  // micro-liquidity detection
   if (vol < 1_000_000) return "Wild";
   if (price < 0.0001) return "Wild";
   if (sym.includes("1000") || sym.includes("10000")) return "Wild";
@@ -60,7 +62,7 @@ function categorizeSymbol(item) {
 }
 
 /* ---------------------------------------------------------
-   Create SymbolMeta object
+   Build SymbolMeta
 --------------------------------------------------------- */
 function buildSymbolMeta(item) {
   return {
@@ -139,7 +141,7 @@ export async function initUniverse() {
 }
 
 /* ---------------------------------------------------------
-   Auto-refresh every X ms
+   Auto-refresh
 --------------------------------------------------------- */
 export function refreshUniversePeriodically() {
   console.log("🌍 [UNIVERSE] Auto-refresh enabled...");
@@ -150,7 +152,7 @@ export function refreshUniversePeriodically() {
 }
 
 /* ---------------------------------------------------------
-   Public getters
+   Public getters (FINAL CLEAN)
 --------------------------------------------------------- */
 export function getUniverseSnapshot() {
   return UNIVERSE;
@@ -168,41 +170,4 @@ export function getSymbolsByCategory(category) {
 
 export function getUniverse() {
   return UNIVERSE; // backwards compatibility
-}
-
-/* ---------------------------------------------------------
-   FOR DASHBOARD (temporary placeholders)
---------------------------------------------------------- */
-
-export function getUniverseSnapshot() {
-  return {
-    fetchedAt: UNIVERSE.fetchedAt,
-    totalSymbols: UNIVERSE.totalSymbols,
-    prime: UNIVERSE.prime,
-    normal: UNIVERSE.normal,
-    wild: UNIVERSE.wild
-  };
-}
-
-export function getSymbolMeta(symbol) {
-  return {
-    symbol,
-    category:
-      UNIVERSE.prime.includes(symbol)
-        ? "prime"
-        : UNIVERSE.wild.includes(symbol)
-        ? "wild"
-        : "normal"
-  };
-}
-
-export function getUniverseSnapshot() {
-  return {
-    fetchedAt: UNIVERSE.fetchedAt,
-    total: UNIVERSE.totalSymbols,
-    symbols: UNIVERSE.symbols,
-    prime: UNIVERSE.prime,
-    normal: UNIVERSE.normal,
-    wild: UNIVERSE.wild
-  };
 }
