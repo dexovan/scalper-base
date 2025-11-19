@@ -2,6 +2,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import paths from "../../src/config/paths.js";
 import HealthStatus, {
   updateHealth,
@@ -10,7 +11,17 @@ import HealthStatus, {
 } from "../../src/monitoring/health.js";
 
 import metrics from '../../src/core/metrics.js';
-import { getWsSummary } from "../../../src/monitoring/wsMetrics.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let getWsSummary;
+(async () => {
+  const wsMetrics = await import(
+    path.resolve(__dirname, "../../src/monitoring/wsMetrics.js")
+  );
+  getWsSummary = wsMetrics.getWsSummary;
+})();
 
 const router = express.Router();
 
