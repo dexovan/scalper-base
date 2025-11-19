@@ -10,23 +10,27 @@ router.get("/", (req, res) => {
 
   return res.json({
     fetchedAt: uni.fetchedAt || null,
-    totalSymbols: Array.isArray(uni.symbols) ? uni.symbols.length : 0,
-    symbols: uni.symbols || []
+    totalSymbols: uni.totalSymbols || (Array.isArray(uni.symbols) ? uni.symbols.length : 0),
+
+    symbols: uni.symbols || [],
+
+    // NEW: kategoriše prema universe.json
+    prime: uni.prime || [],
+    normal: uni.normal || [],
+    wild: uni.wild || []
   });
 });
 
-// /api/universe/categories  (temporary, until categories exist)
+// /api/universe/categories
 router.get("/categories", (req, res) => {
   const uni = readUniverseFromDisk();
 
-  const symbols = Array.isArray(uni.symbols) ? uni.symbols : [];
-
   return res.json({
-    totalSymbols: symbols.length,
-    prime: [],
-    normal: [],
-    wild: [],
-    note: "Categories not implemented yet — symbols are simple strings."
+    totalSymbols: uni.totalSymbols || (Array.isArray(uni.symbols) ? uni.symbols.length : 0),
+
+    prime: uni.prime || [],
+    normal: uni.normal || [],
+    wild: uni.wild || []
   });
 });
 
