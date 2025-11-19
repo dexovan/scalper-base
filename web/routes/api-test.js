@@ -1,21 +1,34 @@
 // web/routes/api-test.js
 import express from "express";
-import {
-  getTicker,
-  getTrade,
-  getOrderbook
-} from "../../src/ws/storage.js";
+import fs from "fs";
+import path from "path";
 
-import { getWsStatus } from "../../src/connectors/bybitPublic.js";
+import paths from "../../src/config/paths.js";
+import { getWsStatus } from "../../src/ws/eventHub.js";
 
 const router = express.Router();
 
-// --------------------------------------------------
-// 1) Ticker
-// --------------------------------------------------
+/* ---------------------------------------------------------
+   Helper – load JSON safely
+--------------------------------------------------------- */
+function loadJson(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    }
+  } catch (err) {
+    console.error("JSON load error:", filePath, err);
+  }
+  return null;
+}
+
+/* ---------------------------------------------------------
+   1) Ticker
+--------------------------------------------------------- */
 router.get("/ticker/:symbol", (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
-  const data = getTicker(symbol);
+  const file = path.join(paths.wsSnapshots, "ticker", `${symbol}.json`);
+  const data = loadJson(file);
 
   res.json({
     symbol,
@@ -24,12 +37,13 @@ router.get("/ticker/:symbol", (req, res) => {
   });
 });
 
-// --------------------------------------------------
-// 2) Trade (latest trade event)
-// --------------------------------------------------
+/* ---------------------------------------------------------
+   2) Tradeflow
+--------------------------------------------------------- */
 router.get("/tradeflow/:symbol", (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
-  const data = getTrade(symbol);
+  const file = path.join(paths.wsSnapshots, "trades", `${symbol}.json`);
+  const data = loadJson(file);
 
   res.json({
     symbol,
@@ -38,25 +52,26 @@ router.get("/tradeflow/:symbol", (req, res) => {
   });
 });
 
-// --------------------------------------------------
-// 3) Orderbook 50 levels
-// --------------------------------------------------
+/* ---------------------------------------------------------
+   3) Orderbook
+--------------------------------------------------------- */
 router.get("/orderbook/:symbol", (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
-  const ob = getOrderbook(symbol);
+  const file = path.join(paths.wsSnapshots, "orderbook", `${symbol}.json`);
+  const ob = loadJson(file);
 
   res.json({
     symbol,
-    ok: ob && ob.ts !== null,
+    ok: ob && ob.ts,
     bids: ob?.bids?.slice(0, 5) || [],
     asks: ob?.asks?.slice(0, 5) || [],
     ts: ob?.ts || null
   });
 });
 
-// --------------------------------------------------
-// 4) WS status
-// --------------------------------------------------
+/* ---------------------------------------------------------
+   4) WebSocket Status
+--------------------------------------------------------- */
 router.get("/ws", (req, res) => {
   const st = getWsStatus();
 
