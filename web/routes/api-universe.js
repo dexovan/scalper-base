@@ -1,6 +1,6 @@
 // web/routes/api-universe.js
 import express from "express";
-import { getUniverseSnapshot, getSymbolMeta } from "../../src/market/universe.js";
+import { readUniverseFromDisk } from "../../src/market/universeFile.js";
 import { loadProfile } from "../../src/market/symbolProfile.js";
 
 const router = express.Router();
@@ -9,7 +9,7 @@ const router = express.Router();
 // GET /api/universe
 // ============================
 router.get("/universe", (req, res) => {
-  const uni = getUniverseSnapshot();
+  const uni = readUniverseFromDisk();
 
   if (!uni) {
     return res.status(500).json({ error: "Universe not initialized" });
@@ -39,7 +39,7 @@ router.get("/universe", (req, res) => {
 // GET /api/universe/categories
 // ============================
 router.get("/universe/categories", (req, res) => {
-  const uni = getUniverseSnapshot();
+  const uni = readUniverseFromDisk();
 
   if (!uni) {
     return res.status(500).json({ error: "Universe not initialized" });
@@ -61,7 +61,8 @@ router.get("/universe/categories", (req, res) => {
 router.get("/symbol/:symbol/basic", async (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
 
-  const meta = getSymbolMeta(symbol);
+  const uni = readUniverseFromDisk();
+  const meta = uni?.symbols?.[symbol];
   if (!meta) {
     return res.status(404).json({ error: "Symbol not found" });
   }
