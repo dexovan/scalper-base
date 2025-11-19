@@ -4,31 +4,28 @@
 
 import express from "express";
 import session from "express-session";
-import path, { join } from "path";
+import path from "path";
 import fs from "fs";
 import expressLayouts from "express-ejs-layouts";
 import SQLiteStoreFactory from "connect-sqlite3";
 import { fileURLToPath } from "url";
 
+import Module from "module"; // PM2 fix
+
 // ---------------------------------------
 // PM2 HOOK FIX (ALWAYS KEEP AT TOP)
 // ---------------------------------------
-import Module from "module";
 const originalLoad = Module._load;
-
 Module._load = function (request, parent, isMain) {
   if (
     request.includes("express-session/session/store") ||
     request.includes("express-session/session/memory")
   ) {
-    return originalLoad.apply(
-      this,
-      [
-        "/home/aiuser/scalper-base/node_modules/express-session/session/store.js",
-        parent,
-        isMain
-      ]
-    );
+    return originalLoad.apply(this, [
+      "/home/aiuser/scalper-base/node_modules/express-session/session/store.js",
+      parent,
+      isMain,
+    ]);
   }
   return originalLoad.apply(this, arguments);
 };
@@ -87,6 +84,14 @@ app.use(express.json());
 app.set("trust proxy", false);
 
 // ---------------------------------------
+// GLOBAL VIEW VARIABLES (IMPORTANT)
+// ---------------------------------------
+app.use((req, res, next) => {
+  res.locals.user = req.session?.user?.username || null;
+  next();
+});
+
+// ---------------------------------------
 // SESSION STORAGE (SQLite)
 // ---------------------------------------
 const SQLiteStore = SQLiteStoreFactory(session);
@@ -105,7 +110,7 @@ const sqliteStore = new SQLiteStore({
   dir: sessionsDir,
   table: "sessions",
   concurrentDB: true,
-  timeout: 20000
+  timeout: 20000,
 });
 
 sqliteStore.on("error", (err) => {
@@ -124,15 +129,15 @@ app.use(
       httpOnly: true,
       secure: false,
       sameSite: "lax",
-      maxAge: 30 * 60 * 1000
-    }
+      maxAge: 30 * 60 * 1000,
+    },
   })
 );
 
 console.log("✅ SQLite session store active");
 
 // ---------------------------------------
-// DB INIT
+// DB INIT (ATTACH DB TO REQ)
 // ---------------------------------------
 const db = await createDB();
 app.use((req, res, next) => {
@@ -152,7 +157,7 @@ console.log("✅ Health Monitoring initialized");
 app.use((req, res, next) => {
   console.log("🔍 SESSION:", {
     sid: req.sessionID,
-    user: req.session?.user
+    user: req.session?.user,
   });
   next();
 });
@@ -161,24 +166,24 @@ app.use((req, res, next) => {
 // ROUTES — CORRECT ORDER
 // =======================================
 
-// 1️⃣ API FIRST (NE SME DA BUDE IZNAD AUTH!!!)
+// 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
+app.get("/login", (req, res) => {
+  if (req.session.user) return res.redirect("/");
+  res.render("login", { title: "Login", error: null });
+});
+
+// 2️⃣ API ROUTES (public)
 app.use("/api/universe", universeAPI);
 app.use("/api", apiRoutes);
 app.use("/api/test", apiTest);
 
-// 2️⃣ LOGIN PAGE ROUTE (BEFORE AUTH ROUTES)
-app.get("/login", (req, res) => {
-   res.render("login", { title: "Login", error: null });
-});
-
-// 2️⃣ AUTH ROUTES
+// 3️⃣ AUTH ROUTES (login, logout, register)
 app.use(authRoutes);
 
-// 3️⃣ DASHBOARD (PROTECTED)
+// 4️⃣ DASHBOARD (PROTECTED)
 app.get("/", requireAuth, (req, res) => {
   res.render("dashboard", {
     title: "Dashboard",
-    user: req.session.user.username,
     currentTime: new Date().toLocaleString(),
   });
 });
@@ -186,8 +191,9 @@ app.get("/", requireAuth, (req, res) => {
 // =======================================
 // SERVER START
 // =======================================
-const server = app.listen(8080, "0.0.0.0", () => {
-  console.log("🚀 Server running at http://0.0.0.0:8080");
+const PORT = 8080;
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
   console.log("📁 Sessions dir:", sessionsDir);
   console.log("📁 Views dir:", path.join(__dirname, "views"));
 });
