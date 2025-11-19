@@ -753,3 +753,83 @@ Sistem je spreman za Fazu 03, gde će se na ovaj universe nadograditi microstruc
 
 ========================================
 KRAJ DOKUMENTA – PHASE 02
+========================================
+
+
+
+=================================================
+FAZA 2 – TAKTIČKE PODFAZE (predlog za izvršenje)
+=================================================
+2.1 – Bybit Public REST + instrument fetch
+
+Napraviti bybitPublic.js
+
+Napraviti fetchInstrumentsUSDTPerp()
+
+Testirati REST fetch (Test #1)
+
+2.2 – Universe modul + snapshot u JSON
+
+Kreirati universe.js
+
+Implementirati:
+
+initUniverse()
+
+getUniverseSnapshot()
+
+categorization (Prime/Normal/Wild)
+
+Testirati (Test #2)
+
+2.3 – Periodično osvežavanje universe-a
+
+refreshUniversePeriodically()
+
+Detekcija novih listinga
+
+Stats update
+
+Testirati (Test #3)
+
+2.4 – Public WebSocket konektor
+
+initPublicConnection()
+
+WS status tracking
+
+health integracija
+
+Testirati WS (Test #4)
+
+2.5 – SymbolProfile modul (stub)
+
+loadProfile()
+
+saveProfile()
+
+JSON fajlovi u data/profiles/
+
+Testirati profile (Test #7)
+
+2.6 – API endpoint-i
+
+/api/universe
+
+/api/symbol/:symbol/basic
+
+/api/universe/categories
+
+Testirati API (Test #5, #6)
+
+🟢 Rezultat ove taktike:
+
+Što god da pukne — odmah znamo u kojoj podfazi je problem.
+
+Debagovanje je lako.
+
+Dashboard počinje da radi postepeno.
+
+Ne gubi se nit.
+
+Sve je savršeno modularizovano i spremno za Fazu 3 (orderbook/trades).

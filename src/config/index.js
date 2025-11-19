@@ -5,6 +5,7 @@ const CONFIG = {
   market: {
     venue: "BYBIT_LINEAR_PERP",
     symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "AI16ZUSDT", "DOGEUSDT"],
+    primeSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
     categories: {
       "Prime": ["BTCUSDT", "ETHUSDT"],
       "Normal": ["SOLUSDT", "ADAUSDT"],
@@ -68,7 +69,9 @@ const CONFIG = {
 
   system: {
     retentionIntervalMs: 1000 * 60 * 60,
-    logLevel: "info"
+    logLevel: "info",
+    universeRefreshIntervalMs: 15000,
+    bybitWsReconnectDelayMs: 3000
   },
 
   paths,

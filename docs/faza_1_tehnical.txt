@@ -1,0 +1,300 @@
+FAZA 1 – FULL TECHNICAL REPORT
+
+(možeš odmah da kopiraš u faza-1-report.md)
+
+FAZA 1 – Setup Dashboard Servera, Autentifikacije i PM2 infrastrukture
+AI Scalper Project – Technical Phase Report
+#️⃣ 1. Cilj Faze 1
+
+Faza 1 imala je jasan zadatak:
+
+Postaviti potpuno stabilan i bezbedan web server za dashboard koji će kasnije prikazivati AI scalping engine metrike.
+
+Potrebno je bilo obezbediti:
+
+Stabilan Node.js server (Express)
+
+Login sistem (korisnici + bcrypt + SQLite)
+
+Sesije sa sigurnim čuvanjem (SQLite Store)
+
+Pravilne putanje (apsolutni pathovi – PM2 kompatibilni)
+
+PM2 proces manager – stabilan na našem VPS-u u Singapuru
+
+Eliminacija svih modula koji se ruše kada se server startuje preko PM2
+
+Debug sistem (PATH TEST, SESSION DEBUG, HEALTH CHECK)
+
+🟦 2. Šta je urađeno u Fazi 1 (kompletna lista)
+✔ 2.1 Postavljen je Express server
+
+– ejs template engine
+– express-ejs-layouts
+– public folder
+– views folder
+– layout sistem
+– static serving
+
+✔ 2.2 Napravljen je kompletan login sistem
+
+Moduli:
+
+/web/auth/auth.js – SQLite user DB, bcrypt hashing
+
+/web/routes/auth.js – rute za login/logout
+
+default admin user automatski generisan:
+admin / admin123
+
+✔ 2.3 SQLite baza korisnika generisana automatski
+
+Fajl:
+
+/data/users.db
+
+
+Tabela:
+
+users (id, username, password, createdAt)
+
+✔ 2.4 Napravljen session sistem – SQLite store
+
+Direktorijum:
+
+/data/sessions/sessions.db
+
+
+Korišćen modul:
+
+connect-sqlite3
+
+
+Sesije se čuvaju 30 minuta i rade i pod PM2 procesima.
+
+✔ 2.5 Napravljen globalni fix za PM2 + express-session
+
+PM2 je pokušavao da učita:
+
+express-session/session/store
+express-session/session/memory
+./session
+
+
+ali je PM2 preload sistem kvario putanje i generisao:
+
+❌ MODULE_NOT_FOUND
+
+Rešenje:
+
+✔ Override Node.js loader-a:
+
+import Module from "module";
+
+const originalLoad = Module._load;
+
+Module._load = function(request, parent, isMain) {
+  if (request.includes("express-session/session/store")) {
+    return originalLoad.apply(this, ["/home/aiuser/scalper-base/node_modules/express-session/session/store.js", parent, isMain]);
+  }
+  return originalLoad.apply(this, arguments);
+};
+
+
+Ovo sprječava PM2 da traži pogrešne module.
+
+✔ 2.6 Napravljen PATH sistem (apsolutne putanje)
+
+paths.js sada generiše apsolutne putanje poput:
+
+PROJECT_ROOT
+
+DATA_DIR
+
+TMP_DIR
+
+SYSTEM_DIR
+
+ORDERBOOK_DIR
+
+SESSIONS_DIR
+
+Ovo je ključan fix, jer PM2 NE koristi process.cwd() kao što koristi node index.js.
+
+✔ 2.7 Napravljen HEALTH monitor
+
+/src/monitoring/health.js pokreće:
+
+heartbeat log
+
+interval health check
+
+fail detection
+
+✔ 2.8 Implementiran SESSION DEBUG middleware
+
+Na svaki request vidimo:
+
+session ID
+
+user objekt (prijavljen ili ne)
+
+cookie info
+
+Pomaže u identifikaciji login problema.
+
+✔ 2.9 Total rebuild PM2 na serveru
+
+Server je imao:
+
+PM2 6.x (root)
+PM2 6.x (aiuser)
+PM2 5.x
+
+
+To je pravilo haos.
+
+Mi smo uradili:
+
+sudo pkill -f PM2
+sudo rm -rf /root/.pm2
+sudo rm -rf /home/aiuser/.pm2
+sudo rm -rf /usr/lib/node_modules/pm2
+sudo chown -R aiuser:aiuser /usr/lib/node_modules
+sudo chown -R aiuser:aiuser /usr/bin
+npm install -g pm2
+
+
+Na kraju ostao je samo:
+
+✔ PM2 6.0.13 — potpuno čist i stabilan
+
+✔ 2.10 PM2 sada radi ispravno
+
+Test komanda:
+
+pm2 start web/server.js --name dashboard
+pm2 save
+
+🟥 3. Problemi koji su se pojavili i kako smo ih rešili
+❌ Problem 1 — MODULE_NOT_FOUND: express-session/session/store.js
+🔍 Uzrok:
+
+PM2 injectuje svoj loader u require i remeti path za ESM module.
+
+✔ Rešenje:
+
+Napravili smo Node.js hook:
+
+Module._load override
+
+
+→ sada PM2 uvek učitava PRAVU verziju fajla.
+
+❌ Problem 2 — SQLITE_CANTOPEN
+
+Često se javlja ispod PM2 sa greškom:
+
+Error: SQLITE_CANTOPEN: unable to open database file
+
+Uzrok:
+
+PM2 startuje aplikaciju iz različitog cwd, pa SQLite pokušava da otvori DB u pogrešnom direktorijumu.
+
+Rešenje:
+
+✔ Apsolutni pathovi u paths.js
+✔ Kreiranje foldera pre kreiranja DB
+✔ Test read/write za sessions folder
+✔ Silent ignore za CANTOPEN noise (ali ne za realne greške)
+
+❌ Problem 3 — PM2 phantom proces zauzima port 8080
+Uzrok:
+
+Nekada PM2 ostavi zombija iza sebe.
+
+Rešenje:
+sudo lsof -i :8080
+kill -9 PID
+
+❌ Problem 4 — Duplirani PM2 instalirani (root + aiuser)
+Uzrok:
+
+Rani globalni PM2 instalacije.
+
+Rešenje:
+
+Potpuno čišćenje root i user PM2 instanci i reinstall.
+
+❌ Problem 5 — users.db nije postojao pa login nije radio
+Rešenje:
+
+U auth.js dodato:
+
+CREATE TABLE IF NOT EXISTS users
+
+
+i:
+
+if no users -> create default admin
+
+🟩 4. Kako rešavati ovakve probleme u budućnosti
+🔧 4.1 Ako se pojavi SQLITE_CANTOPEN
+
+Proveri da li folder postoji
+
+Proveri permissions:
+
+ls -la /path
+chown -R aiuser:aiuser /path
+chmod -R 755 /path
+
+
+Proveri da nije PM2 pogrešno učitao cwd:
+– koristi apsolutne putanje
+
+🔧 4.2 Ako PM2 ne može da učita module
+
+Uvek uraditi:
+
+pm2 logs --lines 100
+
+
+Ako piše MODULE_NOT_FOUND, rešenje je:
+
+dodati override u Module._load
+
+ili proveriti da li postoji dupli PM2
+
+🔧 4.3 Ako port 8080 ne radi
+sudo lsof -i :8080
+kill -9 PID
+pm2 restart dashboard
+
+🔧 4.4 Ako login prestane da radi
+
+obriši users.db
+
+rm data/users.db
+pm2 restart dashboard
+
+
+default admin će se ponovo kreirati.
+
+💠 5. Zaključak
+
+U Fazi 1:
+
+očistili smo VPS od duplih PM2
+
+stabilizovali loader i module
+
+stabilizovali sessions
+
+napravili korisničku bazu
+
+omogućili login
+
+omogućili da PM2 radi identično kao node server.js
+
+dashboard je sada potpuno stabilan i spreman za Fazu 2
