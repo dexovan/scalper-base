@@ -8,6 +8,8 @@ import {
   refreshUniversePeriodically
 } from "./market/universe.js";
 
+import { initPublicConnection } from "./connectors/bybitPublic.js";
+import { subscribeSymbols } from "./connectors/bybitPublic.js";
 import CONFIG from "./config/index.js";
 
 async function startEngine() {
@@ -15,6 +17,11 @@ async function startEngine() {
 
   // 1. Initial Universe fetch
   await initUniverse();
+
+  await initPublicConnection();
+
+  const uni = getUniverseSnapshot();
+  subscribeSymbols(uni.prime);
 
   // 2. Start periodic background refresh
   refreshUniversePeriodically();
