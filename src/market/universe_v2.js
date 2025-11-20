@@ -17,8 +17,8 @@ const DATA_DIR = path.resolve(__dirname, "../../data/system");
 // ⚠️ v2 snapshot, da ne diramo postojeći universe.json dok ne proverimo format
 const UNIVERSE_FILE = path.join(DATA_DIR, "universe.v2.json");
 
-// Za sada fiksna lista; kasnije ćemo prebaciti u CONFIG.primeSymbols
-const DEFAULT_PRIME_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"];
+// Prime simboli koji stvarno postoje na Bybit-u (verifikovano)
+const DEFAULT_PRIME_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "DOTUSDT", "AVAXUSDT"];
 
 const UniverseState = {
   fetchedAt: null,
