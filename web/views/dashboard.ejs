@@ -1,3 +1,26 @@
+<style>
+/* Custom scrollbar for trades table */
+.scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+    background: #1e293b;
+    border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+/* For Firefox */
+.scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #475569 #1e293b;
+}
+</style>
+
 <div class="space-y-6">
 
     <!-- Welcome / Hero -->
@@ -52,19 +75,19 @@
         <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
             <div class="flex items-center justify-between mb-3">
                 <h4 class="text-sm font-semibold text-slate-300">Recent Trades</h4>
-                <div class="text-xs text-slate-500">Last 50 trades</div>
+                <div class="text-xs text-slate-500">Last 25 trades</div>
             </div>
-            <div class="overflow-x-auto">
-                <div class="max-h-80 overflow-y-auto border border-slate-700 rounded-lg">
+            <div class="border border-slate-700 rounded-lg">
+                <div class="max-h-60 overflow-y-auto scrollbar-thin scrollbar-track-slate-800 scrollbar-thumb-slate-600">
                     <table class="w-full text-xs">
-                        <thead class="sticky top-0 bg-slate-800 z-10">
-                            <tr class="border-b border-slate-700">
-                                <th class="text-left py-2 px-2 text-slate-400 font-medium">Time</th>
-                                <th class="text-left py-2 px-2 text-slate-400 font-medium">Symbol</th>
-                                <th class="text-left py-2 px-2 text-slate-400 font-medium">Side</th>
-                                <th class="text-right py-2 px-2 text-slate-400 font-medium">Price</th>
-                                <th class="text-right py-2 px-2 text-slate-400 font-medium">Size</th>
-                                <th class="text-left py-2 px-2 text-slate-400 font-medium">Dir</th>
+                        <thead class="sticky top-0 bg-slate-800 z-10 border-b border-slate-700">
+                            <tr>
+                                <th class="text-left py-2 px-2 text-slate-400 font-medium whitespace-nowrap">Time</th>
+                                <th class="text-left py-2 px-2 text-slate-400 font-medium whitespace-nowrap">Symbol</th>
+                                <th class="text-left py-2 px-2 text-slate-400 font-medium whitespace-nowrap">Side</th>
+                                <th class="text-right py-2 px-2 text-slate-400 font-medium whitespace-nowrap">Price</th>
+                                <th class="text-right py-2 px-2 text-slate-400 font-medium whitespace-nowrap">Size</th>
+                                <th class="text-left py-2 px-2 text-slate-400 font-medium whitespace-nowrap">Dir</th>
                             </tr>
                         </thead>
                         <tbody id="trades-container" class="bg-slate-900/60">
@@ -284,7 +307,7 @@
             }
         }        async updateTrades() {
             try {
-                const response = await fetch(`${this.tradesUrl}?limit=50`, { cache: "no-store" });
+                const response = await fetch(`${this.tradesUrl}?limit=25`, { cache: "no-store" });
                 const data = await response.json();
 
                 if (data.ok && data.trades) {
