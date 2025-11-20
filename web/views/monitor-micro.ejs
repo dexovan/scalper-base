@@ -212,13 +212,65 @@
             </div>
         </div>
 
+        <!-- Alert Configuration Panel (Hidden by default) -->
+        <div id="alert-panel" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div class="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full mx-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-slate-200">Alert Configuration</h3>
+                    <button id="close-alerts" class="text-slate-400 hover:text-slate-200">✕</button>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Spread Alert (%)</label>
+                        <input type="number" id="spread-alert" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm"
+                               placeholder="0.5" step="0.1" min="0">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Volume Spike (%)</label>
+                        <input type="number" id="volume-alert" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm"
+                               placeholder="200" step="50" min="0">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Price Movement (%)</label>
+                        <input type="number" id="price-alert" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm"
+                               placeholder="2.0" step="0.5" min="0">
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" id="sound-alerts" class="mr-2">
+                        <label class="text-sm text-slate-400">Enable sound alerts</label>
+                    </div>
+
+                    <div class="flex space-x-2 pt-2">
+                        <button id="save-alerts" class="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition-colors">
+                            Save Settings
+                        </button>
+                        <button id="test-alert" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition-colors">
+                            Test
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Data Status -->
         <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-slate-200">System Status</h3>
-                <button id="refresh-data" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors">
-                    Refresh
-                </button>
+                <div class="flex space-x-2">
+                    <button id="alerts-config" class="px-3 py-1 bg-orange-600 hover:bg-orange-700 rounded text-sm transition-colors">
+                        🔔 Alerts
+                    </button>
+                    <button id="export-data" class="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm transition-colors">
+                        📊 Export
+                    </button>
+                    <button id="refresh-data" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors">
+                        🔄 Refresh
+                    </button>
+                </div>
             </div>
 
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -249,9 +301,37 @@
         let currentSymbol = null;
         let charts = {};
         let updateIntervals = {};
+        let lastUpdateTimes = {};
+        let performanceMetrics = {
+            apiCalls: 0,
+            dataProcessed: 0,
+            avgLatency: 0,
+            memoryUsage: 0
+        };
+
+        // Performance optimization settings
+        const UPDATE_THROTTLE = {
+            orderbook: 2000,
+            trades: 3000,
+            candles: 15000,
+            metrics: 5000,
+            health: 10000
+        };
+
+        // Alert system
+        let alertSettings = {
+            spreadThreshold: 0.5,
+            volumeThreshold: 200,
+            priceThreshold: 2.0,
+            soundEnabled: true
+        };
+
+        let lastAlertTimes = {};
+        const ALERT_COOLDOWN = 30000; // 30 seconds between same type alerts
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', async function() {
+            loadAlertSettings();
             await loadSymbols();
             await loadSystemStats();
             initializeCharts();
@@ -442,13 +522,40 @@
             }
         });
 
+        // Throttle function to prevent excessive API calls
+        function shouldUpdate(type) {
+            const now = Date.now();
+            const lastUpdate = lastUpdateTimes[type] || 0;
+            const throttleTime = UPDATE_THROTTLE[type] || 5000;
+
+            if (now - lastUpdate >= throttleTime) {
+                lastUpdateTimes[type] = now;
+                return true;
+            }
+            return false;
+        }
+
+        // Performance monitoring
+        function trackPerformance(operation, startTime) {
+            const duration = Date.now() - startTime;
+            performanceMetrics.apiCalls++;
+            performanceMetrics.avgLatency = (performanceMetrics.avgLatency + duration) / 2;
+
+            // Update performance display if elements exist
+            const apiCallsElement = document.getElementById('api-calls-count');
+            const latencyElement = document.getElementById('avg-latency');
+            if (apiCallsElement) apiCallsElement.textContent = performanceMetrics.apiCalls;
+            if (latencyElement) latencyElement.textContent = Math.round(performanceMetrics.avgLatency) + 'ms';
+        }
+
         // Select symbol and load its data
         async function selectSymbol(symbol) {
             currentSymbol = symbol;
 
-            // Clear existing intervals
+            // Clear existing intervals and cleanup
             Object.values(updateIntervals).forEach(interval => clearInterval(interval));
             updateIntervals = {};
+            lastUpdateTimes = {};
 
             // Load symbol data
             await loadSymbolStats(symbol);
@@ -811,8 +918,21 @@
             return 5000; // default 5 seconds
         }
 
-        // Initialize charts
+        // Destroy existing charts to prevent memory leaks
+        function destroyCharts() {
+            Object.values(charts).forEach(chart => {
+                if (chart && typeof chart.destroy === 'function') {
+                    chart.destroy();
+                }
+            });
+            charts = {};
+        }
+
+        // Initialize charts with performance optimizations
         function initializeCharts() {
+            // Destroy existing charts first
+            destroyCharts();
+
             const ctx = document.getElementById('micro-candles-chart');
 
             charts.candles = new Chart(ctx, {
@@ -824,36 +944,90 @@
                         borderColor: '#3b82f6',
                         backgroundColor: 'rgba(59, 130, 246, 0.1)',
                         borderWidth: 1,
-                        fill: true
+                        fill: true,
+                        tension: 0.1
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    animation: {
+                        duration: 300,
+                        easing: 'easeInOutQuad'
+                    },
+                    parsing: false,
+                    normalized: true,
+                    datasets: {
+                        line: {
+                            pointRadius: 0,
+                            pointHoverRadius: 3
+                        }
+                    },
                     scales: {
                         x: {
                             type: 'time',
                             time: {
-                                unit: 'second'
+                                unit: 'second',
+                                displayFormats: {
+                                    second: 'HH:mm:ss'
+                                }
                             },
-                            grid: { color: '#374151' },
-                            ticks: { color: '#9ca3af' }
+                            grid: {
+                                color: '#374151',
+                                display: true
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                maxTicksLimit: 10
+                            }
                         },
                         y: {
-                            grid: { color: '#374151' },
-                            ticks: { color: '#9ca3af' }
+                            grid: {
+                                color: '#374151',
+                                display: true
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                maxTicksLimit: 8,
+                                callback: function(value) {
+                                    return parseFloat(value).toFixed(4);
+                                }
+                            }
                         }
                     },
                     plugins: {
-                        legend: { display: false }
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Price: ${parseFloat(context.parsed.y).toFixed(4)}`;
+                                }
+                            }
+                        },
+                        decimation: {
+                            enabled: true,
+                            algorithm: 'lttb',
+                            samples: 100,
+                            threshold: 200
+                        }
                     },
                     elements: {
                         point: { radius: 0 }
+                    },
+                    onHover: (event, activeElements) => {
+                        event.native.target.style.cursor = activeElements.length > 0 ? 'crosshair' : 'default';
                     }
                 }
             });
 
-            // Volume profile chart
+            // Volume profile chart with optimizations
             const volumeCtx = document.getElementById('volume-profile-chart');
             charts.volume = new Chart(volumeCtx, {
                 type: 'bar',
@@ -870,11 +1044,55 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    scales: {
-                        x: { grid: { color: '#374151' }, ticks: { color: '#9ca3af' } },
-                        y: { grid: { color: '#374151' }, ticks: { color: '#9ca3af' } }
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
                     },
-                    plugins: { legend: { display: false } }
+                    animation: {
+                        duration: 200,
+                        easing: 'easeOutQuart'
+                    },
+                    parsing: false,
+                    normalized: true,
+                    scales: {
+                        x: {
+                            grid: {
+                                color: '#374151',
+                                display: false
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                maxTicksLimit: 8
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: '#374151',
+                                display: true
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                maxTicksLimit: 6,
+                                callback: function(value) {
+                                    return value >= 1000 ? (value/1000).toFixed(1) + 'K' : value.toFixed(0);
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed.y;
+                                    return `Volume: ${value >= 1000 ? (value/1000).toFixed(1) + 'K' : value.toFixed(0)}`;
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -894,31 +1112,69 @@
 
         // Start real-time updates
         function startRealTimeUpdates() {
-            // Global stats update
+            // Global stats update with performance tracking
             updateIntervals.global = setInterval(async () => {
-                await loadSystemStats();
+                if (shouldUpdate('health')) {
+                    const startTime = Date.now();
+                    try {
+                        await loadSystemStats();
+                        trackPerformance('systemStats', startTime);
 
-                // Update data rate and other metrics
-                document.getElementById('data-rate').textContent = Math.floor(Math.random() * 500 + 100) + ' evt/s';
-                document.getElementById('storage-used').textContent = Math.floor(Math.random() * 50 + 20) + ' MB';
-                document.getElementById('events-per-min').textContent = Math.floor(Math.random() * 5000 + 1000);
-                document.getElementById('memory-usage').textContent = Math.floor(Math.random() * 30 + 40) + '%';
-            }, 5000);
+                        // Update performance metrics display
+                        performanceMetrics.memoryUsage = performance.memory ?
+                            Math.round(performance.memory.usedJSHeapSize / (1024 * 1024)) :
+                            Math.floor(Math.random() * 30 + 40);
+
+                        // Update data rate and other metrics
+                        document.getElementById('data-rate').textContent = Math.floor(Math.random() * 500 + 100) + ' evt/s';
+                        document.getElementById('storage-used').textContent = Math.floor(Math.random() * 50 + 20) + ' MB';
+                        document.getElementById('events-per-min').textContent = Math.floor(Math.random() * 5000 + 1000);
+                        document.getElementById('memory-usage').textContent = performanceMetrics.memoryUsage + ' MB';
+
+                    } catch (error) {
+                        console.error('System stats error:', error);
+                    }
+                }
+            }, 1000);
         }
 
-        // Start symbol-specific updates
+        // Start symbol-specific updates with throttling
         function startSymbolUpdates(symbol) {
-            // Orderbook updates
-            updateIntervals.orderbook = setInterval(() => loadOrderbook(symbol), 2000);
+            // Consolidated update function with throttling
+            const updateSymbolData = async () => {
+                try {
+                    const promises = [];
 
-            // Trade flow updates
-            updateIntervals.trades = setInterval(() => loadTradeFlow(symbol), 3000);
+                    // Throttled updates
+                    if (shouldUpdate('orderbook')) {
+                        promises.push(loadOrderbook(symbol).catch(console.warn));
+                    }
 
-            // Candle updates
-            updateIntervals.candles = setInterval(() => loadMicroCandles(symbol), 10000);
+                    if (shouldUpdate('trades')) {
+                        promises.push(loadTradeFlow(symbol).catch(console.warn));
+                    }
 
-            // Live metrics updates
-            updateIntervals.metrics = setInterval(() => updateLiveMetrics(symbol), 1000);
+                    if (shouldUpdate('candles')) {
+                        promises.push(loadMicroCandles(symbol).catch(console.warn));
+                    }
+
+                    if (shouldUpdate('metrics')) {
+                        promises.push(Promise.resolve().then(() => updateLiveMetrics(symbol)));
+                    }
+
+                    // Execute all updates concurrently
+                    await Promise.allSettled(promises);
+
+                } catch (error) {
+                    console.error('Update error:', error);
+                }
+            };
+
+            // Single interval for all symbol updates (more efficient)
+            updateIntervals.symbolData = setInterval(updateSymbolData, 1000);
+
+            // Initial load
+            updateSymbolData();
         }
 
         // Update live metrics
@@ -928,13 +1184,23 @@
             const spread = basePrice * (0.001 + Math.random() * 0.001);
             const spreadPercent = (spread / basePrice) * 100;
             const midPrice = basePrice + (spread / 2);
+            const volume = Math.floor(Math.random() * 10000 + 5000);
 
             document.getElementById('spread-value').textContent = spread.toFixed(4);
             document.getElementById('spread-percent').textContent = spreadPercent.toFixed(3) + '%';
             document.getElementById('mid-price').textContent = midPrice.toFixed(4);
-            document.getElementById('volume-1m').textContent = Math.floor(Math.random() * 10000 + 5000).toLocaleString();
+            document.getElementById('volume-1m').textContent = volume.toLocaleString();
             document.getElementById('trades-1m').textContent = Math.floor(Math.random() * 500 + 100);
             document.getElementById('vwap').textContent = (midPrice * (1 + (Math.random() - 0.5) * 0.001)).toFixed(4);
+
+            // Check for alerts
+            checkAlerts(symbol, {
+                spreadPercent,
+                spread,
+                midPrice,
+                volume,
+                basePrice
+            });
         }
 
         // Timeframe selector
@@ -944,9 +1210,240 @@
             }
         });
 
-        // Refresh button
+        // Export functionality
+        async function exportData() {
+            if (!currentSymbol) {
+                alert('Please select a symbol first');
+                return;
+            }
+
+            const exportData = {
+                symbol: currentSymbol,
+                timestamp: new Date().toISOString(),
+                performance: performanceMetrics,
+                orderbook: null,
+                trades: [],
+                candles: []
+            };
+
+            try {
+                // Fetch fresh data for export
+                const [orderbookRes, tradesRes, candlesRes] = await Promise.allSettled([
+                    fetch(`/api/symbol/${currentSymbol}/orderbook`),
+                    fetch(`/api/symbol/${currentSymbol}/trades?limit=100`),
+                    fetch(`/api/symbol/${currentSymbol}/micro-candles?timeframe=${document.getElementById('timeframe-selector').value}`)
+                ]);
+
+                if (orderbookRes.status === 'fulfilled' && orderbookRes.value.ok) {
+                    exportData.orderbook = await orderbookRes.value.json();
+                }
+
+                if (tradesRes.status === 'fulfilled' && tradesRes.value.ok) {
+                    const tradesData = await tradesRes.value.json();
+                    exportData.trades = tradesData.trades || [];
+                }
+
+                if (candlesRes.status === 'fulfilled' && candlesRes.value.ok) {
+                    const candlesData = await candlesRes.value.json();
+                    exportData.candles = candlesData.candles || [];
+                }
+
+                // Create and download JSON file
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const dataBlob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(dataBlob);
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `microstructure_${currentSymbol}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+
+                // Show success message
+                const exportBtn = document.getElementById('export-data');
+                const originalText = exportBtn.textContent;
+                exportBtn.textContent = '✅ Exported';
+                exportBtn.style.backgroundColor = '#10b981';
+                setTimeout(() => {
+                    exportBtn.textContent = originalText;
+                    exportBtn.style.backgroundColor = '#059669';
+                }, 2000);
+
+            } catch (error) {
+                console.error('Export failed:', error);
+                alert('Export failed. Please try again.');
+            }
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl/Cmd + E for export
+            if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+                e.preventDefault();
+                exportData();
+            }
+
+            // Ctrl/Cmd + R for refresh
+            if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+                e.preventDefault();
+                document.getElementById('refresh-data').click();
+            }
+
+            // ESC to clear symbol selection
+            if (e.key === 'Escape') {
+                document.getElementById('symbol-selector').value = '';
+                clearSymbolData();
+            }
+        });
+
+        // Alert system functions
+        function showAlert(type, message, data = {}) {
+            const now = Date.now();
+            const lastAlert = lastAlertTimes[type] || 0;
+
+            if (now - lastAlert < ALERT_COOLDOWN) return;
+            lastAlertTimes[type] = now;
+
+            // Visual notification
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'fixed top-4 right-4 bg-red-600 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm';
+            alertDiv.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="font-semibold">${type.toUpperCase()} ALERT</div>
+                        <div class="text-sm">${message}</div>
+                        <div class="text-xs opacity-75">${new Date().toLocaleTimeString()}</div>
+                    </div>
+                    <button class="ml-4 text-white hover:text-gray-200" onclick="this.parentElement.parentElement.remove()">✕</button>
+                </div>
+            `;
+
+            document.body.appendChild(alertDiv);
+
+            // Auto remove after 10 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 10000);
+
+            // Sound alert
+            if (alertSettings.soundEnabled) {
+                playAlertSound();
+            }
+
+            // Log to console
+            console.warn(`🚨 ${type} Alert:`, message, data);
+        }
+
+        function playAlertSound() {
+            try {
+                // Create audio context for beep sound
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            } catch (error) {
+                console.warn('Could not play alert sound:', error);
+            }
+        }
+
+        function checkAlerts(symbol, data) {
+            if (!symbol || !data) return;
+
+            // Spread alert
+            if (data.spreadPercent && data.spreadPercent > alertSettings.spreadThreshold) {
+                showAlert('spread', `${symbol}: Spread ${data.spreadPercent.toFixed(3)}% exceeds ${alertSettings.spreadThreshold}%`, data);
+            }
+
+            // Volume alert (simplified - would need historical data for proper implementation)
+            if (data.volume && data.volume > 50000) { // Placeholder logic
+                showAlert('volume', `${symbol}: High volume detected: ${data.volume.toLocaleString()}`, data);
+            }
+
+            // Price movement alert (would need price history)
+            if (data.priceChange && Math.abs(data.priceChange) > alertSettings.priceThreshold) {
+                showAlert('price', `${symbol}: Price moved ${data.priceChange.toFixed(2)}%`, data);
+            }
+        }
+
+        // Alert panel management
+        function loadAlertSettings() {
+            try {
+                const saved = localStorage.getItem('microstructure_alerts');
+                if (saved) {
+                    alertSettings = { ...alertSettings, ...JSON.parse(saved) };
+                }
+            } catch (error) {
+                console.warn('Could not load alert settings:', error);
+            }
+        }
+
+        function saveAlertSettings() {
+            try {
+                localStorage.setItem('microstructure_alerts', JSON.stringify(alertSettings));
+
+                // Show success
+                const saveBtn = document.getElementById('save-alerts');
+                const originalText = saveBtn.textContent;
+                saveBtn.textContent = '✅ Saved';
+                setTimeout(() => {
+                    saveBtn.textContent = originalText;
+                }, 1500);
+            } catch (error) {
+                console.error('Could not save alert settings:', error);
+                alert('Failed to save settings');
+            }
+        }
+
+        // Event listeners
+        document.getElementById('export-data').addEventListener('click', exportData);
+
+        // Alert system event listeners
+        document.getElementById('alerts-config').addEventListener('click', () => {
+            document.getElementById('alert-panel').classList.remove('hidden');
+
+            // Populate current settings
+            document.getElementById('spread-alert').value = alertSettings.spreadThreshold;
+            document.getElementById('volume-alert').value = alertSettings.volumeThreshold;
+            document.getElementById('price-alert').value = alertSettings.priceThreshold;
+            document.getElementById('sound-alerts').checked = alertSettings.soundEnabled;
+        });
+
+        document.getElementById('close-alerts').addEventListener('click', () => {
+            document.getElementById('alert-panel').classList.add('hidden');
+        });
+
+        document.getElementById('save-alerts').addEventListener('click', () => {
+            alertSettings.spreadThreshold = parseFloat(document.getElementById('spread-alert').value) || 0.5;
+            alertSettings.volumeThreshold = parseFloat(document.getElementById('volume-alert').value) || 200;
+            alertSettings.priceThreshold = parseFloat(document.getElementById('price-alert').value) || 2.0;
+            alertSettings.soundEnabled = document.getElementById('sound-alerts').checked;
+
+            saveAlertSettings();
+        });
+
+        document.getElementById('test-alert').addEventListener('click', () => {
+            showAlert('test', 'This is a test alert to verify the system is working correctly');
+        });
+
         document.getElementById('refresh-data').addEventListener('click', function() {
             if (currentSymbol) {
+                // Clear throttling to force immediate update
+                lastUpdateTimes = {};
                 loadSymbolStats(currentSymbol);
                 loadOrderbook(currentSymbol);
                 loadTradeFlow(currentSymbol);
