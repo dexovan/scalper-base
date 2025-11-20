@@ -345,28 +345,39 @@
 
         // Timeout wrapper for fetch calls
         async fetchWithTimeout(url, options = {}, timeout = 10000) {
+            console.log(`🌐 fetchWithTimeout called: ${url}`);
+            console.log("⚙️ Options:", options);
+            console.log("⏰ Timeout:", timeout + "ms");
+
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            const timeoutId = setTimeout(() => {
+                console.log(`⏰ Request timeout triggered for: ${url}`);
+                controller.abort();
+            }, timeout);
 
             try {
+                console.log("🚀 Starting fetch request...");
                 const response = await fetch(url, {
                     ...options,
                     signal: controller.signal,
                     cache: "no-store",
                     headers: { 'Cache-Control': 'no-cache', ...options.headers }
                 });
+                console.log("✅ Fetch completed successfully");
                 clearTimeout(timeoutId);
                 return response;
             } catch (error) {
+                console.log("❌ Fetch failed:", error);
                 clearTimeout(timeoutId);
                 if (error.name === 'AbortError') {
-                    throw new Error(`Request timeout after ${timeout}ms`);
+                    const timeoutError = new Error(`Request timeout after ${timeout}ms`);
+                    console.error("⏰ Timeout error:", timeoutError);
+                    throw timeoutError;
                 }
+                console.error("💥 Network error:", error);
                 throw error;
             }
-        }
-
-        async updateTickers() {
+        }        async updateTickers() {
             try {
                 const response = await this.fetchWithTimeout(this.tickersUrl);
 
@@ -494,23 +505,37 @@
         }
 
         async updateUniverse() {
+            console.log("🔄 Starting updateUniverse...");
+            console.log("📡 Universe URL:", this.universeUrl);
+
             try {
+                console.log("⏳ Fetching universe data...");
                 const response = await this.fetchWithTimeout(this.universeUrl);
+                console.log("📥 Response received:", response.status, response.statusText);
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
+                console.log("🔍 Parsing JSON response...");
                 const data = await response.json();
+                console.log("📊 Universe data received:", data);
 
                 if (data.ok && data.universe) {
+                    console.log("✅ Valid universe data, rendering stats...");
                     this.renderUniverseStats(data.universe);
+                    console.log("🎯 Updating symbols for category:", this.currentCategory);
                     await this.updateSymbols(this.currentCategory);
                 } else if (!data.ok) {
-                    console.error("Universe API error:", data.error);
+                    console.error("❌ Universe API error:", data.error);
                 }
             } catch (error) {
-                console.error("Failed to fetch universe:", error);
+                console.error("💥 Failed to fetch universe:", error);
+                console.error("🔍 Error details:", {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
 
                 // Fallback: Try direct API if proxy fails
                 if (error.message.includes('Failed to fetch')) {
@@ -534,26 +559,40 @@
         }
 
         async updateSymbols(category = 'Prime') {
+            console.log(`🎯 Starting updateSymbols for category: ${category}`);
+
             try {
                 const apiUrl = category === 'All' ?
                     '/monitor/api/symbols/All' :
                     `/monitor/api/symbols/${category}`;
 
+                console.log("📡 Symbols API URL:", apiUrl);
+                console.log("⏳ Fetching symbols data...");
+
                 const response = await this.fetchWithTimeout(apiUrl);
+                console.log("📥 Symbols response:", response.status, response.statusText);
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
+                console.log("🔍 Parsing symbols JSON...");
                 const data = await response.json();
+                console.log("📊 Symbols data received:", data);
 
                 if (data.ok && data.symbols) {
+                    console.log(`✅ Valid symbols data (${data.symbols.length} symbols), rendering...`);
                     this.renderSymbols(data.symbols, category);
                 } else if (!data.ok) {
-                    console.error("Symbols API error:", data.error);
+                    console.error("❌ Symbols API error:", data.error);
                 }
             } catch (error) {
-                console.error(`Failed to fetch ${category} symbols:`, error);
+                console.error(`💥 Failed to fetch ${category} symbols:`, error);
+                console.error("🔍 Symbols error details:", {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
                 this.renderSymbolsError(`${category} symbols unavailable`);
             }
         }
@@ -782,23 +821,54 @@
         }
 
         start() {
+            console.log("🚀 Starting Dashboard API...");
+            console.log("📊 Initial data load...");
+
             // Initial load
+            console.log("📈 Updating tickers...");
             this.updateTickers();
+
+            console.log("💱 Updating trades...");
             this.updateTrades();
+
+            console.log("💾 Updating storage...");
             this.updateStorage();
+
+            console.log("🌌 Updating universe...");
             this.updateUniverse();
 
+            console.log("⏰ Setting up polling intervals...");
             // Set up polling intervals
-            setInterval(() => this.updateTickers(), 1000);  // 1 second for tickers
-            setInterval(() => this.updateTrades(), 2000);   // 2 seconds for trades
-            setInterval(() => this.updateStorage(), 5000);  // 5 seconds for storage
-            setInterval(() => this.updateUniverse(), 30000); // 30 seconds for universe
+            setInterval(() => {
+                console.log("🔄 Interval: updating tickers");
+                this.updateTickers();
+            }, 1000);  // 1 second for tickers
+
+            setInterval(() => {
+                console.log("🔄 Interval: updating trades");
+                this.updateTrades();
+            }, 2000);   // 2 seconds for trades
+
+            setInterval(() => {
+                console.log("🔄 Interval: updating storage");
+                this.updateStorage();
+            }, 5000);  // 5 seconds for storage
+
+            setInterval(() => {
+                console.log("🔄 Interval: updating universe");
+                this.updateUniverse();
+            }, 30000); // 30 seconds for universe
+
+            console.log("✅ Dashboard API started successfully!");
         }
     }
 
     // Start dashboard when DOM is ready
     document.addEventListener('DOMContentLoaded', () => {
+        console.log("🎯 DOM Content Loaded - Starting Dashboard...");
+        console.log("🏗️ Creating DashboardAPI instance...");
         const dashboard = new DashboardAPI();
+        console.log("▶️ Starting dashboard...");
         dashboard.start();
 
         // Set up Universe category tab handlers
