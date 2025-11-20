@@ -139,12 +139,17 @@
                         <h3 class="text-lg font-semibold text-slate-200">Micro Candles</h3>
                         <div class="flex space-x-2">
                             <select id="timeframe-selector" class="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
-                                <option value="1s">1s</option>
-                                <option value="5s" selected>5s</option>
-                                <option value="15s">15s</option>
-                                <option value="30s">30s</option>
-                                <option value="1m">1m</option>
+                                <option value="1s">1s (Ultra High-Freq)</option>
+                                <option value="5s" selected>5s (High-Freq)</option>
+                                <option value="15s">15s (Med-Freq)</option>
+                                <option value="30s">30s (Low-Freq)</option>
+                                <option value="1m">1m (Standard)</option>
+                                <option value="5m">5m (Smooth)</option>
+                                <option value="15m">15m (Trend)</option>
                             </select>
+                            <button id="timeframe-info" class="px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs transition-colors">
+                                ℹ️
+                            </button>
                         </div>
                     </div>
 
@@ -909,13 +914,137 @@
             return candles;
         }
 
-        // Parse timeframe to milliseconds
+        // Enhanced timeframe handling
+        const TIMEFRAME_CONFIG = {
+            '1s': {
+                ms: 1000,
+                maxPoints: 300,
+                updateRate: 1000,
+                description: 'Ultra high-frequency: Perfect for scalping and tick analysis',
+                aggregation: 'none'
+            },
+            '5s': {
+                ms: 5000,
+                maxPoints: 240,
+                updateRate: 2000,
+                description: 'High-frequency: Ideal for short-term momentum tracking',
+                aggregation: 'simple'
+            },
+            '15s': {
+                ms: 15000,
+                maxPoints: 200,
+                updateRate: 5000,
+                description: 'Medium-frequency: Good balance between noise and signal',
+                aggregation: 'weighted'
+            },
+            '30s': {
+                ms: 30000,
+                maxPoints: 160,
+                updateRate: 10000,
+                description: 'Low-frequency: Smoother trends, less market noise',
+                aggregation: 'weighted'
+            },
+            '1m': {
+                ms: 60000,
+                maxPoints: 120,
+                updateRate: 15000,
+                description: 'Standard timeframe: Traditional minute-based analysis',
+                aggregation: 'ohlc'
+            },
+            '5m': {
+                ms: 300000,
+                maxPoints: 100,
+                updateRate: 30000,
+                description: 'Smooth analysis: Reduces noise, shows clear patterns',
+                aggregation: 'ohlc'
+            },
+            '15m': {
+                ms: 900000,
+                maxPoints: 80,
+                updateRate: 60000,
+                description: 'Trend analysis: Focus on medium-term price movements',
+                aggregation: 'ohlc'
+            }
+        };
+
+        // Parse timeframe to milliseconds (legacy support)
         function parseTimeframe(timeframe) {
+            const config = TIMEFRAME_CONFIG[timeframe];
+            if (config) return config.ms;
+
             const value = parseInt(timeframe);
             if (timeframe.includes('s')) return value * 1000;
             if (timeframe.includes('m')) return value * 60 * 1000;
             if (timeframe.includes('h')) return value * 60 * 60 * 1000;
             return 5000; // default 5 seconds
+        }
+
+        // Get timeframe configuration
+        function getTimeframeConfig(timeframe) {
+            return TIMEFRAME_CONFIG[timeframe] || TIMEFRAME_CONFIG['5s'];
+        }
+
+        // Data aggregation for different timeframes
+        function aggregateCandles(candles, timeframe) {
+            const config = getTimeframeConfig(timeframe);
+
+            if (config.aggregation === 'none' || !candles || candles.length === 0) {
+                return candles || [];
+            }
+
+            const aggregated = [];
+            const bucketSize = config.ms;
+
+            // Group candles by timeframe buckets
+            const buckets = {};
+            candles.forEach(candle => {
+                const timestamp = new Date(candle.timestamp).getTime();
+                const bucketKey = Math.floor(timestamp / bucketSize) * bucketSize;
+
+                if (!buckets[bucketKey]) {
+                    buckets[bucketKey] = [];
+                }
+                buckets[bucketKey].push(candle);
+            });
+
+            // Aggregate each bucket
+            Object.keys(buckets).sort().forEach(bucketKey => {
+                const bucket = buckets[bucketKey];
+
+                if (config.aggregation === 'ohlc') {
+                    // OHLC aggregation
+                    aggregated.push({
+                        timestamp: new Date(parseInt(bucketKey)),
+                        open: bucket[0].price,
+                        high: Math.max(...bucket.map(c => c.price)),
+                        low: Math.min(...bucket.map(c => c.price)),
+                        close: bucket[bucket.length - 1].price,
+                        volume: bucket.reduce((sum, c) => sum + (c.volume || 0), 0),
+                        price: bucket[bucket.length - 1].price // For line chart compatibility
+                    });
+                } else if (config.aggregation === 'weighted') {
+                    // Volume-weighted average
+                    const totalVolume = bucket.reduce((sum, c) => sum + (c.volume || 1), 0);
+                    const weightedPrice = bucket.reduce((sum, c) => sum + c.price * (c.volume || 1), 0) / totalVolume;
+
+                    aggregated.push({
+                        timestamp: new Date(parseInt(bucketKey)),
+                        price: weightedPrice,
+                        volume: totalVolume
+                    });
+                } else {
+                    // Simple average
+                    const avgPrice = bucket.reduce((sum, c) => sum + c.price, 0) / bucket.length;
+
+                    aggregated.push({
+                        timestamp: new Date(parseInt(bucketKey)),
+                        price: avgPrice,
+                        volume: bucket.reduce((sum, c) => sum + (c.volume || 0), 0)
+                    });
+                }
+            });
+
+            return aggregated.slice(-config.maxPoints);
         }
 
         // Destroy existing charts to prevent memory leaks
@@ -1097,17 +1226,26 @@
             });
         }
 
-        // Update candle chart
+        // Update candle chart with aggregation support
         function updateCandleChart(candles) {
             if (!charts.candles || !candles || candles.length === 0) return;
 
-            const data = candles.map(candle => ({
+            const timeframe = document.getElementById('timeframe-selector').value;
+            const aggregatedCandles = aggregateCandles(candles, timeframe);
+
+            const data = aggregatedCandles.map(candle => ({
                 x: new Date(candle.timestamp),
-                y: parseFloat(candle.close)
+                y: parseFloat(candle.close || candle.price)
             }));
 
+            // Update chart with performance optimization
             charts.candles.data.datasets[0].data = data;
-            charts.candles.update('none');
+
+            // Adjust animation based on timeframe
+            const config = getTimeframeConfig(timeframe);
+            const animationDuration = config.ms < 5000 ? 0 : 200; // No animation for very fast timeframes
+
+            charts.candles.update(animationDuration > 0 ? 'active' : 'none');
         }
 
         // Start real-time updates
@@ -1203,11 +1341,58 @@
             });
         }
 
-        // Timeframe selector
+        // Enhanced timeframe selector with info
         document.getElementById('timeframe-selector').addEventListener('change', function() {
+            const timeframe = this.value;
+            const config = getTimeframeConfig(timeframe);
+
+            // Update chart immediately if symbol is selected
             if (currentSymbol) {
                 loadMicroCandles(currentSymbol);
             }
+
+            // Show brief feedback
+            const selector = this;
+            const originalBg = selector.style.backgroundColor;
+            selector.style.backgroundColor = '#059669';
+            setTimeout(() => {
+                selector.style.backgroundColor = originalBg;
+            }, 300);
+        });
+
+        // Timeframe info tooltip
+        document.getElementById('timeframe-info').addEventListener('click', function() {
+            const timeframe = document.getElementById('timeframe-selector').value;
+            const config = getTimeframeConfig(timeframe);
+
+            const tooltip = document.createElement('div');
+            tooltip.className = 'fixed bg-slate-800 border border-slate-600 rounded-lg p-4 shadow-lg z-50 max-w-sm';
+            tooltip.style.left = this.offsetLeft + 'px';
+            tooltip.style.top = (this.offsetTop + this.offsetHeight + 5) + 'px';
+
+            tooltip.innerHTML = `
+                <div class="text-sm">
+                    <div class="font-semibold text-slate-200 mb-2">Timeframe: ${timeframe}</div>
+                    <div class="text-slate-400 mb-2">${config.description}</div>
+                    <div class="text-xs text-slate-500">
+                        <div>Update Rate: ${config.updateRate/1000}s</div>
+                        <div>Max Points: ${config.maxPoints}</div>
+                        <div>Aggregation: ${config.aggregation}</div>
+                    </div>
+                </div>
+                <button class="mt-2 text-xs text-blue-400 hover:text-blue-300" onclick="this.parentElement.remove()">
+                    Close
+                </button>
+            `;
+
+            document.body.appendChild(tooltip);
+
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (tooltip.parentNode) {
+                    tooltip.remove();
+                }
+            }, 5000);
         });
 
         // Export functionality
