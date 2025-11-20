@@ -346,7 +346,7 @@
             this.storageUrl = "/monitor/api/storage";
             this.summaryUrl = "/monitor/api/summary";
             this.universeUrl = "/monitor/api/universe";
-            this.symbolsUrl = "/monitor/api/symbols";
+            this.symbolsUrl = "/api/symbols";
 
             this.wsConnected = false;
             this.lastUpdate = Date.now();
@@ -604,9 +604,7 @@
             console.log(`🎯 Starting updateSymbols for category: ${category}`);
 
             try {
-                const apiUrl = category === 'All' ?
-                    '/monitor/api/symbols/All' :
-                    `/monitor/api/symbols/${category}`;
+                const apiUrl = this.symbolsUrl;
 
                 console.log("📡 Symbols API URL:", apiUrl);
                 console.log("⏳ Fetching symbols data...");
@@ -623,8 +621,15 @@
                 console.log("📊 Symbols data received:", data);
 
                 if (data.ok && data.symbols) {
-                    console.log(`✅ Valid symbols data (${data.symbols.length} symbols), rendering...`);
-                    this.renderSymbols(data.symbols, category);
+                    // Filter symbols by category on frontend
+                    let filteredSymbols = data.symbols;
+                    if (category !== 'All') {
+                        filteredSymbols = data.symbols.filter(symbol =>
+                            symbol.category && symbol.category.toLowerCase() === category.toLowerCase()
+                        );
+                    }
+                    console.log(`✅ Valid symbols data (${filteredSymbols.length} symbols for ${category}), rendering...`);
+                    this.renderSymbols(filteredSymbols, category);
                 } else if (!data.ok) {
                     console.error("❌ Symbols API error:", data.error);
                 }
