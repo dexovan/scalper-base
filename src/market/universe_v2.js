@@ -89,9 +89,12 @@ function computeStats() {
   UniverseState.stats = stats;
 }
 
-function pickCategory(symbol, isNewListing, primeSymbols) {
+function pickCategory(symbol, isNewListing, primeSymbols, hasExistingSnapshot = false) {
   if (primeSymbols.includes(symbol)) return "Prime";
-  if (isNewListing) return "Wild";
+
+  // Wild samo ako je stvarno novi listing (i imamo postojeći snapshot za poređenje)
+  if (isNewListing && hasExistingSnapshot) return "Wild";
+
   return "Normal";
 }
 
@@ -117,6 +120,7 @@ export async function initUniverse(options = {}) {
   UniverseState.fetchedAt = result.fetchedAt || nowIso;
 
   const existingSymbols = UniverseState.symbols || {};
+  const hasExistingSnapshot = Object.keys(existingSymbols).length > 0;
   const nextSymbols = { ...existingSymbols };
 
   for (const inst of result.symbols) {
@@ -136,7 +140,7 @@ export async function initUniverse(options = {}) {
       minOrderQty: inst.minOrderQty,
       lotSize: inst.lotSize,
       maxLeverage: inst.maxLeverage,
-      category: pickCategory(symbol, isNewListing, primeSymbols),
+      category: pickCategory(symbol, isNewListing, primeSymbols, hasExistingSnapshot),
       isNewListing,
       firstSeenAt,
       lastUpdatedAt: nowIso,
