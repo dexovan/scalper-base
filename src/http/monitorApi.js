@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 
 import metrics from "../core/metrics.js";
 import wsMetrics from "../monitoring/wsMetrics.js";
+import { getStorageStats } from "../utils/dataStorage.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
@@ -34,6 +35,46 @@ function tailLines(filePath, maxLines = 200) {
   } catch (err) {
     return ["<log read error>", err.message];
   }
+}
+
+// ============================================================
+// GLOBAL STATE FOR REAL-TIME DATA
+// ============================================================
+let latestTickers = new Map(); // symbol -> ticker data
+let recentTrades = []; // last 100 trades
+const MAX_RECENT_TRADES = 100;
+
+// Listen to bybitPublic events for real-time data
+export function attachRealtimeListeners(bybitPublic) {
+  bybitPublic.on('event', (eventData) => {
+    const { type, symbol, payload } = eventData;
+
+    if (type === 'ticker') {
+      latestTickers.set(symbol, {
+        symbol,
+        price: parseFloat(payload.lastPrice),
+        change24h: parseFloat(payload.price24hPcnt),
+        volume24h: parseFloat(payload.volume24h),
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (type === 'trade') {
+      const trade = {
+        symbol,
+        side: payload.S,
+        price: parseFloat(payload.p),
+        quantity: parseFloat(payload.v),
+        timestamp: new Date().toISOString(),
+        tickDirection: payload.L
+      };
+
+      recentTrades.unshift(trade);
+      if (recentTrades.length > MAX_RECENT_TRADES) {
+        recentTrades = recentTrades.slice(0, MAX_RECENT_TRADES);
+      }
+    }
+  });
 }
 
 // ============================================================
@@ -81,6 +122,53 @@ export function startMonitorApiServer(port = 8090) {
         ...errLines,
       ],
     });
+  });
+
+  // ============================================================
+  // GET /api/monitor/tickers - Real-time ticker data
+  // ============================================================
+  app.get("/api/monitor/tickers", (req, res) => {
+    const tickerArray = Array.from(latestTickers.values());
+    return res.json({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      tickers: tickerArray
+    });
+  });
+
+  // ============================================================
+  // GET /api/monitor/trades - Recent trade data
+  // ============================================================
+  app.get("/api/monitor/trades", (req, res) => {
+    const limit = parseInt(req.query.limit || "50", 10);
+    const limitedTrades = recentTrades.slice(0, Math.min(limit, MAX_RECENT_TRADES));
+
+    return res.json({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      trades: limitedTrades,
+      total: recentTrades.length
+    });
+  });
+
+  // ============================================================
+  // GET /api/monitor/storage - Storage statistics
+  // ============================================================
+  app.get("/api/monitor/storage", async (req, res) => {
+    try {
+      const stats = await getStorageStats();
+      return res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        storage: stats
+      });
+    } catch (error) {
+      return res.json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
   });
 
   // ============================================================

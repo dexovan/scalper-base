@@ -15,6 +15,8 @@ import {
   onPublicEvent
 } from "./connectors/bybitPublic.js";
 
+import { publicEmitter } from "./connectors/bybitPublic.js";
+
 import { initEventHub } from "./ws/eventHub.js";
 
 import { saveTicker, saveTrade, getStorageStats } from "./utils/dataStorage.js";
@@ -32,7 +34,7 @@ import { BybitPublicWS } from "./connectors/bybit/publicWS.js";
 // Phase 2 VARIJANTA B - Event handling for parsed ticker/trade data
 
 // Monitor API server (Opcija A)
-import { startMonitorApiServer } from "./http/monitorApi.js";
+import { startMonitorApiServer, attachRealtimeListeners } from "./http/monitorApi.js";
 
 async function startEngine() {
   console.log("====================================================");
@@ -133,6 +135,11 @@ async function startEngine() {
   console.log("⚡ Engine running normally.");
 
   console.log("🚀 DEBUG: Ready to start Monitor API…");
+
+  // Attach real-time listeners for dashboard
+  attachRealtimeListeners(publicEmitter);
+  console.log("📡 Real-time dashboard listeners attached");
+
   startMonitorApiServer(8090);
   console.log("🚀 DEBUG: Monitor API successfully started");
 

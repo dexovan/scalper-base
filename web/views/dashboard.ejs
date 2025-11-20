@@ -28,6 +28,80 @@
         </div>
     </section>
 
+    <!-- Real-time Market Data -->
+    <section class="space-y-4">
+        <h3 class="text-lg font-semibold">Live Market Data</h3>
+
+        <!-- Live Tickers -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-semibold text-slate-300">Prime Symbols Tickers</h4>
+                <div class="flex items-center gap-2">
+                    <span id="ws-status" class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-500/10 border border-slate-500/40 text-slate-400 text-xs">
+                        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                        Connecting...
+                    </span>
+                </div>
+            </div>
+            <div id="tickers-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div class="text-center text-slate-500 text-sm py-4">Loading tickers...</div>
+            </div>
+        </div>
+
+        <!-- Live Trade Feed -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-semibold text-slate-300">Recent Trades</h4>
+                <div class="text-xs text-slate-500">Last 50 trades</div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                    <thead>
+                        <tr class="border-b border-slate-700">
+                            <th class="text-left py-2 px-1 text-slate-400 font-medium">Time</th>
+                            <th class="text-left py-2 px-1 text-slate-400 font-medium">Symbol</th>
+                            <th class="text-left py-2 px-1 text-slate-400 font-medium">Side</th>
+                            <th class="text-right py-2 px-1 text-slate-400 font-medium">Price</th>
+                            <th class="text-right py-2 px-1 text-slate-400 font-medium">Size</th>
+                            <th class="text-left py-2 px-1 text-slate-400 font-medium">Dir</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-container">
+                        <tr>
+                            <td colspan="6" class="text-center text-slate-500 py-4">Loading trades...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Storage Stats -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-semibold text-slate-300">Data Storage Statistics</h4>
+                <div class="text-xs text-slate-500">Today's Files</div>
+            </div>
+            <div id="storage-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                <div class="text-center">
+                    <div class="text-slate-400">Ticker Files</div>
+                    <div class="text-lg font-semibold text-slate-200" id="ticker-files">-</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-slate-400">Trade Files</div>
+                    <div class="text-lg font-semibold text-slate-200" id="trade-files">-</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-slate-400">Ticker Size</div>
+                    <div class="text-lg font-semibold text-slate-200" id="ticker-size">-</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-slate-400">Trade Size</div>
+                    <div class="text-lg font-semibold text-slate-200" id="trade-size">-</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Stat cards -->
     <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <!-- Portfolio -->
@@ -158,3 +232,194 @@
         </div>
     </section>
 </div>
+
+<!-- Real-time Dashboard JavaScript -->
+<script type="module">
+    // Dashboard real-time data management
+    class DashboardAPI {
+        constructor() {
+            this.tickersUrl = "/monitor/api/tickers";
+            this.tradesUrl = "/monitor/api/trades";
+            this.storageUrl = "/monitor/api/storage";
+            this.summaryUrl = "/monitor/api/summary";
+
+            this.wsConnected = false;
+            this.lastUpdate = Date.now();
+        }
+
+        async updateTickers() {
+            try {
+                const response = await fetch(this.tickersUrl, { cache: "no-store" });
+                const data = await response.json();
+
+                if (data.ok && data.tickers) {
+                    this.renderTickers(data.tickers);
+                    this.updateConnectionStatus(true);
+                }
+            } catch (error) {
+                console.error("Failed to fetch tickers:", error);
+                this.updateConnectionStatus(false);
+            }
+        }
+
+        async updateTrades() {
+            try {
+                const response = await fetch(`${this.tradesUrl}?limit=50`, { cache: "no-store" });
+                const data = await response.json();
+
+                if (data.ok && data.trades) {
+                    this.renderTrades(data.trades);
+                }
+            } catch (error) {
+                console.error("Failed to fetch trades:", error);
+            }
+        }
+
+        async updateStorage() {
+            try {
+                const response = await fetch(this.storageUrl, { cache: "no-store" });
+                const data = await response.json();
+
+                if (data.ok && data.storage) {
+                    this.renderStorage(data.storage);
+                }
+            } catch (error) {
+                console.error("Failed to fetch storage stats:", error);
+            }
+        }
+
+        renderTickers(tickers) {
+            const container = document.getElementById('tickers-container');
+            if (!container) return;
+
+            if (tickers.length === 0) {
+                container.innerHTML = '<div class="text-center text-slate-500 text-sm py-4">No ticker data available</div>';
+                return;
+            }
+
+            container.innerHTML = tickers.map(ticker => {
+                const change = ticker.change24h || 0;
+                const changeClass = change >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const changeIcon = change >= 0 ? '▲' : '▼';
+
+                return `
+                    <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
+                        <div class="font-semibold text-sm text-slate-200">${ticker.symbol}</div>
+                        <div class="text-lg font-bold text-slate-100">$${ticker.price?.toFixed(2) || 'N/A'}</div>
+                        <div class="text-xs ${changeClass}">
+                            ${changeIcon} ${Math.abs(change).toFixed(2)}%
+                        </div>
+                        <div class="text-xs text-slate-500 mt-1">
+                            Vol: ${this.formatVolume(ticker.volume24h)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        renderTrades(trades) {
+            const container = document.getElementById('trades-container');
+            if (!container) return;
+
+            if (trades.length === 0) {
+                container.innerHTML = '<tr><td colspan="6" class="text-center text-slate-500 py-4">No recent trades</td></tr>';
+                return;
+            }
+
+            container.innerHTML = trades.map(trade => {
+                const time = new Date(trade.timestamp).toLocaleTimeString('en-US', {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+                const sideClass = trade.side === 'Buy' ? 'text-emerald-400' : 'text-red-400';
+                const directionIcon = this.getTickDirectionIcon(trade.tickDirection);
+
+                return `
+                    <tr class="border-b border-slate-800/50 hover:bg-slate-800/30">
+                        <td class="py-1 px-1 text-slate-400">${time}</td>
+                        <td class="py-1 px-1 text-slate-300 font-medium">${trade.symbol}</td>
+                        <td class="py-1 px-1 ${sideClass} font-medium">${trade.side}</td>
+                        <td class="py-1 px-1 text-right text-slate-200 font-mono">$${trade.price?.toFixed(2) || 'N/A'}</td>
+                        <td class="py-1 px-1 text-right text-slate-300 font-mono">${trade.quantity || 'N/A'}</td>
+                        <td class="py-1 px-1 text-slate-400">${directionIcon}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        renderStorage(storage) {
+            if (!storage) return;
+
+            // Update file counts and sizes
+            const tickerFiles = document.getElementById('ticker-files');
+            const tradeFiles = document.getElementById('trade-files');
+            const tickerSize = document.getElementById('ticker-size');
+            const tradeSize = document.getElementById('trade-size');
+
+            if (tickerFiles) tickerFiles.textContent = storage.todayFiles?.tickers || 0;
+            if (tradeFiles) tradeFiles.textContent = storage.todayFiles?.trades || 0;
+            if (tickerSize) tickerSize.textContent = this.formatBytes(storage.todaySizes?.tickers || 0);
+            if (tradeSize) tradeSize.textContent = this.formatBytes(storage.todaySizes?.trades || 0);
+        }
+
+        updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('ws-status');
+            if (!statusElement) return;
+
+            this.wsConnected = connected;
+
+            if (connected) {
+                statusElement.className = "inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 text-xs";
+                statusElement.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Connected';
+            } else {
+                statusElement.className = "inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-500/10 border border-red-500/40 text-red-300 text-xs";
+                statusElement.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-400"></span> Disconnected';
+            }
+        }
+
+        formatVolume(volume) {
+            if (!volume) return 'N/A';
+            if (volume >= 1e9) return (volume / 1e9).toFixed(1) + 'B';
+            if (volume >= 1e6) return (volume / 1e6).toFixed(1) + 'M';
+            if (volume >= 1e3) return (volume / 1e3).toFixed(1) + 'K';
+            return volume.toFixed(0);
+        }
+
+        formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + sizes[i];
+        }
+
+        getTickDirectionIcon(direction) {
+            switch(direction) {
+                case 'PlusTick': return '↗️';
+                case 'MinusTick': return '↘️';
+                case 'ZeroPlusTick': return '→+';
+                case 'ZeroMinusTick': return '→-';
+                default: return '·';
+            }
+        }
+
+        start() {
+            // Initial load
+            this.updateTickers();
+            this.updateTrades();
+            this.updateStorage();
+
+            // Set up polling intervals
+            setInterval(() => this.updateTickers(), 1000);  // 1 second for tickers
+            setInterval(() => this.updateTrades(), 2000);   // 2 seconds for trades
+            setInterval(() => this.updateStorage(), 5000);  // 5 seconds for storage
+        }
+    }
+
+    // Start dashboard when DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+        const dashboard = new DashboardAPI();
+        dashboard.start();
+    });
+</script>
