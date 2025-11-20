@@ -260,37 +260,56 @@
 
         // Load available symbols
         async function loadSymbols() {
+            const selector = document.getElementById('symbol-selector');
+            selector.innerHTML = '<option value="">Select Symbol...</option>';
+
+            // Hardcoded symbols as primary fallback
+            const defaultSymbols = [
+                'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'SOLUSDT',
+                'XRPUSDT', 'DOTUSDT', 'AVAXUSDT', 'LINKUSDT', 'MATICUSDT',
+                'ATOMUSDT', 'LTCUSDT', 'UNIUSDT', 'FILUSDT', 'TRXUSDT',
+                'ETCUSDT', 'XLMUSDT', 'BCHUSDT', 'ALGOUSDT', 'VETUSDT'
+            ];
+
+            let symbolsLoaded = false;
+
             try {
-                console.log('🔍 Loading symbols from API...');
+                console.log('🔍 Trying primary API: /api/microstructure/symbols');
                 const response = await fetch('/api/microstructure/symbols');
-                console.log('📡 Response status:', response.status);
-                const data = await response.json();
-                console.log('📊 Symbols data:', data);
 
-                const selector = document.getElementById('symbol-selector');
-                selector.innerHTML = '<option value="">Select Symbol...</option>';
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('📊 Primary API data:', data);
 
-                if (data.success && data.data && data.data.length > 0) {
-                    console.log(`✅ Loaded ${data.data.length} symbols`);
-                    data.data.forEach(symbol => {
-                        const option = document.createElement('option');
-                        option.value = symbol.symbol;
-                        option.textContent = `${symbol.symbol} (${symbol.status || 'active'})`;
-                        selector.appendChild(option);
-                    });
+                    if (data.success && data.data && data.data.length > 0) {
+                        console.log(`✅ Loaded ${data.data.length} symbols from primary API`);
+                        data.data.forEach(symbol => {
+                            const option = document.createElement('option');
+                            option.value = symbol.symbol;
+                            option.textContent = `${symbol.symbol} (${symbol.status || 'active'})`;
+                            selector.appendChild(option);
+                        });
 
-                    document.getElementById('active-symbols-count').textContent = data.data.length;
-                    document.getElementById('symbols-status').textContent = `${data.data.filter(s => (s.status || 'active') === 'active').length} active`;
-                } else {
-                    console.warn('⚠️ No symbols received, trying fallback...');
-                    // Fallback: try getting symbols from monitor API
-                    try {
-                        const fallbackResponse = await fetch('/monitor/api/symbols');
+                        document.getElementById('active-symbols-count').textContent = data.data.length;
+                        document.getElementById('symbols-status').textContent = `${data.data.filter(s => (s.status || 'active') === 'active').length} active`;
+                        symbolsLoaded = true;
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ Primary API failed:', error);
+            }
+
+            if (!symbolsLoaded) {
+                try {
+                    console.log('🔄 Trying fallback API: /monitor/api/symbols');
+                    const fallbackResponse = await fetch('/monitor/api/symbols');
+
+                    if (fallbackResponse.ok) {
                         const fallbackData = await fallbackResponse.json();
-                        console.log('📋 Fallback data:', fallbackData);
+                        console.log('📋 Fallback API data:', fallbackData);
 
                         if (fallbackData.ok && fallbackData.symbols && fallbackData.symbols.length > 0) {
-                            console.log(`✅ Fallback: Loaded ${fallbackData.symbols.length} symbols`);
+                            console.log(`✅ Loaded ${fallbackData.symbols.length} symbols from fallback API`);
                             fallbackData.symbols.forEach(symbol => {
                                 const option = document.createElement('option');
                                 option.value = symbol;
@@ -300,18 +319,56 @@
 
                             document.getElementById('active-symbols-count').textContent = fallbackData.symbols.length;
                             document.getElementById('symbols-status').textContent = `${fallbackData.symbols.length} available`;
-                        } else {
-                            console.error('❌ Fallback also failed');
-                            document.getElementById('symbols-status').textContent = 'No symbols available';
+                            symbolsLoaded = true;
                         }
-                    } catch (fallbackError) {
-                        console.error('❌ Fallback error:', fallbackError);
-                        document.getElementById('symbols-status').textContent = 'Error loading symbols';
                     }
+                } catch (fallbackError) {
+                    console.warn('⚠️ Fallback API failed:', fallbackError);
                 }
-            } catch (error) {
-                console.error('💥 Error loading symbols:', error);
-                document.getElementById('symbols-status').textContent = 'Connection error';
+            }
+
+            if (!symbolsLoaded) {
+                try {
+                    console.log('🔄 Trying universe API: /monitor/api/universe');
+                    const universeResponse = await fetch('/monitor/api/universe');
+
+                    if (universeResponse.ok) {
+                        const universeData = await universeResponse.json();
+                        console.log('🌌 Universe API data:', universeData);
+
+                        if (universeData.ok && universeData.symbols && universeData.symbols.length > 0) {
+                            console.log(`✅ Loaded ${universeData.symbols.length} symbols from universe API`);
+                            universeData.symbols.forEach(symbolData => {
+                                const option = document.createElement('option');
+                                const symbol = typeof symbolData === 'string' ? symbolData : symbolData.symbol;
+                                option.value = symbol;
+                                option.textContent = symbol;
+                                selector.appendChild(option);
+                            });
+
+                            document.getElementById('active-symbols-count').textContent = universeData.symbols.length;
+                            document.getElementById('symbols-status').textContent = `${universeData.symbols.length} from universe`;
+                            symbolsLoaded = true;
+                        }
+                    }
+                } catch (universeError) {
+                    console.warn('⚠️ Universe API failed:', universeError);
+                }
+            }
+
+            // Final fallback: use hardcoded symbols
+            if (!symbolsLoaded) {
+                console.log('🔧 Using hardcoded symbols as final fallback');
+                defaultSymbols.forEach(symbol => {
+                    const option = document.createElement('option');
+                    option.value = symbol;
+                    option.textContent = symbol;
+                    selector.appendChild(option);
+                });
+
+                document.getElementById('active-symbols-count').textContent = defaultSymbols.length;
+                document.getElementById('symbols-status').textContent = `${defaultSymbols.length} default symbols`;
+                console.log(`✅ Loaded ${defaultSymbols.length} hardcoded symbols`);
             }
         }
 
