@@ -95,12 +95,12 @@ async function getAllSymbols() {
     const primeSymbols = await getSymbolsByCategory("Prime");
     console.log("🔍 Raw Prime symbols from Universe v2:", primeSymbols.length);
 
-    // Get Normal symbols (limit to first 50 to avoid overwhelming)
+    // Get Normal symbols (limit to first 244 for 250 total with 6 Prime)
     const normalSymbols = await getSymbolsByCategory("Normal");
     console.log("🔍 Raw Normal symbols from Universe v2:", normalSymbols.length);
 
-    // Combine Prime + limited Normal symbols
-    const limitedNormal = normalSymbols.slice(0, 50); // Limit Normal to 50 symbols
+    // Combine Prime + limited Normal symbols (250 total)
+    const limitedNormal = normalSymbols.slice(0, 244); // Limit Normal to 244 symbols (6 Prime + 244 Normal = 250)
     const allSymbols = [...primeSymbols, ...limitedNormal];
 
     if (allSymbols.length > 0) {
