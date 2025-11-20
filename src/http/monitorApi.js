@@ -66,11 +66,24 @@ export function attachRealtimeListeners(bybitPublic) {
       if (payload.lastPrice) price = parseFloat(payload.lastPrice);
       else if (payload.price) price = parseFloat(payload.price);
       else if (payload.c) price = parseFloat(payload.c); // Bybit sometimes uses 'c' for close price
+      else if (payload.indexPrice) price = parseFloat(payload.indexPrice); // Bybit index price
+      else if (payload.markPrice) price = parseFloat(payload.markPrice); // Bybit mark price
+      else if (payload.bid1Price && payload.ask1Price) {
+        // Use mid-price between bid and ask
+        const bid = parseFloat(payload.bid1Price);
+        const ask = parseFloat(payload.ask1Price);
+        price = (bid + ask) / 2;
+      } else if (payload.bid1Price) price = parseFloat(payload.bid1Price);
+      else if (payload.ask1Price) price = parseFloat(payload.ask1Price);
 
       console.log("🔍 Price extraction:", {
         lastPrice: payload.lastPrice,
         price: payload.price,
         c: payload.c,
+        indexPrice: payload.indexPrice,
+        markPrice: payload.markPrice,
+        bid1Price: payload.bid1Price,
+        ask1Price: payload.ask1Price,
         finalPrice: price
       });      let change24h = null;
       if (payload.price24hPcnt) change24h = parseFloat(payload.price24hPcnt);
