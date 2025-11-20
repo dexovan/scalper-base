@@ -80,32 +80,42 @@ function writeTickersToFile() {
   }
 }
 
-async function getPrimeSymbols() {
-  // First try config override
+async function getAllSymbols() {
+  // First try config override (backward compatibility)
   if (CONFIG.custom?.primeSymbols) {
     console.log("🎯 Using config override Prime symbols:", CONFIG.custom.primeSymbols);
     return CONFIG.custom.primeSymbols;
   }
 
-  // Try to use Universe v2 Prime symbols
+  // Try to use Universe v2 Prime + Normal symbols
   try {
     const { getSymbolsByCategory } = await import("../market/universe_v2.js");
-    const primeSymbols = await getSymbolsByCategory("Prime");
-    console.log("🔍 Raw Prime symbols from Universe v2:", primeSymbols);
 
-    if (primeSymbols.length > 0) {
+    // Get Prime symbols
+    const primeSymbols = await getSymbolsByCategory("Prime");
+    console.log("🔍 Raw Prime symbols from Universe v2:", primeSymbols.length);
+
+    // Get Normal symbols (limit to first 50 to avoid overwhelming)
+    const normalSymbols = await getSymbolsByCategory("Normal");
+    console.log("🔍 Raw Normal symbols from Universe v2:", normalSymbols.length);
+
+    // Combine Prime + limited Normal symbols
+    const limitedNormal = normalSymbols.slice(0, 50); // Limit Normal to 50 symbols
+    const allSymbols = [...primeSymbols, ...limitedNormal];
+
+    if (allSymbols.length > 0) {
       // Extract symbol names from metadata objects
-      const symbolNames = primeSymbols.map(s => typeof s === 'string' ? s : s.symbol);
-      console.log(`🎯 Using ${symbolNames.length} Prime symbols from Universe v2:`, symbolNames);
+      const symbolNames = allSymbols.map(s => typeof s === 'string' ? s : s.symbol);
+      console.log(`🎯 Using ${symbolNames.length} symbols (${primeSymbols.length} Prime + ${limitedNormal.length} Normal):`, symbolNames.slice(0, 10), '...');
       return symbolNames;
     }
   } catch (error) {
-    console.warn("⚠️ Could not load Prime symbols from Universe v2:", error.message);
+    console.warn("⚠️ Could not load symbols from Universe v2:", error.message);
   }
 
   // Fallback to hardcoded list
   const fallback = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"];
-  console.log("🔄 Using fallback Prime symbols:", fallback);
+  console.log("🔄 Using fallback symbols:", fallback);
   return fallback;
 }// ============================
 // WS CONNECT / RECONNECT
@@ -135,10 +145,10 @@ async function connectWS(symbolsOverride = null) {
   const wsUrl = CONFIG.bybit?.wsPublic || "wss://stream.bybit.com/v5/public/linear";
 
   console.log("🔍 [DEBUG] connectWS called, symbolsOverride:", symbolsOverride);
-  const primeSymbols = symbolsOverride || await getPrimeSymbols();
-  console.log("🔍 [DEBUG] Final primeSymbols for WebSocket:", primeSymbols);
+  const allSymbols = symbolsOverride || await getAllSymbols();
+  console.log("🔍 [DEBUG] Final symbols for WebSocket:", allSymbols.length, 'symbols');
 
-  const topics = buildTopics(primeSymbols);
+  const topics = buildTopics(allSymbols);
 
   console.log("📡 [BYBIT-WS] Connecting to:", wsUrl);
   console.log("📡 [BYBIT-WS] Topics:", topics);
