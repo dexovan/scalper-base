@@ -1,0 +1,892 @@
+Evo je 💪 – kompletna, ultra-detaljna, programersko-tehnička FAZA 7, spremna da ide u `docs/spec/phase07-state-machine.md`.
+
+---
+
+# PHASE 07 – STATE MACHINE PO SIMBOLU
+
+**(FLAT → WATCHING → ARMED → ORDER → IN_POSITION → MANAGING → EXITED/COOLDOWN)**
+**FINAL DEV SPEC – NA OSNOVU FAZA 2–6**
+
+---
+
+## 0. KONTEKST – NA ŠTA SE NASLANJA FAZA 7
+
+Do ove faze već imaš:
+
+* **Phase 02** – Universe + SymbolMeta + SymbolProfile
+* **Phase 03** – Microstructure (orderbook, trades, micro-candles)
+* **Phase 04** – FeatureEngine (imbalance, walls, spoof, flow, vola, fee, pump pre-signali)
+* **Phase 05** – RegimeEngine (per-symbol + global režimi)
+* **Phase 06** – ScoringEngine (Base/FinalScalpScore L/S + signalState: NONE/WATCH/ARM)
+
+**Phase 07** ne uvodi novu matematiku nad tržištem.
+Ona radi jednu stvar:
+
+> Pretvara *scoring + regime + risk* u **disciplinovan, ograničen, per-simbol trejd lifecycle**.
+
+---
+
+## 1. FAJLOVI I ARHITEKTURA
+
+### 1.1. Novi fajlovi
+
+* `src/state/stateEvents.js`
+
+  * Deklaracije tipova eventova i payload struktura.
+* `src/state/stateModel.js`
+
+  * Pravila state machine – dozvoljene tranzicije, uslovi, helperi.
+* `src/state/stateMachine.js`
+
+  * Glavni orkestrator: drži kontekste po simbolu, procesuira evente, piše logove.
+
+### 1.2. Izmene postojećih fajlova
+
+* `src/scoring/scoringEngine.js`
+
+  * Nakon `updateScoreForSymbol(symbol)` kreira `SCORING_UPDATE` event i šalje u stateMachine.
+* `src/regime/regimeEngine.js`
+
+  * Nakon `updateSymbolRegime(symbol)` kreira `REGIME_UPDATE` event.
+* (kasnije) `src/risk/riskEngine.js` (stub u ovoj fazi)
+
+  * Biće izvor `RISK_UPDATE` eventova.
+* `src/monitoring/health.js`
+
+  * Dodaje `services.stateMachine` status.
+* `web/routes/api.js`
+
+  * GET `/api/symbol/:symbol/state`
+  * GET `/api/states/overview`
+  * (opciono) GET `/api/symbol/:symbol/events?limit=N`
+* `data/events/`
+
+  * `data/events/<symbol>.json` – JSON Lines log state tranzicija.
+
+---
+
+## 2. ENUMI I TIPOVI – STATE I EVENTS
+
+### 2.1. ENUM: TradeState (po simbolu)
+
+Validne vrednosti:
+
+* `FLAT`
+* `WATCHING_LONG`
+* `WATCHING_SHORT`
+* `ARMED_LONG`
+* `ARMED_SHORT`
+* `ORDER_PLACED_LONG`
+* `ORDER_PLACED_SHORT`
+* `IN_POSITION_LONG`
+* `IN_POSITION_SHORT`
+* `MANAGING_LONG`
+* `MANAGING_SHORT`
+* `EXITED`
+* `COOLDOWN`
+* `BLOCKED_REGIME`
+* (opciono kasnije) `PAUSED_MANUAL`
+
+### 2.2. ENUM: EventType
+
+* `SCORING_UPDATE`
+* `REGIME_UPDATE`
+* `RISK_UPDATE`
+* `TIME_TICK`
+* `EXECUTION_ORDER_PLACED`
+* `EXECUTION_ORDER_FILLED`
+* `EXECUTION_ORDER_CANCELLED`
+* `EXECUTION_POSITION_OPENED`
+* `EXECUTION_POSITION_CLOSED`
+* `MANUAL_OVERRIDE`
+
+### 2.3. Struktura StateEvent
+
+```ts
+StateEvent {
+  type: string;          // EventType
+  symbol: string;        // npr. "BTCUSDT"
+  timestamp: string;     // ISO datetime
+  payload: object;       // zavisi od type
+}
+```
+
+---
+
+## 3. KONTEKST PO SIMBOLU – SymbolStateContext
+
+Za svaki simbol postoji **jedan** kontekst.
+
+```ts
+SymbolStateContext {
+  symbol: string;
+
+  currentState: string;            // TradeState
+  lastStateChangeAt: string;       // ISO
+  lastStateChangeReason: string;   // ljudsko čitljiv razlog
+  activeSide: string | null;       // "LONG" | "SHORT" | null
+
+  signalSnapshot: {
+    lastScoreUpdateAt: string | null;
+    lastFinalScoreLong: number | null;
+    lastFinalScoreShort: number | null;
+    lastSignalLong: "NONE" | "WATCH" | "ARM";
+    lastSignalShort: "NONE" | "WATCH" | "ARM";
+  };
+
+  regimeSnapshot: {
+    symbolRegime: string;      // "NORMAL" / ...
+    globalRegime: string;      // "GLOBAL_NORMAL" / ...
+    cooldownActive: boolean;
+    cooldownEndsAt: string | null;
+  };
+
+  riskSnapshot: {
+    riskAllowNewPositions: boolean;
+    riskAllowNewLong: boolean;
+    riskAllowNewShort: boolean;
+  };
+
+  entryPlan: EntryPlan | null;
+  positionContext: PositionContext | null;
+}
+```
+
+### 3.1. Initial default context
+
+Kada se simbol prvi put pojavi:
+
+* `currentState = "FLAT"`
+* `lastStateChangeAt = now`
+* `lastStateChangeReason = "INIT"`
+* `activeSide = null`
+* `signalSnapshot.* = null / "NONE"`
+* `regimeSnapshot.symbolRegime = "NORMAL"` (ili preuzeto ako već postoji)
+* `regimeSnapshot.globalRegime = "GLOBAL_NORMAL"`
+* `regimeSnapshot.cooldownActive = false`
+* `regimeSnapshot.cooldownEndsAt = null`
+* `riskSnapshot.* = true`
+* `entryPlan = null`
+* `positionContext = null`
+
+---
+
+## 4. EntryPlan & PositionContext
+
+### 4.1. EntryPlan
+
+Plan koji će kasnije dobiti Execution modul.
+
+```ts
+EntryPlan {
+  side: "LONG" | "SHORT";
+  plannedAt: string;      // ISO
+  validUntil: string;     // ISO
+
+  entryZone: {
+    priceMin: number;
+    priceMax: number;
+  };
+
+  idealEntryPrice: number;
+  maxSlippagePct: number;
+
+  initialStopLoss: number | null;
+  initialTakeProfit1: number | null;
+  initialTakeProfit2: number | null;
+
+  qty: number;
+  leverage: number;
+
+  mode: "SIM" | "DRY_RUN" | "LIVE";  // iz CONFIG.mode
+}
+```
+
+**Napomena:**
+U fazi 7 se EntryPlan **samo priprema i loguje u context**.
+Stvarno slanje ka berzi je Faza 11.
+
+### 4.2. PositionContext
+
+Opisuje realnu ili simuliranu poziciju (kao što će Execution modul javiti nazad).
+
+```ts
+PositionContext {
+  positionId: string;    // Bybit ID ili interni ID
+  side: "LONG" | "SHORT";
+  openedAt: string;      // ISO
+  entryPrice: number;
+  qty: number;
+  leverage: number;
+
+  stopLoss: number | null;
+  takeProfit1: number | null;
+  takeProfit2: number | null;
+
+  lastPnlUpdateAt: string | null;
+  unrealizedPnl: number | null;
+  realizedPnl: number | null;
+
+  stateFlags: {
+    isBreakEvenSet: boolean;
+    isTp1Hit: boolean;
+    isTp2Hit: boolean;
+  };
+}
+```
+
+---
+
+## 5. EVENT PAYLOAD STRUKTURE (stateEvents.js)
+
+### 5.1. SCORING_UPDATE
+
+Generiše ga ScoringEngine posle `updateScoreForSymbol`.
+
+```ts
+payload = {
+  finalScoreLong: number;
+  finalScoreShort: number;
+  signalLong: "NONE" | "WATCH" | "ARM";
+  signalShort: "NONE" | "WATCH" | "ARM";
+  fromScoringEngine: true;
+}
+```
+
+### 5.2. REGIME_UPDATE
+
+Generiše RegimeEngine posle `updateSymbolRegime`.
+
+```ts
+payload = {
+  symbolRegime: string;        // "NORMAL","PUMP",...
+  globalRegime: string;        // "GLOBAL_NORMAL","GLOBAL_RISK_OFF","GLOBAL_PANIC"
+  cooldownActive: boolean;
+  cooldownEndsAt: string | null;
+}
+```
+
+### 5.3. RISK_UPDATE (stub u ovoj fazi)
+
+```ts
+payload = {
+  riskAllowNewPositions: boolean;
+  riskAllowNewLong: boolean;
+  riskAllowNewShort: boolean;
+}
+```
+
+U ovoj fazi možeš hardcodovati:
+
+* `riskAllowNewPositions = true`
+* `riskAllowNewLong = true`
+* `riskAllowNewShort = true`
+
+dok ne dođe pravi RiskEngine.
+
+### 5.4. TIME_TICK
+
+Periodic event (npr. na 500ms ili 1000ms).
+
+```ts
+payload = {
+  now: string;   // ISO
+}
+```
+
+Koristi se za:
+
+* `cooldownEndsAt` check
+* `entryPlan.validUntil` check
+* stale state/cancel scenarija
+
+### 5.5. EXECUTION_* (placeholder za kasnije faze)
+
+Specifikacije sada, implementacija kasnije.
+
+* `EXECUTION_ORDER_PLACED`
+* `EXECUTION_ORDER_FILLED`
+* `EXECUTION_ORDER_CANCELLED`
+* `EXECUTION_POSITION_OPENED`
+* `EXECUTION_POSITION_CLOSED`
+
+Za sada ti je važno samo da stateModel zna šta bi radio kad ovi eventovi stignu.
+
+### 5.6. MANUAL_OVERRIDE
+
+Za ručno upravljanje:
+
+```ts
+payload = {
+  action: "FORCE_EXIT" | "FORCE_CANCEL_SCENARIO" | "FORCE_COOLDOWN" | "FORCE_FLAT";
+  reason: string;
+}
+```
+
+---
+
+## 6. STATE MODEL – PRAVILA TRanzicija (stateModel.js)
+
+Ovo je *mozak* state machine logike.
+
+### 6.1. Utility potpis funkcija
+
+* `canTransition(currentState: string, event: StateEvent, context: SymbolStateContext): boolean`
+* `getNextState(currentState: string, event: StateEvent, context: SymbolStateContext): { nextState: string, reason: string, sideUpdate?: "LONG"|"SHORT"|null }`
+* `applyTransition(context: SymbolStateContext, event: StateEvent): SymbolStateContext`
+
+  * Sadrži kompletnu logiku:
+
+    * izračuna `nextState`
+    * upiše `lastStateChangeAt`
+    * `lastStateChangeReason`
+    * ažurira `activeSide`, `entryPlan`, `positionContext`, snapshots itd.
+
+### 6.2. Globalni blok uslovi (pre bilo koje tranzicije)
+
+Pre svake odluke:
+
+1. Ako `event.type === "REGIME_UPDATE"`:
+
+   * ažurirati `regimeSnapshot` u context.
+2. Ako `event.type === "RISK_UPDATE"`:
+
+   * ažurirati `riskSnapshot`.
+3. Ako `regimeSnapshot.globalRegime === "GLOBAL_PANIC"`:
+
+   * skoro sve prelaze blokirati, jedino dozvoliti:
+
+     * prelaz u `BLOCKED_REGIME`
+     * prelaze koji zatvaraju poziciju (kasnije).
+4. Ako `regimeSnapshot.symbolRegime in {"PUMP","MANIPULATED","NEWS_DRIVEN"}`:
+
+   * zabraniti otvaranje novih scenarija (WATCH/ARM) → prebaciti u `BLOCKED_REGIME` ili ostati u FLAT.
+
+### 6.3. Pravila po state-u (high-level)
+
+#### 6.3.1. Iz `FLAT`
+
+Dozvoljeni eventovi koji mogu menjati state:
+
+* `SCORING_UPDATE`:
+
+  * ako `signalLong = "WATCH"` i:
+
+    * `regime` dozvoljava (NORMAL)
+    * `global` dozvoljava (GLOBAL_NORMAL)
+    * `riskAllowNewPositions && riskAllowNewLong`
+      → `WATCHING_LONG`, `activeSide = "LONG"`, reason: `"SCORING WATCH LONG"`
+
+  * ako `signalShort = "WATCH"` (iste provere)
+    → `WATCHING_SHORT`, `activeSide = "SHORT"`
+
+  * ako `signalLong = "ARM"` direktno:
+    → `ARMED_LONG`, `activeSide = "LONG"`
+
+  * ako `signalShort = "ARM"` direktno:
+    → `ARMED_SHORT`, `activeSide = "SHORT"`
+
+  * ako su oba ARM/WATCH, prioritet:
+
+    1. veći finalScore
+    2. ako su jednaki → prefer LONG ili po config-u.
+
+* `REGIME_UPDATE`:
+
+  * ako `symbolRegime != "NORMAL"` ili `globalRegime != "GLOBAL_NORMAL"`:
+    → `BLOCKED_REGIME`, reason `"REGIME BLOCK FROM FLAT"`
+
+* `TIME_TICK`: nema prelaza (ostaje FLAT).
+
+#### 6.3.2. Iz `WATCHING_LONG`
+
+Event: `SCORING_UPDATE`:
+
+* Ako `signalLong = "ARM"` i `allowed` (regime/risk/global):
+  → `ARMED_LONG`, reason `"Long ARM from WATCH"`.
+
+* Ako `signalLong = "NONE"` ili `finalScoreLong < minScoreToConsider`:
+  → `FLAT`, `activeSide = null`, reason `"Score dropped / no signal"`.
+
+* Ako `globalRegime` postane RISK_OFF ili PANIC (kroz REGIME_UPDATE event):
+  → `BLOCKED_REGIME`, reason `"Global regime block from WATCH_LONG"`.
+
+Analogno za `WATCHING_SHORT`.
+
+#### 6.3.3. Iz `ARMED_LONG`
+
+Ovo je kritična faza – scenario ozbiljan kandidat za entry.
+
+Eventi:
+
+* `SCORING_UPDATE`:
+
+  * ako `signalLong` padne na `NONE` ili `finalScoreLong` ispod `watchThreshold`:
+    → `FLAT` ili `WATCHING_LONG` (možeš definisati politiku:
+
+    * ako `finalScoreLong` još uvek iznad `watchThreshold` → nazad u `WATCHING_LONG`
+    * ako ispod → `FLAT`).
+
+* `REGIME_UPDATE`:
+
+  * ako režim postane nepovoljan:
+    → `BLOCKED_REGIME`, reason `"Regime turned bad while ARMED_LONG"` i `entryPlan = null`.
+
+* (kasnije) `EXECUTION_ORDER_PLACED`:
+
+  * kad Execution modul postavi order:
+    → `ORDER_PLACED_LONG`, reason `"Order placed"`.
+
+U FAZI 7 još ne šalješ realne naloge, ali definisano je šta će se desiti kad taj event dođe.
+
+Analogno za `ARMED_SHORT`.
+
+#### 6.3.4. Iz `ORDER_PLACED_LONG`
+
+Eventi (kasne faze, ali logika već sada):
+
+* `EXECUTION_POSITION_OPENED`:
+  → `IN_POSITION_LONG`, reason `"Position opened"`, `positionContext` popunjava.
+
+* `EXECUTION_ORDER_CANCELLED`:
+  → `FLAT` ili `COOLDOWN` (po designu, npr. ako je cancel zbog naglog pumpa, možeš uvesti mini cooldown), reason `"Order cancelled"`.
+
+* `TIME_TICK`:
+
+  * ako `now > entryPlan.validUntil`:
+
+    * kreiraš (interno) “implicit cancel”: `→ FLAT`, reason `"Entry plan expired"`.
+
+#### 6.3.5. Iz `IN_POSITION_LONG` / `MANAGING_LONG`
+
+U ovoj fazi state machine samo modelira:
+
+* `IN_POSITION_LONG` – trenutak kada je pozicija potvrđena.
+* `MANAGING_LONG` – kontinuirano upravljanje.
+
+Minimalni model u fazi 7:
+
+* odmah nakon `IN_POSITION_LONG` → prelaz u `MANAGING_LONG` (može biti automatski unutar stateModel-a kada obradi `EXECUTION_POSITION_OPENED`).
+
+Event:
+
+* `EXECUTION_POSITION_CLOSED`:
+  → `EXITED`, reason `"Position closed"` + upis PnL u context.
+
+Mogući specijalni prelaz:
+
+* iz `EXITED` → `COOLDOWN` ako je:
+
+  * definisan globalni `postTradeCooldownMs`
+  * ili scenario se završio nakon pump/dump (na osnovu `pumpStrength`, `volatilityScore` u regimeSnapshot/features).
+
+#### 6.3.6. Iz `EXITED`
+
+* `TIME_TICK`:
+
+  * ako postoji definisan `cooldownAfterExitMs`:
+
+    * prilikom ulaska u `EXITED` setuješ:
+
+      * `cooldownActive = true`
+      * `cooldownEndsAt = now + cooldownAfterExitMs`
+
+    * prvi sledeći `TIME_TICK` vodi u `COOLDOWN`.
+
+* ili odmah `EXITED → FLAT` (ako želiš da COOLDOWN bude samo reaktivan kod pump/dump, a ne uvek).
+
+#### 6.3.7. Iz `COOLDOWN`
+
+* `TIME_TICK`:
+
+  * ako `now >= cooldownEndsAt`:
+    → `FLAT`, reset `cooldownActive=false`, `cooldownEndsAt=null`, `activeSide=null`.
+
+* `REGIME_UPDATE`:
+
+  * ako global/pump režim pokrene dodatni block → eventualno `BLOCKED_REGIME`.
+
+#### 6.3.8. Iz `BLOCKED_REGIME`
+
+* `REGIME_UPDATE`:
+
+  * ako:
+
+    * `symbolRegime="NORMAL"`
+    * `globalRegime="GLOBAL_NORMAL"`
+    * `cooldownActive=false`
+
+    → `FLAT`, reason `"Regime normalized"`.
+
+* `MANUAL_OVERRIDE`:
+
+  * `action="FORCE_FLAT"` → odmah `FLAT`.
+
+---
+
+## 7. STATE MACHINE ORKESTRATOR – stateMachine.js
+
+### 7.1. StateMachineState
+
+```ts
+StateMachineState {
+  perSymbol: Map<string, SymbolStateContext>;
+}
+```
+
+### 7.2. Funkcije
+
+#### `initStateMachine(universeSymbols: string[])`
+
+* Kreira prazan `perSymbol` map.
+* Za svaki simbol iz Universe (`Prime + Normal`; Wild po potrebi) kreira default FLAT context.
+* Postavi health flag `services.stateMachine.status = "OK"`.
+
+#### `handleEvent(event: StateEvent)`
+
+1. Nađe ili kreira `context`:
+
+   * ako ne postoji `perSymbol[event.symbol]`, napravi default FLAT context.
+
+2. Posebni eventovi koji **uvek** apdejtuju snapshot:
+
+   * `SCORING_UPDATE` → update `signalSnapshot`
+   * `REGIME_UPDATE` → update `regimeSnapshot`
+   * `RISK_UPDATE` → update `riskSnapshot`
+
+3. Pozove `stateModel.applyTransition(context, event)`:
+
+   * dobije `newContext`
+   * ako `newContext.currentState != oldContext.currentState`:
+
+     * upiše event u `data/events/<symbol>.json`
+
+       * `fromState`, `toState`, `eventType`, `reason`, `extra`
+     * upiše `lastStateChangeAt = event.timestamp`
+     * upiše `lastStateChangeReason = reason`
+   * upiše `perSymbol[symbol] = newContext`.
+
+#### `tick(now: string)`
+
+* Za svaki simbol u `perSymbol`:
+
+  * kreira `StateEvent` tipa `TIME_TICK` sa `payload: { now }`
+  * pozove `handleEvent`.
+
+#### `getSymbolState(symbol: string): SymbolStateContext | null`
+
+* Vraća ceo context (ili null ako ne postoji).
+
+#### `getStatesOverview(): StateOverviewEntry[]`
+
+* Za sve simbole:
+
+  * vraća objekat:
+
+    ```ts
+    {
+      symbol: string;
+      currentState: string;
+      activeSide: "LONG"|"SHORT"|null;
+      regime: string;        // regimeSnapshot.symbolRegime
+      globalRegime: string;  // regimeSnapshot.globalRegime
+      lastStateChangeAt: string;
+    }
+    ```
+
+---
+
+## 8. INTEGRACIJE SA OSTALIM ENGINE-IMA
+
+### 8.1. ScoringEngine → StateMachine
+
+U `scoringEngine.updateScoreForSymbol(symbol)` posle izračunavanja:
+
+1. Popuni ScoreState.
+
+2. Izvadi:
+
+   * `finalScoreLong`
+   * `finalScoreShort`
+   * `signalLong`
+   * `signalShort`
+
+3. Kreira `StateEvent`:
+
+```js
+{
+  type: "SCORING_UPDATE",
+  symbol,
+  timestamp: nowIso(),
+  payload: {
+    finalScoreLong,
+    finalScoreShort,
+    signalLong,
+    signalShort,
+    fromScoringEngine: true
+  }
+}
+```
+
+4. Pozove `stateMachine.handleEvent(event)`.
+
+### 8.2. RegimeEngine → StateMachine
+
+U `regimeEngine.updateSymbolRegime(symbol)`:
+
+* nakon izračunavanja novog RegimeState:
+
+```js
+{
+  type: "REGIME_UPDATE",
+  symbol,
+  timestamp: nowIso(),
+  payload: {
+    symbolRegime: regime.current,
+    globalRegime: globalRegime.current,
+    cooldownActive: regime.cooldownActive,
+    cooldownEndsAt: regime.cooldownEndsAt
+  }
+}
+```
+
+→ `stateMachine.handleEvent(event)`.
+
+### 8.3. RiskEngine (stub)
+
+Za sada može da se ignoriše, ali API je:
+
+```js
+{
+  type: "RISK_UPDATE",
+  symbol,
+  timestamp: nowIso(),
+  payload: {
+    riskAllowNewPositions,
+    riskAllowNewLong,
+    riskAllowNewShort
+  }
+}
+```
+
+---
+
+## 9. PERSISTENCIJA – EVENT LOGOVI
+
+### 9.1. Lokacija
+
+* `data/events/<symbol>.json` (JSON Lines)
+
+### 9.2. Struktura jedne linije
+
+```json
+{
+  "timestamp": "2025-11-18T10:02:33.123Z",
+  "symbol": "BTCUSDT",
+  "fromState": "WATCHING_LONG",
+  "toState": "ARMED_LONG",
+  "eventType": "SCORING_UPDATE",
+  "reason": "FinalScoreLong >= armThreshold and allowed",
+  "extra": {
+    "finalScoreLong": 82.5,
+    "signalLong": "ARM"
+  }
+}
+```
+
+* `fromState`, `toState`: string
+* `reason`: kratak tekst (možeš definisati template poruke u stateModel-u)
+* `extra`: sadrži bitne brojke (score, regime, itd.)
+
+---
+
+## 10. API ENDPOINTI
+
+### 10.1. GET `/api/symbol/:symbol/state`
+
+**Auth:** `requireAuth`
+
+**Response:**
+
+```json
+{
+  "symbol": "BTCUSDT",
+  "currentState": "WATCHING_LONG",
+  "activeSide": "LONG",
+  "lastStateChangeAt": "2025-11-18T10:02:33.123Z",
+  "lastStateChangeReason": "FinalScoreLong >= watchThreshold",
+
+  "regimeSnapshot": {
+    "symbolRegime": "NORMAL",
+    "globalRegime": "GLOBAL_NORMAL",
+    "cooldownActive": false,
+    "cooldownEndsAt": null
+  },
+
+  "signalSnapshot": {
+    "lastFinalScoreLong": 67.5,
+    "lastFinalScoreShort": 3.0,
+    "lastSignalLong": "WATCH",
+    "lastSignalShort": "NONE"
+  }
+}
+```
+
+### 10.2. GET `/api/states/overview`
+
+**Response:**
+
+```json
+{
+  "timestamp": "2025-11-18T10:03:00.000Z",
+  "globalRegime": "GLOBAL_NORMAL",
+  "entries": [
+    {
+      "symbol": "BTCUSDT",
+      "currentState": "WATCHING_LONG",
+      "activeSide": "LONG",
+      "regime": "NORMAL",
+      "globalRegime": "GLOBAL_NORMAL",
+      "lastStateChangeAt": "2025-11-18T10:02:33.123Z"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "currentState": "FLAT",
+      "activeSide": null,
+      "regime": "NORMAL",
+      "globalRegime": "GLOBAL_NORMAL",
+      "lastStateChangeAt": "2025-11-18T10:01:01.111Z"
+    }
+  ]
+}
+```
+
+### 10.3. (Opcioni) GET `/api/symbol/:symbol/events?limit=N`
+
+* Čita poslednjih N linija iz `data/events/<symbol>.json`, parsira, vraća kao JSON array.
+* Korisno za debugging i dashboard timeline.
+
+---
+
+## 11. KONFIG – NOVI PARAMETRI ZA FAZU 7
+
+Dodati u `CONFIG.stateMachine`:
+
+* `tickIntervalMs: number`
+
+  * npr. `500` ili `1000`
+* `maxActiveScenariosPerSymbol: number`
+
+  * u ovoj fazi **fiksno 1**
+* `cooldownAfterExitMs: number`
+
+  * npr. `15000` (15s) – posle završetka trejda
+* `entryPlanValidityMs: number`
+
+  * npr. `120000` (2 min) – maximalno vreme koje scenario može da čeka fill
+* `logEventsToFile: boolean` (true)
+* `maxEventLogLinesPerSymbol: number` (rotacija loga kasnije)
+
+---
+
+## 12. TEST PLAN – ŠTA MORAJU DA POKRIJU TESTOVI
+
+### 12.1. Unit testovi za stateModel
+
+* Test 1: `FLAT → WATCHING_LONG`
+
+  * input: `SCORING_UPDATE` sa `signalLong="WATCH"` i valid regime/risk
+  * output: `currentState="WATCHING_LONG"`.
+
+* Test 2: `WATCHING_LONG → ARMED_LONG`
+
+  * `SCORING_UPDATE` sa `signalLong="ARM"`.
+
+* Test 3: `WATCHING_LONG → FLAT` (score drop)
+
+  * `SCORING_UPDATE` sa `signalLong="NONE"`, `finalScoreLong=5`.
+
+* Test 4: `WATCHING_LONG → BLOCKED_REGIME` (regime pump)
+
+  * `REGIME_UPDATE` sa `symbolRegime="PUMP"`.
+
+* Test 5: `MANAGING_LONG → EXITED → COOLDOWN → FLAT`
+
+  * `EXECUTION_POSITION_CLOSED` → `EXITED`
+  * `TIME_TICK` (pre cooldownEndsAt) → ostaje `COOLDOWN`
+  * `TIME_TICK` (posle cooldownEndsAt) → `FLAT`.
+
+* Test 6: bilo koji state → `BLOCKED_REGIME` kada `globalRegime="GLOBAL_PANIC"`.
+
+### 12.2. Integration test – scoring + regime + stateMachine
+
+Scenariji tipa:
+
+* scoring šalje WATCH, pa ARM → state se menja FLAT → WATCH → ARMED
+* zatim `REGIME_UPDATE` pokvari režim → `BLOCKED_REGIME`
+* event log se pune ispravno.
+
+---
+
+## 13. KORACI IMPLEMENTACIJE (PRAKTIČNI PLAN)
+
+Kada budeš pisao kod, možeš bukvalno ovim redosledom:
+
+1. **Kreiraj tipove i enum-e u `stateEvents.js`**
+
+   * EventType
+   * StateEvent payload tipovi.
+
+2. **Napravi `SymbolStateContext` i default factory funkciju**
+
+   * `createDefaultContext(symbol)`.
+
+3. **Implementiraj `stateModel.js` minimalnu verziju**
+
+   * FLAT ↔ WATCH/ARM
+   * WATCH ↔ FLAT
+   * BLOCKED_REGIME na loš režim.
+
+4. **Napraviti `stateMachine.js`**
+
+   * `initStateMachine`, `handleEvent`, `tick`, `getSymbolState`, `getStatesOverview`.
+
+5. **Dodaj hook u ScoringEngine**
+
+   * posle svakog score update-a šalji SCORING_UPDATE event u stateMachine.
+
+6. **Dodaj hook u RegimeEngine**
+
+   * posle svakog regime update-a šalji REGIME_UPDATE event.
+
+7. **Implementiraj event logging u `data/events/<symbol>.json`**
+
+   * svaki put kad se state promeni.
+
+8. **Dodaj API rute**
+
+   * `/api/symbol/:symbol/state`
+   * `/api/states/overview`.
+
+9. **Napravi osnovne testove**
+
+   * minimalni flow: FLAT → WATCH → ARMED → FLAT.
+
+10. **Postepeno dodaj napredne state-ove**
+
+    * ORDER_PLACED_*
+    * IN_POSITION_*
+    * MANAGING_*
+    * EXITED / COOLDOWN.
+
+---
+
+Ako želiš, sledeći korak može da bude:
+
+* ja ti pripremim **konkretnu strukturu foldera + nazive funkcija + TODO komenta** za sve tri datoteke:
+
+  * `stateEvents.js`
+  * `stateModel.js`
+  * `stateMachine.js`
+
+tako da kada krenemo sa kodom, samo popunjavaš telo funkcija prema ovoj specifikaciji.

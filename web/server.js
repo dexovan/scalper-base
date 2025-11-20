@@ -181,6 +181,42 @@ app.use(
   })
 );
 
+// ===========================================
+// PROXY → MICROSTRUCTURE API (port 8090)
+// ===========================================
+app.use(
+  "/api/microstructure",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/microstructure",
+    changeOrigin: true,
+    pathRewrite: {
+      "^/api/microstructure": ""
+    }
+  })
+);
+
+app.use(
+  "/api/symbol",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/symbol",
+    changeOrigin: true,
+    pathRewrite: {
+      "^/api/symbol": ""
+    }
+  })
+);
+
+app.use(
+  "/api/health",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/microstructure/health",
+    changeOrigin: true,
+    pathRewrite: {
+      "^/api/health": ""
+    }
+  })
+);
+
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/");
