@@ -127,6 +127,74 @@
         </div>
     </section>
 
+    <!-- Universe Section -->
+    <section class="space-y-4">
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between mb-4">
+                <h4 class="text-sm font-semibold text-slate-300">Market Universe</h4>
+                <div class="text-xs text-slate-500" id="universe-last-update">Loading...</div>
+            </div>
+
+            <!-- Universe Stats -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-xs">
+                <div class="text-center">
+                    <div class="text-slate-400">Total Symbols</div>
+                    <div class="text-lg font-semibold text-slate-200" id="total-symbols">-</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-slate-400">Prime</div>
+                    <div class="text-lg font-semibold text-emerald-300" id="prime-count">-</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-slate-400">Normal</div>
+                    <div class="text-lg font-semibold text-blue-300" id="normal-count">-</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-slate-400">Wild</div>
+                    <div class="text-lg font-semibold text-amber-300" id="wild-count">-</div>
+                </div>
+            </div>
+
+            <!-- Category Tabs -->
+            <div class="flex flex-wrap gap-1 mb-4 text-xs">
+                <button class="universe-tab px-3 py-1.5 rounded-md bg-emerald-600/20 border border-emerald-600/40 text-emerald-300 font-medium" data-category="Prime">
+                    Prime
+                </button>
+                <button class="universe-tab px-3 py-1.5 rounded-md border border-slate-600 text-slate-400 hover:bg-slate-800" data-category="Normal">
+                    Normal
+                </button>
+                <button class="universe-tab px-3 py-1.5 rounded-md border border-slate-600 text-slate-400 hover:bg-slate-800" data-category="Wild">
+                    Wild
+                </button>
+                <button class="universe-tab px-3 py-1.5 rounded-md border border-slate-600 text-slate-400 hover:bg-slate-800" data-category="All">
+                    All
+                </button>
+            </div>
+
+            <!-- Universe Table -->
+            <div class="border border-slate-700 rounded-lg">
+                <div class="max-h-64 overflow-y-auto scrollbar-thin scrollbar-track-slate-800 scrollbar-thumb-slate-600">
+                    <table class="w-full text-xs">
+                        <thead class="bg-slate-800/50 sticky top-0">
+                            <tr class="border-b border-slate-700">
+                                <th class="text-left p-2 text-slate-400 font-medium">Symbol</th>
+                                <th class="text-left p-2 text-slate-400 font-medium">Category</th>
+                                <th class="text-left p-2 text-slate-400 font-medium">Base</th>
+                                <th class="text-left p-2 text-slate-400 font-medium">Leverage</th>
+                                <th class="text-left p-2 text-slate-400 font-medium">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="universe-table-body" class="divide-y divide-slate-700">
+                            <tr>
+                                <td colspan="5" class="text-center text-slate-500 p-4">Loading universe data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Stat cards -->
     <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <!-- Portfolio -->
@@ -267,9 +335,12 @@
             this.tradesUrl = "/monitor/api/trades";
             this.storageUrl = "/monitor/api/storage";
             this.summaryUrl = "/monitor/api/summary";
+            this.universeUrl = "/monitor/api/universe";
+            this.symbolsUrl = "/monitor/api/symbols";
 
             this.wsConnected = false;
             this.lastUpdate = Date.now();
+            this.currentCategory = "Prime";
         }
 
         async updateTickers() {
@@ -401,6 +472,77 @@
             }
         }
 
+        async updateUniverse() {
+            try {
+                const response = await fetch(this.universeUrl, {
+                    cache: "no-store",
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.ok && data.universe) {
+                    this.renderUniverseStats(data.universe);
+                    await this.updateSymbols(this.currentCategory);
+                } else if (!data.ok) {
+                    console.error("Universe API error:", data.error);
+                }
+            } catch (error) {
+                console.error("Failed to fetch universe:", error);
+
+                // Fallback: Try direct API if proxy fails
+                if (error.message.includes('Failed to fetch')) {
+                    console.warn("Universe proxy blocked, trying direct API...");
+                    try {
+                        const directResponse = await fetch('http://localhost:8090/api/monitor/universe', {
+                            cache: "no-store",
+                            headers: { 'Cache-Control': 'no-cache' }
+                        });
+                        const directData = await directResponse.json();
+                        if (directData.ok && directData.universe) {
+                            this.renderUniverseStats(directData.universe);
+                            await this.updateSymbols(this.currentCategory);
+                        }
+                    } catch (directError) {
+                        console.error("Direct Universe API also failed:", directError);
+                        this.renderUniverseError("Universe API unavailable");
+                    }
+                }
+            }
+        }
+
+        async updateSymbols(category = 'Prime') {
+            try {
+                const url = category === 'All' ?
+                    'http://localhost:8090/api/monitor/symbols/All' :
+                    `http://localhost:8090/api/monitor/symbols/${category}`;
+
+                const response = await fetch(url, {
+                    cache: "no-store",
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                if (data.ok && data.symbols) {
+                    this.renderSymbols(data.symbols, category);
+                } else if (!data.ok) {
+                    console.error("Symbols API error:", data.error);
+                }
+            } catch (error) {
+                console.error(`Failed to fetch ${category} symbols:`, error);
+                this.renderSymbolsError(`${category} symbols unavailable`);
+            }
+        }
+
         renderTickerError(message) {
             const container = document.getElementById('tickers-container');
             if (!container) return;
@@ -512,6 +654,93 @@
             }
         }
 
+        renderUniverseStats(universe) {
+            if (!universe) return;
+
+            // Update statistics
+            const totalSymbols = document.getElementById('total-symbols');
+            const primeCount = document.getElementById('prime-count');
+            const normalCount = document.getElementById('normal-count');
+            const wildCount = document.getElementById('wild-count');
+
+            if (totalSymbols) totalSymbols.textContent = universe.totalSymbols || 0;
+            if (primeCount) primeCount.textContent = universe.primeCount || 0;
+            if (normalCount) normalCount.textContent = universe.normalCount || 0;
+            if (wildCount) wildCount.textContent = universe.wildCount || 0;
+        }
+
+        renderSymbols(symbols, category) {
+            const container = document.getElementById('symbols-table-body');
+            if (!container) return;
+
+            if (!symbols || symbols.length === 0) {
+                container.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="text-center text-slate-500 text-sm py-8">
+                            No symbols found in ${category} category
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            container.innerHTML = symbols.map((symbol, index) => {
+                return `
+                    <tr class="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
+                        <td class="px-4 py-2 text-slate-200 font-mono text-sm">${index + 1}</td>
+                        <td class="px-4 py-2 text-slate-100 font-semibold">${symbol.symbol}</td>
+                        <td class="px-4 py-2">
+                            <span class="px-2 py-1 text-xs rounded-full ${this.getCategoryStyle(symbol.category)}">
+                                ${symbol.category}
+                            </span>
+                        </td>
+                        <td class="px-4 py-2 text-slate-400 text-sm font-mono">
+                            ${symbol.contractType || 'LinearPerpetual'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        getCategoryStyle(category) {
+            switch(category) {
+                case 'Prime':
+                    return 'bg-amber-500/20 text-amber-300 border border-amber-500/40';
+                case 'Normal':
+                    return 'bg-blue-500/20 text-blue-300 border border-blue-500/40';
+                case 'Wild':
+                    return 'bg-purple-500/20 text-purple-300 border border-purple-500/40';
+                default:
+                    return 'bg-slate-500/20 text-slate-300 border border-slate-500/40';
+            }
+        }
+
+        renderUniverseError(message) {
+            const container = document.getElementById('symbols-table-body');
+            if (!container) return;
+
+            container.innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center text-amber-400 text-sm py-8">
+                        <div class="animate-pulse">⚠️ ${message}</div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        renderSymbolsError(message) {
+            const container = document.getElementById('symbols-table-body');
+            if (!container) return;
+
+            container.innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center text-amber-400 text-sm py-8">
+                        <div class="animate-pulse">⚠️ ${message}</div>
+                    </td>
+                </tr>
+            `;
+        }
+
         formatVolume(volume) {
             if (!volume) return 'N/A';
             if (volume >= 1e9) return (volume / 1e9).toFixed(1) + 'B';
@@ -542,11 +771,13 @@
             this.updateTickers();
             this.updateTrades();
             this.updateStorage();
+            this.updateUniverse();
 
             // Set up polling intervals
             setInterval(() => this.updateTickers(), 1000);  // 1 second for tickers
             setInterval(() => this.updateTrades(), 2000);   // 2 seconds for trades
             setInterval(() => this.updateStorage(), 5000);  // 5 seconds for storage
+            setInterval(() => this.updateUniverse(), 30000); // 30 seconds for universe
         }
     }
 
@@ -554,5 +785,33 @@
     document.addEventListener('DOMContentLoaded', () => {
         const dashboard = new DashboardAPI();
         dashboard.start();
+
+        // Set up Universe category tab handlers
+        const categoryTabs = document.querySelectorAll('.category-tab');
+        categoryTabs.forEach(tab => {
+            tab.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const category = tab.dataset.category;
+
+                // Update active tab
+                categoryTabs.forEach(t => {
+                    t.classList.remove('bg-blue-600', 'text-white');
+                    t.classList.add('bg-slate-700', 'text-slate-300');
+                });
+                tab.classList.remove('bg-slate-700', 'text-slate-300');
+                tab.classList.add('bg-blue-600', 'text-white');
+
+                // Update current category and fetch symbols
+                dashboard.currentCategory = category;
+                await dashboard.updateSymbols(category);
+            });
+        });
+
+        // Set Prime as default active tab
+        const primeTab = document.querySelector('[data-category="Prime"]');
+        if (primeTab) {
+            primeTab.classList.remove('bg-slate-700', 'text-slate-300');
+            primeTab.classList.add('bg-blue-600', 'text-white');
+        }
     });
 </script>
