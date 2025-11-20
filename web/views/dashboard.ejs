@@ -414,18 +414,11 @@
                 const data = await response.json();
                 console.log("📊 Symbols data received:", data);
 
-                if (data.ok && data.symbols && data.symbols.length > 0) {
-                    console.log(`✅ Valid symbols data (${data.symbols.length} symbols)`);
-                    // Convert symbols to ticker format and filter valid prices
-                    const validTickers = data.symbols
-                        .filter(s => s.price !== null && !isNaN(s.price) && s.price > 0)
-                        .map(symbol => ({
-                            symbol: symbol.symbol,
-                            price: symbol.price,
-                            change24h: symbol.change24h || 0,
-                            volume24h: symbol.volume24h || 0,
-                            lastUpdate: symbol.lastUpdate
-                        }));
+                if (data.ok && data.tickers && data.tickers.length > 0) {
+                    console.log(`✅ Valid tickers data (${data.tickers.length} tickers)`);
+                    // Filter valid prices from tickers (they already have correct structure)
+                    const validTickers = data.tickers
+                        .filter(ticker => ticker.price !== null && !isNaN(ticker.price) && ticker.price > 0);
                     console.log(`🔢 Valid tickers after filtering: ${validTickers.length}`);
                     if (validTickers.length > 0) {
                         console.log("🎨 Rendering tickers...");
@@ -461,16 +454,9 @@
                         console.log("🔍 Parsing direct response JSON...");
                         const directData = await directResponse.json();
                         console.log("📊 Direct data received:", directData);
-                        if (directData.ok && directData.symbols && directData.symbols.length > 0) {
-                            const validTickers = directData.symbols
-                                .filter(s => s.price !== null && !isNaN(s.price) && s.price > 0)
-                                .map(symbol => ({
-                                    symbol: symbol.symbol,
-                                    price: symbol.price,
-                                    change24h: symbol.change24h || 0,
-                                    volume24h: symbol.volume24h || 0,
-                                    lastUpdate: symbol.lastUpdate
-                                }));
+                        if (directData.ok && directData.tickers && directData.tickers.length > 0) {
+                            const validTickers = directData.tickers
+                                .filter(ticker => ticker.price !== null && !isNaN(ticker.price) && ticker.price > 0);
                             if (validTickers.length > 0) {
                                 this.renderTickers(validTickers);
                                 this.updateConnectionStatus(true);
