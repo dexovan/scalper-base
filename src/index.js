@@ -11,7 +11,8 @@ import {
 
 import {
   initPublicConnection,
-  subscribeSymbols
+  subscribeSymbols,
+  onPublicEvent
 } from "./connectors/bybitPublic.js";
 
 import { initEventHub } from "./ws/eventHub.js";
@@ -25,6 +26,8 @@ import * as wsMetrics from "./monitoring/wsMetrics.js";
 
 // Parallel metrics WS connector (stable)
 import { BybitPublicWS } from "./connectors/bybit/publicWS.js";
+
+// Phase 2 VARIJANTA B - Event handling for parsed ticker/trade data
 
 // Monitor API server (Opcija A)
 import { startMonitorApiServer } from "./http/monitorApi.js";
@@ -43,7 +46,7 @@ async function startEngine() {
   await initUniverse();
 
   // MAIN WS (dynamic)
-  initPublicConnection();
+  initPublicConnection(); // koristi CONFIG.custom.primeSymbols
 
   initEventHub();
 
@@ -52,6 +55,23 @@ async function startEngine() {
     subscribeSymbols(primeSymbols);
     console.log("📡 PRIME subscribed:", primeSymbols);
   }
+
+  // =====================================================
+  // PHASE 2 VARIJANTA B - EVENT HANDLER
+  // =====================================================
+  onPublicEvent((evt) => {
+    // evt = { type: "ticker" | "trade", timestamp, symbol, payload }
+
+    // Ovde ZA SADA samo log, kasnije ćemo:
+    // - slati u metrics
+    // - graditi microstructure
+    // - puniti profile itd.
+    if (evt.type === "ticker") {
+      // console.log("[TICKER]", evt.symbol, evt.payload.lastPrice || evt.payload.lastPrice || "");
+    } else if (evt.type === "trade") {
+      // console.log("[TRADE]", evt.symbol, evt.payload.side, evt.payload.price, evt.payload.qty);
+    }
+  });
 
   refreshUniversePeriodically();
 
@@ -86,6 +106,7 @@ async function startEngine() {
   });
 
   console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);
+
   console.log("⚡ Engine running normally.");
 
   console.log("🚀 DEBUG: Ready to start Monitor API…");

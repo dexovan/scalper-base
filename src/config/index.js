@@ -52,6 +52,10 @@ const CONFIG = {
     wsPrivate: "wss://stream.bybit.com/v5/private",
     apiKey: "",
     apiSecret: "",
+
+    // RECONNECT parametri za WS (opciono)
+    wsReconnectBaseDelayMs: 1000,
+    wsReconnectMaxDelayMs: 15000,
   },
 
   health: {
@@ -74,6 +78,11 @@ const CONFIG = {
     logLevel: "info",
     universeRefreshIntervalMs: 15000,
     bybitWsReconnectDelayMs: 3000
+  },
+
+  custom: {
+    // PRIME simboli za WS (VARIJANTA B)
+    primeSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
   },
 
   paths,
