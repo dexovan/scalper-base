@@ -232,122 +232,38 @@ Loading logs...
   </div>
 </section>
 
-<script>
-  async function fetchSummary() {
-    try {
-      const res = await fetch("/api/monitor/summary");
-      const data = await res.json();
 
-      const sys = data.system || {};
-      const ws = data.ws || {};
-      const eng = data.engine || {};
-
-      // System
-      const uptimeHuman = sys.uptimeHuman || (sys.uptimeSeconds ? (sys.uptimeSeconds.toFixed(0) + "s") : "–");
-      document.getElementById("sys-uptime").textContent = uptimeHuman;
-      document.getElementById("sys-load").textContent = sys.load1m != null ? sys.load1m.toFixed(2) : "–";
-      if (sys.memory) {
-        document.getElementById("sys-rss").textContent = sys.memory.rssMB || "–";
-        document.getElementById("sys-heap").textContent = sys.memory.heapUsedMB || "–";
-      }
-
-      // Engine
-      const status = eng.status || "unknown";
-      const badge = document.getElementById("engine-badge");
-      badge.textContent = status;
-
-      badge.classList.remove(
-        "bg-emerald-500/10",
-        "text-emerald-400",
-        "border-emerald-500/30",
-        "bg-red-500/10",
-        "text-red-400",
-        "border-red-500/30",
-        "bg-amber-500/10",
-        "text-amber-400",
-        "border-amber-500/30",
-      );
-
-      if (status === "running") {
-        badge.classList.add("bg-emerald-500/10", "text-emerald-400", "border-emerald-500/30");
-      } else if (status === "error") {
-        badge.classList.add("bg-red-500/10", "text-red-400", "border-red-500/30");
-      } else {
-        badge.classList.add("bg-amber-500/10", "text-amber-400", "border-amber-500/30");
-      }
-
-      document.getElementById("engine-mode").textContent = eng.mode || "–";
-      document.getElementById("engine-decisions").textContent = eng.decisionsTotal != null ? eng.decisionsTotal : "n/a";
-      document.getElementById("engine-trades").textContent = eng.tradesExecuted != null ? eng.tradesExecuted : "n/a";
-
-      // WS
-      const wsConnected = !!ws.connected;
-      document.getElementById("ws-status-text").textContent = wsConnected ? "Connected" : "Disconnected";
-      const dot = document.getElementById("ws-dot");
-      dot.classList.remove("bg-slate-500", "bg-emerald-400", "bg-red-500");
-      dot.classList.add(wsConnected ? "bg-emerald-400" : "bg-red-500");
-
-      document.getElementById("ws-last-message").textContent =
-        ws.lastMessageAt || ws.lastConnectedAt || "–";
-      document.getElementById("ws-reconnects").textContent =
-        ws.reconnectAttempts != null ? ws.reconnectAttempts : "–";
-      document.getElementById("ws-msg-rate").textContent =
-        ws.messagesLast60s != null ? ws.messagesLast60s + " msg/60s" : "n/a";
-
-      // Raw JSON
-      document.getElementById("raw-json").textContent = JSON.stringify(data, null, 2);
-
-      // Timestamp
-      document.getElementById("monitor-timestamp").textContent =
-        "Last update: " + (data.timestamp || new Date().toISOString());
-    } catch (err) {
-      console.error("Monitor summary error:", err);
-    }
-  }
-
-  async function fetchLogs() {
-    try {
-      const res = await fetch("/api/monitor/logs?lines=200");
-      const data = await res.json();
-      const pre = document.getElementById("log-output");
-
-      if (!data.ok) {
-        pre.textContent = "Log error: " + (data.error || "unknown");
-        return;
-      }
-
-      pre.textContent = data.lines.join("\n");
-      pre.scrollTop = pre.scrollHeight;
-    } catch (err) {
-      console.error("Monitor logs error:", err);
-    }
-  }
-
-  document.getElementById("btn-refresh-now").addEventListener("click", () => {
-    fetchSummary();
-    fetchLogs();
-  });
-
-  // inicijalni load
-  fetchSummary();
-  fetchLogs();
-
-  // periodično osvežavanje
-  setInterval(fetchSummary, 3000);
-  setInterval(fetchLogs, 5000);
-</script>
 
 <script type="module">
   import { monitorAPI } from "/js/monitor-api.js";
 
   monitorAPI.onUpdate = (data) => {
+    const ts = document.getElementById("monitor-timestamp");
+
     if (!data) {
+      ts.textContent = "Last update: OFFLINE";
+
+      // ENGINE
       document.getElementById("engine-status").innerText = "OFFLINE";
       document.getElementById("engine-status").className = "text-red-400";
+
+      // WS
+      document.getElementById("ws-status").innerText = "DISCONNECTED";
+      document.getElementById("ws-messages").innerText = "–";
+
+      // SYSTEM
+      document.getElementById("memory-rss").innerText = "–";
+      document.getElementById("memory-heap").innerText = "–";
+
       return;
     }
 
+    // TIMESTAMP
+    ts.textContent = "Last update: " + new Date().toLocaleTimeString();
+
+    // ============================
     // ENGINE
+    // ============================
     document.getElementById("engine-status").innerText = "ONLINE";
     document.getElementById("engine-status").className = "text-green-400";
 
@@ -357,19 +273,48 @@ Loading logs...
     document.getElementById("decision-count").innerText =
       data.engine.decisionCount;
 
+    document.getElementById("engine-mode").innerText = "scalper-core";
+    document.getElementById("engine-decisions").innerText =
+      data.engine.decisionCount;
+    document.getElementById("engine-trades").innerText =
+      data.engine.tradesExecuted;
+
+    // ============================
     // WS
+    // ============================
+    const wsOK = data.ws.status === "connected";
+
     document.getElementById("ws-status").innerText =
-      data.ws.status === "connected" ? "CONNECTED" : "DISCONNECTED";
+      wsOK ? "CONNECTED" : "DISCONNECTED";
+
+    document.getElementById("ws-status-text").innerText =
+      wsOK ? "Connected" : "Disconnected";
+
+    const dot = document.getElementById("ws-dot");
+    dot.classList.remove("bg-slate-500", "bg-emerald-400", "bg-red-500");
+    dot.classList.add(wsOK ? "bg-emerald-400" : "bg-red-500");
 
     document.getElementById("ws-messages").innerText =
       data.ws.messageCount;
 
+    document.getElementById("ws-last-message").innerText =
+      data.ws.lastMessageAt;
+
+    document.getElementById("ws-reconnects").innerText =
+      data.ws.reconnectAttempts;
+
+    // ============================
     // SYSTEM
+    // ============================
     document.getElementById("memory-rss").innerText =
       (data.system.rss / 1024 / 1024).toFixed(1) + " MB";
 
     document.getElementById("memory-heap").innerText =
       (data.system.heap / 1024 / 1024).toFixed(1) + " MB";
+
+    // RAW JSON
+    document.getElementById("raw-json").textContent =
+      JSON.stringify(data, null, 2);
   };
 
   monitorAPI.start(1000);
