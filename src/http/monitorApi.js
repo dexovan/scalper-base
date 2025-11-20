@@ -307,6 +307,31 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // POST /api/monitor/refresh-ws - Refresh WebSocket subscription
+  // ============================================================
+  app.post("/api/monitor/refresh-ws", async (req, res) => {
+    try {
+      const { refreshWebSocketSubscription } = await import("../connectors/bybitPublic.js");
+
+      console.log("🔄 [API] Refreshing WebSocket subscription requested...");
+      await refreshWebSocketSubscription();
+
+      return res.json({
+        ok: true,
+        message: "WebSocket subscription refreshed successfully",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [API] Error refreshing WebSocket:", error.message);
+      return res.json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // START SERVER
   // ============================================================
   app.listen(port, "0.0.0.0", () => {

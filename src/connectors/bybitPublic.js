@@ -229,6 +229,22 @@ export function closePublicConnection() {
 }
 
 /**
+ * Refresh WebSocket subscription with updated Prime symbols.
+ */
+export async function refreshWebSocketSubscription() {
+  console.log("🔄 [BYBIT-WS] Refreshing subscription with updated Prime symbols...");
+
+  // Close existing connection
+  closePublicConnection();
+
+  // Wait a moment for clean shutdown
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // Reinitialize with updated symbols
+  await initPublicConnection();
+}
+
+/**
  * Hook za druge module (Universe, Metrics, itd.)
  * callback({ type, timestamp, symbol, payload })
  */
