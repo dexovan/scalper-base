@@ -255,7 +255,18 @@ export function startMonitorApiServer(port = 8090) {
       const { category } = req.params;
       const limit = parseInt(req.query.limit || "50", 10);
 
-      const symbols = getSymbolsByCategory(category);
+      const symbols = await getSymbolsByCategory(category);
+      console.log(`🔍 getSymbolsByCategory(${category}) returned:`, typeof symbols, Array.isArray(symbols) ? `array of ${symbols.length}` : symbols);
+
+      // Ensure symbols is an array
+      if (!Array.isArray(symbols)) {
+        console.error(`❌ getSymbolsByCategory returned non-array:`, symbols);
+        return res.json({
+          ok: false,
+          error: `Invalid symbols data for category ${category}`,
+          timestamp: new Date().toISOString()
+        });
+      }
 
       // Enrich symbols with real-time ticker data
       const enrichedSymbols = symbols.map(symbolMeta => {
