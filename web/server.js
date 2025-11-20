@@ -3,6 +3,7 @@
 // =======================================
 
 import express from "express";
+import { createProxyMiddleware } from "http-proxy-middleware";
 import session from "express-session";
 import path from "path";
 import fs from "fs";
@@ -166,6 +167,20 @@ app.use((req, res, next) => {
 // =======================================
 // ROUTES — CORRECT ORDER
 // =======================================
+
+// ===========================================
+// PROXY → ENGINE API (port 8090)
+// ===========================================
+app.use(
+  "/monitor/api",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/monitor",
+    changeOrigin: true,
+    pathRewrite: {
+      "^/monitor/api": ""
+    }
+  })
+);
 
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
