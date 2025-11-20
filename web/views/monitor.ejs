@@ -312,6 +312,18 @@ Loading logs...
     document.getElementById("memory-heap").innerText =
       (data.system.heap / 1024 / 1024).toFixed(1) + " MB";
 
+    // System status section
+    document.getElementById("sys-uptime").innerText =
+      Math.floor(data.system.uptime / 60) + "m";
+
+    document.getElementById("sys-load").innerText = "–"; // Will be implemented later
+
+    document.getElementById("sys-rss").innerText =
+      (data.system.rss / 1024 / 1024).toFixed(1) + " MB";
+
+    document.getElementById("sys-heap").innerText =
+      (data.system.heap / 1024 / 1024).toFixed(1) + " MB";
+
     // RAW JSON
     document.getElementById("raw-json").textContent =
       JSON.stringify(data, null, 2);
