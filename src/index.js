@@ -11,7 +11,6 @@ import {
 
 import {
   initPublicConnection,
-  subscribeSymbols,
   onPublicEvent
 } from "./connectors/bybitPublic.js";
 
