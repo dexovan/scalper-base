@@ -37,9 +37,15 @@ export async function loadProfile(symbol) {
 }
 
 export async function saveProfile(profile) {
-  const file = path.join(PROFILE_DIR, `${profile.symbol}.json`);
-  profile.updatedAt = new Date().toISOString();
-  await fs.promises.writeFile(file, JSON.stringify(profile, null, 2));
+  try {
+    const file = path.join(PROFILE_DIR, `${profile.symbol}.json`);
+    profile.updatedAt = new Date().toISOString();
+    await fs.promises.writeFile(file, JSON.stringify(profile, null, 2));
+    return true;
+  } catch (error) {
+    console.error("Failed to save profile:", error);
+    return false;
+  }
 }
 
 export function getProfileSnapshot(symbol) {
