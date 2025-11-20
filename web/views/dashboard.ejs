@@ -320,14 +320,25 @@
 
         async updateStorage() {
             try {
-                const response = await fetch(this.storageUrl, { cache: "no-store" });
+                const response = await fetch(this.storageUrl, {
+                    cache: "no-store",
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const data = await response.json();
 
                 if (data.ok && data.storage) {
                     this.renderStorage(data.storage);
+                } else if (!data.ok) {
+                    console.error("Storage API error:", data.error);
                 }
             } catch (error) {
                 console.error("Failed to fetch storage stats:", error);
+                console.error("Storage URL:", this.storageUrl);
             }
         }
 
