@@ -208,11 +208,20 @@ async function connectWS(symbolsOverride = null) {
  * Možeš proslediti custom listu simbola ako želiš.
  */
 export async function initPublicConnection(options = {}) {
-  if (ws && wsStatus.connected) {
+  console.log("🔍 [DEBUG] initPublicConnection called, ws exists:", !!ws, "connected:", wsStatus.connected);
+
+  if (ws && wsStatus.connected && !options.forceRestart) {
     console.log("ℹ️ [BYBIT-WS] Already connected, skipping init.");
     return;
   }
 
+  if (options.forceRestart && ws) {
+    console.log("🔄 [BYBIT-WS] Force restart requested, closing existing connection...");
+    closePublicConnection();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  console.log("🔍 [DEBUG] Proceeding with WebSocket connection...");
   manualClose = false;
   wsStatus.reconnectAttempts = 0;
 
@@ -238,17 +247,9 @@ export function closePublicConnection() {
 export async function refreshWebSocketSubscription() {
   console.log("🔄 [BYBIT-WS] Refreshing subscription with updated Prime symbols...");
 
-  // Close existing connection
-  closePublicConnection();
-
-  // Wait a moment for clean shutdown
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  // Reinitialize with updated symbols
-  await initPublicConnection();
-}
-
-/**
+  // Reinitialize with force restart to get updated symbols
+  await initPublicConnection({ forceRestart: true });
+}/**
  * Hook za druge module (Universe, Metrics, itd.)
  * callback({ type, timestamp, symbol, payload })
  */
