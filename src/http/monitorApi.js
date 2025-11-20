@@ -8,6 +8,7 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { execSync } from "child_process";
 
 import metrics from "../core/metrics.js";
 import wsMetrics from "../monitoring/wsMetrics.js";
@@ -28,16 +29,32 @@ const ENGINE_OUT = path.join(LOG_DIR, "pm2-engine-out.log");
 const ENGINE_ERR = path.join(LOG_DIR, "pm2-engine-error.log");
 
 // ============================================================
-// Helper — safe tail reader
+// Helper — safe tail reader for large files
 // ============================================================
 function tailLines(filePath, maxLines = 200) {
   try {
     if (!fs.existsSync(filePath)) return [];
 
+    // Check file size first
+    const stats = fs.statSync(filePath);
+    const fileSizeMB = stats.size / (1024 * 1024);
+
+    // If file is larger than 50MB, use more efficient approach
+    if (fileSizeMB > 50) {
+      try {
+        const result = execSync(`tail -n ${maxLines} "${filePath}"`, {
+          encoding: 'utf8',
+          maxBuffer: 1024 * 1024 * 10 // 10MB buffer max
+        });
+        return result.split('\n').filter(line => line.trim());
+      } catch (execErr) {
+        return [`<large file - using tail command failed>`, `File size: ${fileSizeMB.toFixed(1)}MB`, execErr.message];
+      }
+    }    // For smaller files, use the original method
     const data = fs.readFileSync(filePath, "utf8");
     const lines = data.split("\n");
-
     return lines.slice(-maxLines);
+
   } catch (err) {
     return ["<log read error>", err.message];
   }

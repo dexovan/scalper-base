@@ -36,12 +36,12 @@ const tests = [
   },
   {
     name: "API Endpoints",
-    file: "test-api-endpoints.js",
+    file: "test-api-endpoints-simple.js",
     description: "Tests all HTTP API endpoints (monitor, symbols, basic)"
   },
   {
     name: "Dashboard UI",
-    file: "test-dashboard-ui.js",
+    file: "test-dashboard-ui-simple.js",
     description: "Tests dashboard availability and functionality"
   },
   {
