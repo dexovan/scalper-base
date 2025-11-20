@@ -331,6 +331,16 @@
     // Dashboard real-time data management - Cache bust: <%= Date.now() %>
     class DashboardAPI {
         constructor() {
+            console.log("🏗️ DashboardAPI constructor called");
+
+            // Detect vab_intercept.js interference
+            if (typeof window.vab_intercept !== 'undefined') {
+                console.warn("⚠️ vab_intercept.js detected - this may interfere with fetch calls");
+            }
+
+            // Check if fetch is native or modified
+            console.log("🔍 Fetch function:", fetch.toString().substring(0, 100) + "...");
+
             this.tickersUrl = "/monitor/api/tickers";
             this.tradesUrl = "/monitor/api/trades";
             this.storageUrl = "/monitor/api/storage";
@@ -341,6 +351,14 @@
             this.wsConnected = false;
             this.lastUpdate = Date.now();
             this.currentCategory = "Prime";
+
+            console.log("📋 URLs configured:", {
+                tickers: this.tickersUrl,
+                trades: this.tradesUrl,
+                storage: this.storageUrl,
+                universe: this.universeUrl,
+                symbols: this.symbolsUrl
+            });
         }
 
         // Timeout wrapper for fetch calls
@@ -377,40 +395,64 @@
                 console.error("💥 Network error:", error);
                 throw error;
             }
-        }        async updateTickers() {
+        }
+
+        async updateTickers() {
+            console.log("📈 Starting updateTickers...");
+            console.log("📡 Tickers URL:", this.tickersUrl);
+
             try {
+                console.log("⏳ Calling fetchWithTimeout for tickers...");
                 const response = await this.fetchWithTimeout(this.tickersUrl);
+                console.log("📥 Tickers response received:", response.status, response.statusText);
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
 
+                console.log("🔍 Parsing tickers JSON...");
                 const data = await response.json();
+                console.log("📊 Tickers data received:", data);
 
                 if (data.ok && data.tickers && data.tickers.length > 0) {
+                    console.log(`✅ Valid tickers data (${data.tickers.length} tickers)`);
                     // Only render if we have valid data
                     const validTickers = data.tickers.filter(t => t.price !== null && !isNaN(t.price));
+                    console.log(`🔢 Valid tickers after filtering: ${validTickers.length}`);
                     if (validTickers.length > 0) {
+                        console.log("🎨 Rendering tickers...");
                         this.renderTickers(validTickers);
                         this.updateConnectionStatus(true);
                         this.lastUpdate = Date.now();
+                        console.log("✅ Tickers updated successfully");
                     }
                 } else {
-                    console.warn("No valid ticker data received");
+                    console.warn("⚠️ No valid ticker data received:", data);
                 }
             } catch (error) {
-                console.error("Failed to fetch tickers:", error);
+                console.error("💥 Failed to fetch tickers:", error);
+                console.error("🔍 Tickers error details:", {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack,
+                    url: this.tickersUrl
+                });
                 this.updateConnectionStatus(false);
 
                 // Fallback: Try direct API if proxy fails
                 if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_RESET')) {
-                    console.warn("Ticker proxy blocked, trying direct API...");
+                    console.warn("🔄 Ticker proxy blocked, trying direct API...");
+                    console.log("📡 Direct API URL: /monitor/api/tickers");
                     try {
+                        console.log("🚀 Attempting direct fetch (without fetchWithTimeout)...");
                         const directResponse = await fetch('/monitor/api/tickers', {
                             cache: "no-store",
                             headers: { 'Cache-Control': 'no-cache' }
                         });
+                        console.log("📥 Direct response:", directResponse.status, directResponse.statusText);
+                        console.log("🔍 Parsing direct response JSON...");
                         const directData = await directResponse.json();
+                        console.log("📊 Direct data received:", directData);
                         if (directData.ok && directData.tickers && directData.tickers.length > 0) {
                             const validTickers = directData.tickers.filter(t => t.price !== null && !isNaN(t.price));
                             if (validTickers.length > 0) {
