@@ -80,6 +80,17 @@ const CONFIG = {
     bybitWsReconnectDelayMs: 3000
   },
 
+  microstructure: {
+    maxOrderbookDepth: {
+      prime: 100,
+      normal: 50,
+      wild: 20,
+    },
+    maxTradesPerSymbol: 2000,
+    candleTimeframes: ["1s", "3s", "5s", "15s"],
+    snapshotWriteIntervalMs: 2000, // svake 2s upis orderbook-a i candles-a
+  },
+
   custom: {
     // Allow Universe v2 to provide Prime symbols automatically
     // primeSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"], // Commented out to use Universe v2

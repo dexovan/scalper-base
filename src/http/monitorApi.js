@@ -19,6 +19,7 @@ import {
   getSymbolMeta,
   getSymbolsByCategory
 } from "../market/universe_v2.js";
+import * as OrderbookManager from "../microstructure/OrderbookManager.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
@@ -533,6 +534,219 @@ export function startMonitorApiServer(port = 8090) {
     } catch (error) {
       console.error("❌ [API] Error refreshing WebSocket:", error.message);
       return res.json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // MICROSTRUCTURE ENDPOINTS (FAZA 3)
+  // ============================================================
+
+  // GET /api/symbol/:symbol/micro - Complete microstructure state
+  app.get("/api/symbol/:symbol/micro", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const microState = OrderbookManager.getSymbolMicroState(symbol);
+
+      if (!microState) {
+        return res.json({
+          ok: false,
+          error: `No microstructure data for symbol: ${symbol}`,
+          symbol,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      return res.json({
+        ok: true,
+        symbol,
+        microState,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [API] Error fetching microstructure for ${req.params.symbol}:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        symbol: req.params.symbol,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/symbol/:symbol/orderbook - Current orderbook
+  app.get("/api/symbol/:symbol/orderbook", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const { depth = 10 } = req.query;
+
+      const orderbookSummary = OrderbookManager.getOrderbookSummary(symbol, parseInt(depth));
+
+      if (!orderbookSummary) {
+        return res.json({
+          ok: false,
+          error: `No orderbook data for symbol: ${symbol}`,
+          symbol,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      return res.json({
+        ok: true,
+        symbol,
+        orderbook: orderbookSummary,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [API] Error fetching orderbook for ${req.params.symbol}:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        symbol: req.params.symbol,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/symbol/:symbol/trades - Recent trades
+  app.get("/api/symbol/:symbol/trades", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const { limit = 100 } = req.query;
+
+      const recentTrades = OrderbookManager.getRecentTrades(symbol, parseInt(limit));
+
+      return res.json({
+        ok: true,
+        symbol,
+        trades: recentTrades,
+        count: recentTrades.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [API] Error fetching trades for ${req.params.symbol}:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        symbol: req.params.symbol,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/symbol/:symbol/candles/:timeframe - Micro candles
+  app.get("/api/symbol/:symbol/candles/:timeframe", async (req, res) => {
+    try {
+      const { symbol, timeframe } = req.params;
+      const { limit = 100 } = req.query;
+
+      const candles = OrderbookManager.getCandles(symbol, timeframe, parseInt(limit));
+
+      return res.json({
+        ok: true,
+        symbol,
+        timeframe,
+        candles,
+        count: candles.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [API] Error fetching candles for ${req.params.symbol}/${req.params.timeframe}:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        symbol: req.params.symbol,
+        timeframe: req.params.timeframe,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/microstructure/symbols - List of active symbols with microstructure
+  app.get("/api/microstructure/symbols", async (req, res) => {
+    try {
+      const activeSymbols = OrderbookManager.getActiveSymbols();
+
+      const symbolsSummary = activeSymbols.map(symbol => {
+        const microState = OrderbookManager.getSymbolMicroState(symbol);
+        return {
+          symbol,
+          lastUpdateAt: microState?.lastUpdateAt,
+          bestBid: microState?.priceInfo?.bestBid,
+          bestAsk: microState?.priceInfo?.bestAsk,
+          spread: microState?.priceInfo?.spread,
+          lastPrice: microState?.priceInfo?.lastPrice,
+          tradesCount: microState?.trades?.length || 0
+        };
+      });
+
+      return res.json({
+        ok: true,
+        symbols: symbolsSummary,
+        count: symbolsSummary.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [API] Error fetching microstructure symbols:", error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/microstructure/health - Microstructure system health
+  app.get("/api/microstructure/health", async (req, res) => {
+    try {
+      const activeSymbols = OrderbookManager.getActiveSymbols();
+      const now = new Date();
+
+      let healthyCount = 0;
+      let staleCount = 0;
+      const staleThresholdMs = 30000; // 30 seconds
+
+      const symbolsHealth = activeSymbols.map(symbol => {
+        const microState = OrderbookManager.getSymbolMicroState(symbol);
+        const lastUpdate = microState?.lastUpdateAt ? new Date(microState.lastUpdateAt) : null;
+        const isStale = !lastUpdate || (now - lastUpdate) > staleThresholdMs;
+
+        if (isStale) {
+          staleCount++;
+        } else {
+          healthyCount++;
+        }
+
+        return {
+          symbol,
+          lastUpdateAt: microState?.lastUpdateAt,
+          isStale,
+          orderbookLevels: (microState?.orderbook?.bids?.length || 0) + (microState?.orderbook?.asks?.length || 0),
+          tradesCount: microState?.trades?.length || 0
+        };
+      });
+
+      const overallHealth = staleCount === 0 ? "HEALTHY" :
+                           healthyCount > staleCount ? "DEGRADED" : "CRITICAL";
+
+      return res.json({
+        ok: true,
+        health: {
+          status: overallHealth,
+          activeSymbols: activeSymbols.length,
+          healthySymbols: healthyCount,
+          staleSymbols: staleCount,
+          staleThresholdMs
+        },
+        symbols: symbolsHealth,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [API] Error checking microstructure health:", error.message);
+      return res.status(500).json({
         ok: false,
         error: error.message,
         timestamp: new Date().toISOString()

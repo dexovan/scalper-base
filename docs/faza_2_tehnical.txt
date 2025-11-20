@@ -1,0 +1,147 @@
+KOMPLETNA DOKUMENTACIJA FAZE 2 - POSTIGNUTE FUNKCIONALNOSTI I REŠENI PROBLEMI
+🏗️ ARHITEKTURA SISTEMA
+Glavne komponente:
+Engine (PM2 proces): Glavni trading engine na portu 8090
+Dashboard (PM2 proces): Web server za monitoring na portu 8080
+Simple Monitor (PM2 proces): Dodatni monitoring servis na portu 8091
+Struktura fajlova:
+index.js - Glavni engine entry point
+monitorApi.js - HTTP API server za monitoring
+server.js - Dashboard web server
+dashboard.ejs - Dashboard UI template
+web/auth/ - Autentifikacija middleware i rute
+tests/ - Kompletna test suite sa 7 testova
+🔌 HTTP API ENDPOINTI
+Engine API (port 8090):
+/api/monitor/logs - Čita log fajlove (optimizovano za velike fajlove)
+/api/monitor/tickers - Lista aktivnih ticker-a
+/api/monitor/trades - Pregled trgovina
+/api/monitor/storage - Status storage sistema
+/api/monitor/universe - Universe konfiguracija
+/api/symbols - Lista svih simbola sa detaljima
+/api/symbol/:symbol/basic - Osnovne informacije o simbolu
+/api/symbol/:symbol/profile - Profil simbola
+Dashboard Web (port 8080):
+/ - Glavna dashboard stranica (zaštićena)
+/dashboard - Alias za glavnu stranicu (dodato za testove)
+/login - Login stranica
+/logout - Logout funkcionalnost
+/monitor - Sistem monitoring stranica
+/auth/login - POST endpoint za prijavu
+/auth/logout - POST endpoint za odjavu
+🛠️ KLJUČNI PROBLEMI I REŠENJA
+Problem 1: "Empty reply from server" greške
+Uzrok: HTTP endpointi vraćali prazan odgovor umesto JSON-a
+Simptomi: curl vraćao HTTP 0, testovi padali sa timeout greškom
+Rešenje:
+
+Sistemsko testiranje svih endpointa pojedinačno
+Otkriveno da je problem bio u velikim log fajlovima (4.7GB)
+Memorijska optimizacija u monitorApi.js
+Problem 2: Memorijski overflow zbog velikih log fajlova
+Uzrok: fs.readFileSync pokušavao da učita 4.7GB log u memoriju
+Simptomi: Server se rušio ili vraćao prazan odgovor
+Rešenje:
+
+Dodana provera veličine fajla u tailLines funkciji
+Za fajlove > 50MB koristi se tail komanda umesto fs.readFileSync
+Implementiran execSync sa tail -n parametrom
+Problem 3: Dashboard UI test padao sa 404 greškom
+Uzrok: Test očekivao /dashboard rutu koja nije postojala
+Simptomi: curl -v http://localhost:8080/dashboard vraćao 404
+Rešenje:
+
+Dodana /dashboard ruta kao alias za / rutu u server.js
+Identična funkcionalnost sa requireAuth middleware-om
+Restartovan dashboard server da primeni izmene
+Problem 4: Autentifikacija middleware
+Uspešno rešeno: requireAuth middleware ispravno preusmjerava na /login
+Rezultat: 302 redirect umesto 404, što potvrđuje da rute rade
+
+📊 POSTIGNUTA FUNKCIONALNOST
+Core Engine Features:
+Bybit REST API integracija (611ms response time)
+Bybit WebSocket real-time povezanost (299ms)
+Universe v2 sistem za kategorizaciju simbola (619ms)
+SymbolProfile sistem za čuvanje podataka (102ms)
+PM2 process management (12.8s test time)
+HTTP API Features:
+8 kompletno funkcionalnih endpointa
+JSON response format za sve API pozive
+Error handling i proper HTTP status codes
+Memorijska optimizacija za velike fajlove
+Cross-origin support gde je potreban
+Dashboard Features:
+Autentifikacija sistem sa session management
+Protected routes sa middleware
+EJS templating engine
+Responsive dashboard UI
+Real-time system monitoring
+Login/logout funkcionalnost
+DevOps Features:
+PM2 process management sa 3 servisa
+Automated testing suite sa 7 testova
+Git integracija sa proper commit messages
+Environment configuration
+Log management sa rotation
+🔧 TEHNIČKI DETALJI IZMENA
+monitorApi.js optimizacije:
+Dodان execSync import za shell komande
+tailLines funkcija sada proverava fileStats.size
+Za fajlove > 50MB koristi tail -n umesto fs.readFileSync
+Fallback na originalnu metodu za manje fajlove
+server.js dashboard rute:
+Dodana /dashboard ruta između linija 199-210
+Identična implementacija kao / ruta
+Koristi isti requireAuth middleware
+Isti EJS template rendering
+Test suite poboljšanja:
+Svih 7 testova sada prolaze sa 100% success rate
+Optimizovani timeout-ovi i wait periodi
+Proper cleanup između testova
+Detaljno reportovanje rezultata
+📈 PERFORMANCE METRIJE
+Response Times:
+Bybit REST API: 611ms
+WebSocket: 299ms
+Universe v2: 619ms
+SymbolProfile: 102ms
+API Endpoints: 278ms
+Dashboard UI: 171ms
+PM2 Processes: 12.8s
+Memory Usage:
+Engine: 103MB RAM
+Dashboard: 11.6MB RAM
+Monitor: 56MB RAM
+Ukupno: ~170MB za ceo sistem
+🎯 KLJUČNE LEKCIJE ZA FAZU 3
+1. Memorijski management je kritičan
+Uvek proveravaj veličinu fajlova pre čitanja
+Koristi streaming za velike fajlove
+Implementiraj fallback strategije
+2. Server restarts su potrebni za izmene ruta
+PM2 restart obavezno nakon izmena u server.js
+Proveri pm2 list status pre testiranja
+Sačekaj da se server potpuno pokrene
+3. Systematic debugging pristup
+Testiraj endpointe pojedinačno pre batch testova
+Koristi curl -v za detaljnu dijagnozu
+Proveravaj PM2 logove za greške
+4. Test-driven development
+Pokreni testove češće tokom razvoja
+Pojedinačni testovi pomažu u lokalizaciji problema
+100% test success rate je dostižan cilj
+5. Git workflow best practices
+Commit često sa opisnim porukama
+Testiraj pre push-a
+Dokumentuj sve značajne izmene
+🚀 SPREMNOST ZA FAZU 3
+Sistem je potpuno spreman za Fazu 3 sa:
+
+100% test success rate
+Sve komponente operativne
+Optimizovan performance
+Robust error handling
+Complete documentation
+Clean codebase u git-u
+Faza 3 može početi sa punim poverenjem u stabilnost postojeće infrastrukture.

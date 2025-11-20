@@ -1,0 +1,602 @@
+## 🚀 **PHASE 04 — FEATURE ENGINE (ULTRA DETALJNA TEHNIČKA SPECIFIKACIJA)**
+
+### *Final Spec · Professional Edition · Fully Aligned With Phase 1–3 Infrastructure*
+
+---
+
+# 🔥 **UVOD — Šta ova faza radi i ZAŠTO je ključna**
+
+Do Phase 3 tvoj sistem je:
+
+* imao tačan list simbola (universe)
+* imao stabilne WS konekcije
+* imao microstructure podatke:
+
+  * orderbook (depth)
+  * trade stream
+  * micro-candles (1s, 3s, 5s, 15s)
+* imao JSON storage
+* imao dashboard API za osnovne informacije
+
+Ali još uvek **nije imao INTELIGENTNO RAZUMEVANJE TRŽIŠTA**.
+
+**PHASE 04** uvodi upravo to → *prvi pravi AI sloj*:
+
+* orderbook imbalance
+* wall detection
+* spoof detection
+* flow/delta analiza
+* volatility engine
+* pump pre-signali
+* fee/leverage značenje (“koliko cena mora da se pomeri da bi trade bio profitabilan”)
+
+Sve ovo postaje **jedna centralna FeatureState matrica** za svaki simbol.
+
+Ovaj FeatureState je srce sistema — sve kasnije faze (regime engine, scoring engine, state machine, execution) koriste GA.
+
+---
+
+# 🧱 **GLAVNA ARHITEKTURA FAZE 4**
+
+Čitava Feature Engine arhitektura deli se na 7 podsistema:
+
+```
+src/features/
+    orderbookImbalance.js
+    wallsSpoofing.js
+    flowDelta.js
+    volatilityEngine.js
+    feeLeverageEngine.js
+    pumpPreSignals.js
+    featureEngine.js
+```
+
+Sve ovo se zasniva na microstructure iz Phase 3:
+
+```
+src/market/microstructure.js
+```
+
+Plus JSON metrics storage:
+
+```
+data/metrics/<symbol>.json
+```
+
+I novi API route:
+
+```
+GET /api/symbol/:symbol/features
+```
+
+---
+
+# 📦 **1) FEATURE STATE — MASTER STRUKTURA**
+
+Za svaki simbol postoji kompletna FeatureState struktura:
+
+```ts
+FeatureState = {
+    symbol: string,
+    lastUpdateAt: ISOString,
+    imbalance: { ... },
+    walls: { ... },
+    spoofing: { ... },
+    flow: { ... },
+    volatility: { ... },
+    feeLeverage: { ... },
+    pumpSignals: { ... }
+}
+```
+
+Ona je:
+
+* u memori (FeatureEngineState)
+* i na disku (JSON snapshot)
+* i dostupna preko API-ja (dashboard)
+
+---
+
+# 🔍 **2) FEATURE MODULI — DETALJNE SPECIFIKACIJE**
+
+Sada idemo modul po modul, najdetaljnije moguće.
+
+---
+
+# 📘 **2.1 ORDERBOOK IMBALANCE ENGINE**
+
+### *File: src/features/orderbookImbalance.js*
+
+### **Cilj**
+
+Izračunati realno stanje balansa (i disbalansa) knjige naloga:
+
+* ko kontroliše TOB (top-of-book)
+* ko kontroliše SHORT/MID/FAR zone (depth zones)
+* koliko je signal stabilan (confidence score)
+
+### **Input**
+
+Iz Phase 3:
+
+```
+orderbookSummary = microstructure.getOrderbookSummary(symbol, depth)
+```
+
+### **Output:**
+
+```json
+imbalance: {
+    tobImbalance: number,
+    zoneImbalanceShortTerm: number,
+    zoneImbalanceMidTerm: number,
+    zoneImbalanceFarTerm: number,
+    imbalancedSide: "BUY" | "SELL" | "NONE",
+    confidence: number
+}
+```
+
+### **Najbolja profesionalna implementacija (algoritamski)**
+
+#### **a) TOB imbalance formula**
+
+```
+tob = (bid_qty - ask_qty) / (bid_qty + ask_qty)
+```
+
+Range: -1 → +1
+
+#### **b) Zone definicije**
+
+Najbolja empirijska rešenja za crypto scalping:
+
+| Zona  | Range od mid price |
+| ----- | ------------------ |
+| short | 0.00% – 0.05%      |
+| mid   | 0.05% – 0.15%      |
+| far   | 0.15% – 0.40%      |
+
+#### **c) Imbalance formule**
+
+```
+zoneImbalance = (sumBids - sumAsks) / (sumBids + sumAsks)
+```
+
+#### **d) Dominant side**
+
+Ako:
+
+* tobImbalance > +0.25 → BUY
+* tobImbalance < -0.25 → SELL
+* inače: NONE
+
+#### **e) Confidence**
+
+Bazirano na:
+
+* kolika je konzistentnost između zona (koliko zona ima isti znak)
+* koliki je ukupni depth (više depth → veća pouzdanost)
+* brzina updejta
+
+Score: 0 → 1
+
+---
+
+# 🚧 **2.2 WALLS & SPOOFING ENGINE**
+
+### *File: src/features/wallsSpoofing.js*
+
+## **WALL DETECTION**
+
+### Zid (wall) je definisan kao nivo gde:
+
+```
+qty > avg_qty * K
+```
+
+Najbolja vrednost K (testirano u profesionalnim sistemima):
+➡️ **K = 8**
+
+### Proizvodi:
+
+```
+hasBidWall
+bidWallPrice
+bidWallStrength
+…
+hasAskWall
+askWallStrength
+absorption scores
+```
+
+---
+
+## **SPOOF DETECTION (najvažniji deo)**
+
+Spoofing se detektuje kao:
+
+1. Veliki zid se pojavi
+2. Cena krene ka njemu
+3. Zid nestane pre kontakta
+
+→ to znači manipulacija.
+
+Takođe:
+
+* mnogo cancel eventova
+* zid koji se teleportuje
+* abnormalno tanki depth u normalnoj fazi
+
+### Output:
+
+```
+spoofingScore: 0–1
+recentSpoofEvents: number
+spoofOnBidSide
+spoofOnAskSide
+```
+
+---
+
+# 🔥 **2.3 FLOW / DELTA ENGINE**
+
+### *File: src/features/flowDelta.js*
+
+Ovo je “traders attacking pressure engine”.
+
+### **Input:** tradeTick buffer iz Phase 3
+
+### **Window-i za flow:**
+
+* 1s
+* 5s
+* 15s
+
+### Formula:
+
+```
+delta = buyVolume - sellVolume
+ratio = delta / (buyVolume + sellVolume)
+```
+
+### Output:
+
+```
+buyVolume1s, sellVolume1s, deltaVolume1s
+...
+deltaRatio1s, deltaRatio5s, deltaRatio15s
+currentDominantSide
+dominanceStreakSeconds
+```
+
+### Dominant side:
+
+Ako deltaRatio > 0.2 → BUY
+Ako deltaRatio < -0.2 → SELL
+Inače: NONE
+
+### Dominance streak:
+
+Broj sekundi koliko delta nije promenila znak.
+
+---
+
+# ⚡ **2.4 VOLATILITY ENGINE**
+
+### *File: src/features/volatilityEngine.js*
+
+### ► Najbolji volatility engine za micro scalping je **micro ATR**
+
+Koristimo micro-candles iz Phase 3:
+
+```
+1s ATR  = avg(high-low, last 14)
+5s ATR  = avg(high-low, last 14)
+15s ATR = avg(high-low, last 14)
+```
+
+### Output:
+
+```
+atr1s, atr5s, atr15s
+volatilityScore
+explosionFlag
+explosionStrength
+```
+
+### volatilityScore mapping:
+
+ATR se normališe protiv rolling window max:
+
+```
+volatilityScore = ATR_now / ATR_max_last_300s
+```
+
+### explosionFlag:
+
+Ako:
+
+```
+ATR_now > ATR_avg_last_300s * 3
+```
+
+---
+
+# 💸 **2.5 FEE & LEVERAGE ENGINE**
+
+### *File: src/features/feeLeverageEngine.js*
+
+### Input:
+
+* CONFIG fees
+* symbolMeta.maxLeverage
+* volatility engine
+* symbolProfile (Phase 2)
+
+### Output:
+
+```
+assumedMakerFeeRate
+assumedTakerFeeRate
+minMoveForProfitMaker
+minMoveForProfitTaker
+defaultLeverage
+liqSafetyScore
+```
+
+### minMoveForProfit idealna formula:
+
+```
+minMoveMaker = (makerFee*2) + slippage + volatilityImpact
+```
+
+Slippage se procenjuje iz ATR:
+
+```
+slippage ≈ atr1s / price
+```
+
+### Liquidation safety score:
+
+```
+liqSafety = 1 - (volatilityScore * (defaultLeverage / maxLeverage))
+```
+
+---
+
+# 📈 **2.6 PUMP PRE-SIGNALS ENGINE**
+
+### *File: src/features/pumpPreSignals.js*
+
+Pump detection je jedna od najtežih komponenti.
+
+### koristi:
+
+* price change %
+* volume spikes
+* trades-per-second
+* orderbook ThinScore
+
+### Output:
+
+```
+priceChange5sPct
+priceChange15sPct
+priceChange60sPct
+volumeSpike5s
+volumeSpike15s
+tradesPerSecond5s
+tradesPerSecond15s
+orderbookThinScore
+pumpLikelihoodScore
+```
+
+### Najbolja heuristika:
+
+```
+pumpLikelihood =
+    w1*priceChange5s +
+    w2*volumeSpike5s +
+    w3*orderbookThinScore +
+    w4*tradesPerSecond5s
+```
+
+Najbolji profesionalni weight-ovi:
+
+```
+w1 = 0.40
+w2 = 0.30
+w3 = 0.20
+w4 = 0.10
+```
+
+---
+
+# 🧠 **3) CENTRALNI FEATURE ENGINE**
+
+### *File: src/features/featureEngine.js*
+
+Ovo je orchestrator.
+
+### Funkcije:
+
+### **initFeatureEngine()**
+
+* učitava Universe
+* inicijalizuje FeatureState
+* pravi update loop (svakih 1000ms)
+
+### **updateFeaturesForSymbol(symbol)**
+
+Radi sledeće:
+
+1. povlači orderbook & trades & candles
+2. računa:
+
+   * imbalance
+   * walls
+   * spoofing
+   * flow
+   * volatility
+   * fee/leverage
+   * pump pre-signale
+3. sklapa FeatureState
+4. čuva u:
+
+   * memoriji
+   * data/metrics/<symbol>.json
+
+### **updateAllFeatures()**
+
+Obrađuje sve simbole — ali sa throttling-om:
+
+* Prime: svaki sekund
+* Normal: svakih 2–3 sekunde
+* Wild: svakih 5 sekundi
+
+*(najbolji balans CPU-a i kvaliteta)*
+
+---
+
+# 🌐 **4) API ENDPOINTS**
+
+## **GET /api/symbol/:symbol/features**
+
+Response:
+
+```
+{
+  symbol,
+  lastUpdateAt,
+  imbalance,
+  walls,
+  spoofing,
+  flow,
+  volatility,
+  feeLeverage,
+  pumpSignals
+}
+```
+
+## **GET /api/features/overview**
+
+Za prikaz hotlist:
+
+```
+symbol
+tobImbalance
+spoofingScore
+volatilityScore
+pumpLikelihoodScore
+```
+
+---
+
+# 🩺 **5) HEALTH MODULE DODACI**
+
+services.featureEngine:
+
+```
+status: OK | INIT | DEGRADED | DOWN
+lastUpdateAt
+symbolsUpdatedLastCycle
+updateIntervalMs
+```
+
+---
+
+# 🧪 **6) TEST PLAN (12 profesionalnih testova)**
+
+### Test 1 — Orderbook imbalance
+
+Simulirati ekstremno jaka bid strana → imbalance > 0.5
+
+### Test 2 — Walls
+
+Napraviti lažni wall → mora biti detektovan
+
+### Test 3 — Spoofing
+
+Zid koji nestaje pre udarca → spoofingScore mora rasti
+
+### Test 4 — Flow dominance
+
+5 sekundi BUY-only trades → dominantSide=BUY
+
+### Test 5 — Volatility explosion
+
+Naglo povećanje high-low → explosionFlag=true
+
+### Test 6 — Fee/minMove correctness
+
+Ručno izračunati maker scenario → mora biti identičan
+
+### Test 7 — Pump pre-signal
+
+Napraviti price spike + volume spike → pumpLikelihood > 0.80
+
+### Test 8 — JSON snapshot
+
+data/metrics/BTCUSDT.json mora postojati
+
+### Test 9 — API endpoint
+
+/api/symbol/BTCUSDT/features mora vratiti kompletan FeatureState
+
+### Test 10 — CPU throttling
+
+FeatureEngine ne sme frcati CPU preko 40%
+
+### Test 11 — Multi-symbol stress
+
+50 simbola istovremeno → sistem stabilan
+
+### Test 12 — Restart recovery
+
+posle restarta engine mora regenerisati FeatureState iz fresh microstructure
+
+---
+
+# 🧩 **7) FINALNI REZULTAT FAZE 4**
+
+Kada se ova faza završi, tvoj sistem dobija:
+
+## ✔️ PRAVI INTELIGENTNI SLOJ
+
+Sistem razume:
+
+* ko dominira orderbook
+* da li postoji manipulacija
+* da li je tržište u eksploziji
+* koliko je tržište opasno zbog fee + volatility
+* da li počinje pump pre-signal
+
+## ✔️ PODACI SU DOSTUPNI:
+
+* u memoriji
+* na disku
+* preko API-ja
+* u dashboard-u
+
+## ✔️ PRIPREMA ZA FAZU 5
+
+(Scoring Engine + Regime Engine)
+— gde tvoj bot dobija mozak.
+
+---
+
+# 🟩 **FAZA 4 — SPREMNA**
+
+Ako želiš, mogu odmah da nastavim sa:
+
+### **A) FAZA 5 — REGIME ENGINE (ultra detaljna spec)**
+
+ili
+
+### **B) FAZA 5 + kompletan kod**
+
+ili
+
+### **C) Implementaciju FAZE 4 (sav kod)**
+
+Samo reci šta hoćeš dalje.

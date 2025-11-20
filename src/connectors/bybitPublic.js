@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import CONFIG from "../config/index.js";
+import * as OrderbookManager from "../microstructure/OrderbookManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,6 +62,7 @@ function buildTopics(symbols = []) {
   for (const s of symbols) {
     topics.push(`tickers.${s}`);
     topics.push(`publicTrade.${s}`);
+    topics.push(`orderbook.1.${s}`); // L1 orderbook data
   }
   return topics;
 }
@@ -277,6 +279,18 @@ async function connectWS(symbolsOverride = null) {
       for (const t of trades) {
         // Store latest trade price for fallback
         const tradePrice = parseFloat(t.p || t.price || 0);
+
+        // Normalize trade event for OrderbookManager
+        const tradeEvent = {
+          price: tradePrice,
+          qty: parseFloat(t.v || t.qty || 0),
+          side: t.S || t.side || "UNKNOWN",
+          tradeId: t.i || t.tradeId || Date.now().toString(),
+          ts: parseInt(t.T || t.timestamp || Date.now())
+        };
+
+        // Send to microstructure system
+        OrderbookManager.onTradeEvent(symbol, tradeEvent);
         if (tradePrice > 0) {
           latestTradePrices.set(symbol, tradePrice);
 
@@ -301,6 +315,36 @@ async function connectWS(symbolsOverride = null) {
           timestamp: nowISO(),
           symbol,
           payload: t,
+        });
+      }
+
+    } else if (kind === "orderbook" && symbol) {
+      // Orderbook data processing
+      const orderbookData = Array.isArray(msg.data) ? msg.data[0] : msg.data;
+
+      if (orderbookData) {
+        // Normalize orderbook event for OrderbookManager
+        const orderbookEvent = {
+          bids: (orderbookData.b || orderbookData.bids || []).map(level => ({
+            price: parseFloat(level[0] || level.price || 0),
+            qty: parseFloat(level[1] || level.qty || 0)
+          })),
+          asks: (orderbookData.a || orderbookData.asks || []).map(level => ({
+            price: parseFloat(level[0] || level.price || 0),
+            qty: parseFloat(level[1] || level.qty || 0)
+          })),
+          lastUpdateId: orderbookData.u || orderbookData.updateId || null,
+          ts: parseInt(orderbookData.ts || orderbookData.timestamp || Date.now())
+        };
+
+        // Send to microstructure system
+        OrderbookManager.onOrderbookEvent(symbol, orderbookEvent);
+
+        emitter.emit("event", {
+          type: "orderbook",
+          timestamp: nowISO(),
+          symbol,
+          payload: orderbookData,
         });
       }
     }
@@ -347,6 +391,11 @@ export async function initPublicConnection(options = {}) {
   }
 
   console.log("🔍 [DEBUG] Proceeding with WebSocket connection...");
+
+  // Initialize OrderbookManager microstructure system
+  OrderbookManager.initMicrostructure();
+  console.log("✅ OrderbookManager microstructure initialized");
+
   manualClose = false;
   wsStatus.reconnectAttempts = 0;
 
