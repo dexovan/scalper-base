@@ -67,9 +67,9 @@ async function startEngine() {
     // - graditi microstructure
     // - puniti profile itd.
     if (evt.type === "ticker") {
-      // console.log("[TICKER]", evt.symbol, evt.payload.lastPrice || evt.payload.lastPrice || "");
+      console.log("[TICKER]", evt.symbol, evt.payload.lastPrice || evt.payload.price || "");
     } else if (evt.type === "trade") {
-      // console.log("[TRADE]", evt.symbol, evt.payload.side, evt.payload.price, evt.payload.qty);
+      console.log("[TRADE]", evt.symbol, evt.payload.side, evt.payload.price, evt.payload.qty);
     }
   });
 
