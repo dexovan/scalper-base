@@ -173,12 +173,15 @@ export function getSymbolMeta(symbol) {
 
 export function getSymbolsByCategory(category) {
   const target = String(category || "").toLowerCase();
-  return Object.values(UniverseState.symbols || {})
-    .filter((meta) => meta.category && meta.category.toLowerCase() === target)
-    .map((meta) => meta.symbol);
-}
 
-export function getUniverseStats() {
+  // Special case for "All" - return all symbol metadata
+  if (target === "all") {
+    return Object.values(UniverseState.symbols || {});
+  }
+
+  return Object.values(UniverseState.symbols || {})
+    .filter((meta) => meta.category && meta.category.toLowerCase() === target);
+}export function getUniverseStats() {
   return { ...UniverseState.stats };
 }
 

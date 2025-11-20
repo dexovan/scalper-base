@@ -834,18 +834,25 @@
             }
 
             console.log(`✅ Rendering ${symbols.length} symbols for ${category} category`);
-            container.innerHTML = symbols.map((symbol, index) => {
+            container.innerHTML = symbols.map((symbolMeta, index) => {
+                // Handle both string format (old API) and object format (new API)
+                const symbolName = typeof symbolMeta === 'string' ? symbolMeta : symbolMeta.symbol;
+                const symbolCategory = typeof symbolMeta === 'string' ? category : symbolMeta.category;
+                const baseAsset = typeof symbolMeta === 'string' ? 'USDT' : symbolMeta.quoteAsset || 'USDT';
+                const maxLeverage = typeof symbolMeta === 'string' ? '1-125x' : `1-${symbolMeta.maxLeverage || 125}x`;
+                const status = typeof symbolMeta === 'string' ? 'Active' : (symbolMeta.status === 'Trading' ? 'Active' : symbolMeta.status);
+
                 return `
                     <tr class="hover:bg-slate-800/30 transition-colors">
-                        <td class="p-2 text-slate-100 font-semibold">${symbol}</td>
+                        <td class="p-2 text-slate-100 font-semibold">${symbolName}</td>
                         <td class="p-2">
-                            <span class="px-2 py-1 text-xs rounded-full ${this.getCategoryStyle(category)}">
-                                ${category}
+                            <span class="px-2 py-1 text-xs rounded-full ${this.getCategoryStyle(symbolCategory)}">
+                                ${symbolCategory}
                             </span>
                         </td>
-                        <td class="p-2 text-slate-400 text-sm">USDT</td>
-                        <td class="p-2 text-slate-400 text-sm">1-125x</td>
-                        <td class="p-2 text-slate-300 text-sm">Active</td>
+                        <td class="p-2 text-slate-400 text-sm">${baseAsset}</td>
+                        <td class="p-2 text-slate-400 text-sm">${maxLeverage}</td>
+                        <td class="p-2 text-slate-300 text-sm">${status}</td>
                     </tr>
                 `;
             }).join('');
