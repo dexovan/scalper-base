@@ -337,9 +337,14 @@ export function startMonitorApiServer(port = 8090) {
       const allSymbols = await getSymbolsByCategory('All');
 
       // Enrich symbols with real-time ticker data
+      console.log(`🔍 [DEBUG] latestTickers Map size: ${latestTickers.size}`);
+      console.log(`🔍 [DEBUG] Available ticker symbols: ${Array.from(latestTickers.keys()).join(', ')}`);
+
       const enrichedSymbols = allSymbols.map(symbolMeta => {
         const symbolName = typeof symbolMeta === 'string' ? symbolMeta : symbolMeta.symbol;
         const ticker = latestTickers.get(symbolName);
+
+        console.log(`🔍 [DEBUG] Symbol: ${symbolName}, Ticker found: ${!!ticker}, Price: ${ticker?.price}`);
 
         return {
           ...symbolMeta,
