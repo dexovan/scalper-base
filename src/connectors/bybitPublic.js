@@ -1,7 +1,7 @@
 // src/connectors/bybitPublic.js
 import WebSocket from "ws";
 import EventEmitter from "events";
-import { CONFIG } from "../config/index.js";
+import CONFIG from "../config/index.js";
 
 // Globalni event emitter za public evente (ticker/trade/heartbeat)
 const emitter = new EventEmitter();
