@@ -328,7 +328,7 @@
 
 <!-- Real-time Dashboard JavaScript -->
 <script type="module">
-    // Dashboard real-time data management
+    // Dashboard real-time data management - Cache bust: <%= Date.now() %>
     class DashboardAPI {
         constructor() {
             this.tickersUrl = "/monitor/api/tickers";
@@ -343,12 +343,32 @@
             this.currentCategory = "Prime";
         }
 
+        // Timeout wrapper for fetch calls
+        async fetchWithTimeout(url, options = {}, timeout = 10000) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    signal: controller.signal,
+                    cache: "no-store",
+                    headers: { 'Cache-Control': 'no-cache', ...options.headers }
+                });
+                clearTimeout(timeoutId);
+                return response;
+            } catch (error) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    throw new Error(`Request timeout after ${timeout}ms`);
+                }
+                throw error;
+            }
+        }
+
         async updateTickers() {
             try {
-                const response = await fetch(this.tickersUrl, {
-                    cache: "no-store",
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
+                const response = await this.fetchWithTimeout(this.tickersUrl);
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -399,9 +419,16 @@
                     this.renderTickerError("Connection lost - retrying...");
                 }
             }
-        }        async updateTrades() {
+        }
+
+        async updateTrades() {
             try {
-                const response = await fetch(`${this.tradesUrl}?limit=25`, { cache: "no-store" });
+                const response = await this.fetchWithTimeout(`${this.tradesUrl}?limit=25`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const data = await response.json();
 
                 if (data.ok && data.trades) {
@@ -414,10 +441,7 @@
                 if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_RESET')) {
                     console.warn("Trades proxy blocked, trying direct API...");
                     try {
-                        const directResponse = await fetch('/monitor/api/trades?limit=25', {
-                            cache: "no-store",
-                            headers: { 'Cache-Control': 'no-cache' }
-                        });
+                        const directResponse = await this.fetchWithTimeout('/monitor/api/trades?limit=25');
                         const directData = await directResponse.json();
                         if (directData.ok && directData.trades) {
                             this.renderTrades(directData.trades);
@@ -431,10 +455,7 @@
 
         async updateStorage() {
             try {
-                const response = await fetch(this.storageUrl, {
-                    cache: "no-store",
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
+                const response = await this.fetchWithTimeout(this.storageUrl);
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -474,10 +495,7 @@
 
         async updateUniverse() {
             try {
-                const response = await fetch(this.universeUrl, {
-                    cache: "no-store",
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
+                const response = await this.fetchWithTimeout(this.universeUrl);
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -521,10 +539,7 @@
                     '/monitor/api/symbols/All' :
                     `/monitor/api/symbols/${category}`;
 
-                const response = await fetch(apiUrl, {
-                    cache: "no-store",
-                    headers: { 'Cache-Control': 'no-cache' }
-                });
+                const response = await this.fetchWithTimeout(apiUrl);
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
