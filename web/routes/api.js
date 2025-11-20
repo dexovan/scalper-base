@@ -13,8 +13,7 @@ import HealthStatus, {
 
 import metrics from "../../src/core/metrics.js";
 
-// *** FIX: STATIC IMPORT (jedna instanca wsMetrics u celom projektu) ***
-import { getWsSummary } from "../../src/monitoring/wsMetrics.js";
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,56 +115,9 @@ router.get("/health/services/:serviceName", (req, res) => {
   }
 });
 
-/* ---------------------------------------------------------
-   MONITOR SUMMARY — engine + system + WS metrics
---------------------------------------------------------- */
-router.get('/monitor/summary', (req, res) => {
-  try {
-    return res.json({
-      engine: metrics.getSummary(),
-      system: {
-        uptime: process.uptime(),
-        rss: process.memoryUsage().rss,
-        heap: process.memoryUsage().heapUsed
-      },
-      ws: getWsSummary()   // <--- FIXED: sada radi 100%
-    });
-  } catch (err) {
-    return res.status(500).json({
-      timestamp: new Date().toISOString(),
-      status: "error",
-      message: "Monitor summary failed",
-      error: err.message
-    });
-  }
-});
 
-/* ---------------------------------------------------------
-   MONITOR LOGS — poslednje linije iz pm2-engine-out.log
---------------------------------------------------------- */
-router.get("/monitor/logs", (req, res) => {
-  const lines = parseInt(req.query.lines, 10) || 200;
-  const logFile = path.join(paths.PROJECT_ROOT, "logs", "pm2-engine-out.log");
 
-  fs.readFile(logFile, "utf8", (err, text) => {
-    if (err) {
-      return res.json({
-        ok: false,
-        error: err.message,
-        lines: [],
-      });
-    }
 
-    const allLines = text.split("\n");
-    const tail = allLines.slice(-lines);
-
-    res.json({
-      ok: true,
-      file: "pm2-engine-out.log",
-      lines: tail,
-    });
-  });
-});
 
 export default router;
 
