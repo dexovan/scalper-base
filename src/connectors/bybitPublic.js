@@ -18,6 +18,7 @@ if (!fs.existsSync(DATA_DIR)) {
 
 // In-memory ticker storage
 const latestTickers = new Map();
+const latestTradePrices = new Map(); // Track latest trade prices for fallback
 
 // Globalni event emitter za public evente (ticker/trade/heartbeat)
 const emitter = new EventEmitter();
@@ -191,9 +192,17 @@ async function connectWS(symbolsOverride = null) {
       const payload = Array.isArray(msg.data) ? msg.data[0] : msg.data;
 
       // Store ticker data for Monitor API
+      let price = parseFloat(payload.lastPrice || payload.price || 0);
+
+      // If ticker price is 0 or null, use latest trade price as fallback
+      if (price === 0 && latestTradePrices.has(symbol)) {
+        price = latestTradePrices.get(symbol);
+        console.log(`🔄 Using trade price fallback for ${symbol}: $${price}`);
+      }
+
       const tickerData = {
         symbol,
-        price: parseFloat(payload.lastPrice || payload.price || 0),
+        price: price,
         change24h: parseFloat(payload.price24hPcnt || 0) * 100,
         volume24h: parseFloat(payload.volume24h || 0),
         timestamp: nowISO()
@@ -217,6 +226,27 @@ async function connectWS(symbolsOverride = null) {
       const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
 
       for (const t of trades) {
+        // Store latest trade price for fallback
+        const tradePrice = parseFloat(t.p || t.price || 0);
+        if (tradePrice > 0) {
+          latestTradePrices.set(symbol, tradePrice);
+
+          // If we have no ticker price or ticker price is 0, update ticker with trade price
+          const currentTicker = latestTickers.get(symbol);
+          if (!currentTicker || currentTicker.price === 0) {
+            const updatedTicker = {
+              symbol,
+              price: tradePrice,
+              change24h: currentTicker?.change24h || 0,
+              volume24h: currentTicker?.volume24h || 0,
+              timestamp: nowISO()
+            };
+            latestTickers.set(symbol, updatedTicker);
+            console.log(`🚀 Updated ${symbol} ticker from trade: $${tradePrice}`);
+            writeTickersToFile();
+          }
+        }
+
         emitter.emit("event", {
           type: "trade",
           timestamp: nowISO(),
