@@ -339,6 +339,25 @@
             } catch (error) {
                 console.error("Failed to fetch storage stats:", error);
                 console.error("Storage URL:", this.storageUrl);
+
+                // Fallback: Try direct API if proxy fails (browser extension blocking)
+                if (error.message.includes('Failed to fetch')) {
+                    console.warn("Proxy blocked, trying direct API...");
+                    try {
+                        const directResponse = await fetch('http://localhost:8090/api/monitor/storage', {
+                            cache: "no-store",
+                            headers: { 'Cache-Control': 'no-cache' }
+                        });
+                        const directData = await directResponse.json();
+                        if (directData.ok && directData.storage) {
+                            this.renderStorage(directData.storage);
+                        }
+                    } catch (directError) {
+                        console.error("Direct API also failed:", directError);
+                        // Show fallback message
+                        this.renderStorageError("Storage API unavailable");
+                    }
+                }
             }
         }
 
@@ -425,6 +444,17 @@
             if (tradeFiles) tradeFiles.textContent = storage.todayFiles?.trades || 0;
             if (tickerSize) tickerSize.textContent = this.formatBytes(storage.todaySizes?.tickers || 0);
             if (tradeSize) tradeSize.textContent = this.formatBytes(storage.todaySizes?.trades || 0);
+        }
+
+        renderStorageError(message) {
+            // Show error message in storage stats
+            const tickerFiles = document.getElementById('ticker-files');
+            const tradeFiles = document.getElementById('trade-files');
+
+            if (tickerFiles) tickerFiles.textContent = '⚠️';
+            if (tradeFiles) tradeFiles.textContent = '⚠️';
+
+            console.warn('Storage stats error:', message);
         }
 
         updateConnectionStatus(connected) {
