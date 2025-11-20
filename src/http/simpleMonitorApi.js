@@ -162,6 +162,40 @@ app.get("/api/monitor/universe", async (req, res) => {
   }
 });
 
+// Storage stats endpoint
+app.get("/api/monitor/storage", (req, res) => {
+  try {
+    // Generate mock storage stats since we don't have access to engine storage
+    const storageStats = {
+      tickers: {
+        count: Object.keys(readLatestTickers()).length,
+        lastUpdate: new Date().toISOString()
+      },
+      trades: {
+        count: 0,
+        lastUpdate: null
+      },
+      snapshots: {
+        count: 1,
+        lastUpdate: new Date().toISOString()
+      }
+    };
+
+    return res.json({
+      ok: true,
+      storage: storageStats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("❌ Error in /api/monitor/storage:", error.message);
+    return res.status(500).json({
+      ok: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Health check endpoint
 app.get("/api/monitor/health", (req, res) => {
   const tickers = readLatestTickers();
