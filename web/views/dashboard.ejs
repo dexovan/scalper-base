@@ -815,11 +815,9 @@
         renderSymbols(symbols, category) {
             console.log(`🎨 renderSymbols called for category: ${category}, symbols:`, symbols);
 
-            const container = document.getElementById('symbols-table-body');
-            console.log("🔍 symbols-table-body element found:", !!container);
-
-            if (!container) {
-                console.error("❌ symbols-table-body element not found in DOM");
+            const container = document.getElementById('universe-table-body');
+            console.log("🔍 universe-table-body element found:", !!container);            if (!container) {
+                console.error("❌ universe-table-body element not found in DOM");
                 return;
             }
 
@@ -827,7 +825,7 @@
                 console.log("⚠️ No symbols to render, showing empty message");
                 container.innerHTML = `
                     <tr>
-                        <td colspan="4" class="text-center text-slate-500 text-sm py-8">
+                        <td colspan="5" class="text-center text-slate-500 text-sm py-8">
                             No symbols found in ${category} category
                         </td>
                     </tr>
@@ -835,19 +833,19 @@
                 return;
             }
 
+            console.log(`✅ Rendering ${symbols.length} symbols for ${category} category`);
             container.innerHTML = symbols.map((symbol, index) => {
                 return `
-                    <tr class="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
-                        <td class="px-4 py-2 text-slate-200 font-mono text-sm">${index + 1}</td>
-                        <td class="px-4 py-2 text-slate-100 font-semibold">${symbol.symbol}</td>
-                        <td class="px-4 py-2">
-                            <span class="px-2 py-1 text-xs rounded-full ${this.getCategoryStyle(symbol.category)}">
-                                ${symbol.category}
+                    <tr class="hover:bg-slate-800/30 transition-colors">
+                        <td class="p-2 text-slate-100 font-semibold">${symbol}</td>
+                        <td class="p-2">
+                            <span class="px-2 py-1 text-xs rounded-full ${this.getCategoryStyle(category)}">
+                                ${category}
                             </span>
                         </td>
-                        <td class="px-4 py-2 text-slate-400 text-sm font-mono">
-                            ${symbol.contractType || 'LinearPerpetual'}
-                        </td>
+                        <td class="p-2 text-slate-400 text-sm">USDT</td>
+                        <td class="p-2 text-slate-400 text-sm">1-125x</td>
+                        <td class="p-2 text-slate-300 text-sm">Active</td>
                     </tr>
                 `;
             }).join('');
@@ -867,12 +865,12 @@
         }
 
         renderUniverseError(message) {
-            const container = document.getElementById('symbols-table-body');
+            const container = document.getElementById('universe-table-body');
             if (!container) return;
 
             container.innerHTML = `
                 <tr>
-                    <td colspan="4" class="text-center text-amber-400 text-sm py-8">
+                    <td colspan="5" class="text-center text-amber-400 text-sm py-8">
                         <div class="animate-pulse">⚠️ ${message}</div>
                     </td>
                 </tr>
@@ -880,12 +878,12 @@
         }
 
         renderSymbolsError(message) {
-            const container = document.getElementById('symbols-table-body');
+            const container = document.getElementById('universe-table-body');
             if (!container) return;
 
             container.innerHTML = `
                 <tr>
-                    <td colspan="4" class="text-center text-amber-400 text-sm py-8">
+                    <td colspan="5" class="text-center text-amber-400 text-sm py-8">
                         <div class="animate-pulse">⚠️ ${message}</div>
                     </td>
                 </tr>
@@ -969,7 +967,7 @@
         dashboard.start();
 
         // Set up Universe category tab handlers
-        const categoryTabs = document.querySelectorAll('.category-tab');
+        const categoryTabs = document.querySelectorAll('.universe-tab');
         categoryTabs.forEach(tab => {
             tab.addEventListener('click', async (e) => {
                 e.preventDefault();
