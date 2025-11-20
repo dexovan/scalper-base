@@ -1,7 +1,23 @@
 // src/connectors/bybitPublic.js
 import WebSocket from "ws";
 import EventEmitter from "events";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import CONFIG from "../config/index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATA_DIR = path.resolve(__dirname, "../../data");
+const TICKER_FILE = path.join(DATA_DIR, "latest_tickers.json");
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// In-memory ticker storage
+const latestTickers = new Map();
 
 // Globalni event emitter za public evente (ticker/trade/heartbeat)
 const emitter = new EventEmitter();
@@ -46,6 +62,21 @@ function buildTopics(symbols = []) {
     topics.push(`publicTrade.${s}`);
   }
   return topics;
+}
+
+// Write ticker data to shared file
+function writeTickersToFile() {
+  try {
+    const tickerData = {};
+    latestTickers.forEach((ticker, symbol) => {
+      tickerData[symbol] = ticker;
+    });
+
+    fs.writeFileSync(TICKER_FILE, JSON.stringify(tickerData, null, 2));
+    console.log(`📝 Wrote ${Object.keys(tickerData).length} tickers to file`);
+  } catch (error) {
+    console.error("❌ Error writing ticker file:", error.message);
+  }
 }
 
 async function getPrimeSymbols() {
@@ -158,6 +189,21 @@ async function connectWS(symbolsOverride = null) {
     if (kind === "tickers" && symbol) {
       // Bybit v5 tickers: msg.data je objekat ili niz; uzimamo prvi ako je niz
       const payload = Array.isArray(msg.data) ? msg.data[0] : msg.data;
+
+      // Store ticker data for Monitor API
+      const tickerData = {
+        symbol,
+        price: parseFloat(payload.lastPrice || payload.price || 0),
+        change24h: parseFloat(payload.price24hPcnt || 0) * 100,
+        volume24h: parseFloat(payload.volume24h || 0),
+        timestamp: nowISO()
+      };
+
+      latestTickers.set(symbol, tickerData);
+      console.log(`💰 Ticker ${symbol}: $${tickerData.price} (${latestTickers.size} total)`);
+
+      // Write to file periodically (every ticker update)
+      writeTickersToFile();
 
       emitter.emit("event", {
         type: "ticker",
