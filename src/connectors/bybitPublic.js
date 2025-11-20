@@ -48,11 +48,31 @@ function buildTopics(symbols = []) {
   return topics;
 }
 
-function getPrimeSymbols() {
-  return CONFIG.custom?.primeSymbols ?? ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"];
-}
+async function getPrimeSymbols() {
+  // First try config override
+  if (CONFIG.custom?.primeSymbols) {
+    return CONFIG.custom.primeSymbols;
+  }
 
-// ============================
+  // Try to use Universe v2 Prime symbols
+  try {
+    const { getSymbolsByCategory } = await import("../market/universe_v2.js");
+    const primeSymbols = getSymbolsByCategory("Prime");
+    if (primeSymbols.length > 0) {
+      // Extract symbol names from metadata objects
+      const symbolNames = primeSymbols.map(s => typeof s === 'string' ? s : s.symbol);
+      console.log(`🎯 Using ${symbolNames.length} Prime symbols from Universe v2:`, symbolNames.slice(0, 5), '...');
+      return symbolNames;
+    }
+  } catch (error) {
+    console.warn("⚠️ Could not load Prime symbols from Universe v2:", error.message);
+  }
+
+  // Fallback to hardcoded list
+  const fallback = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"];
+  console.log("🔄 Using fallback Prime symbols:", fallback);
+  return fallback;
+}// ============================
 // WS CONNECT / RECONNECT
 // ============================
 
@@ -71,14 +91,14 @@ function scheduleReconnect() {
   );
 
   if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(() => {
-    connectWS();
+  reconnectTimer = setTimeout(async () => {
+    await connectWS();
   }, delay);
 }
 
-function connectWS(symbolsOverride = null) {
+async function connectWS(symbolsOverride = null) {
   const wsUrl = CONFIG.bybit?.wsPublic || "wss://stream.bybit.com/v5/public/linear";
-  const primeSymbols = symbolsOverride || getPrimeSymbols();
+  const primeSymbols = symbolsOverride || await getPrimeSymbols();
   const topics = buildTopics(primeSymbols);
 
   console.log("📡 [BYBIT-WS] Connecting to:", wsUrl);
@@ -180,7 +200,7 @@ function connectWS(symbolsOverride = null) {
  * Inicijalizuje Bybit public WS konekciju (tickers + trades za PRIME simbole).
  * Možeš proslediti custom listu simbola ako želiš.
  */
-export function initPublicConnection(options = {}) {
+export async function initPublicConnection(options = {}) {
   if (ws && wsStatus.connected) {
     console.log("ℹ️ [BYBIT-WS] Already connected, skipping init.");
     return;
@@ -190,7 +210,7 @@ export function initPublicConnection(options = {}) {
   wsStatus.reconnectAttempts = 0;
 
   const symbolsOverride = options.symbols || null;
-  connectWS(symbolsOverride);
+  await connectWS(symbolsOverride);
 }
 
 /**

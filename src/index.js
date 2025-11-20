@@ -50,7 +50,7 @@ async function startEngine() {
   await initUniverse();
 
   // MAIN WS (dynamic)
-  initPublicConnection(); // koristi CONFIG.custom.primeSymbols
+  await initPublicConnection(); // koristi CONFIG.custom.primeSymbols
 
   initEventHub();
 
