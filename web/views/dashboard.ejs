@@ -751,25 +751,80 @@
         }
 
         renderUniverseStats(universe) {
-            if (!universe) return;
+            console.log("🎨 renderUniverseStats called with:", universe);
+
+            if (!universe) {
+                console.error("❌ No universe data provided to renderUniverseStats");
+                return;
+            }
 
             // Update statistics
+            console.log("🔍 Looking for DOM elements...");
             const totalSymbols = document.getElementById('total-symbols');
             const primeCount = document.getElementById('prime-count');
             const normalCount = document.getElementById('normal-count');
             const wildCount = document.getElementById('wild-count');
 
-            if (totalSymbols) totalSymbols.textContent = universe.totalSymbols || 0;
-            if (primeCount) primeCount.textContent = universe.primeCount || 0;
-            if (normalCount) normalCount.textContent = universe.normalCount || 0;
-            if (wildCount) wildCount.textContent = universe.wildCount || 0;
+            console.log("📋 DOM elements found:", {
+                totalSymbols: !!totalSymbols,
+                primeCount: !!primeCount,
+                normalCount: !!normalCount,
+                wildCount: !!wildCount
+            });
+
+            console.log("📊 Universe stats to render:", {
+                totalSymbols: universe.totalSymbols || universe.stats?.totalSymbols || 0,
+                primeCount: universe.primeCount || universe.stats?.primeCount || 0,
+                normalCount: universe.normalCount || universe.stats?.normalCount || 0,
+                wildCount: universe.wildCount || universe.stats?.wildCount || 0
+            });
+
+            if (totalSymbols) {
+                const value = universe.totalSymbols || universe.stats?.totalSymbols || 0;
+                totalSymbols.textContent = value;
+                console.log("✅ Updated total-symbols:", value);
+            } else {
+                console.error("❌ total-symbols element not found");
+            }
+
+            if (primeCount) {
+                const value = universe.primeCount || universe.stats?.primeCount || 0;
+                primeCount.textContent = value;
+                console.log("✅ Updated prime-count:", value);
+            } else {
+                console.error("❌ prime-count element not found");
+            }
+
+            if (normalCount) {
+                const value = universe.normalCount || universe.stats?.normalCount || 0;
+                normalCount.textContent = value;
+                console.log("✅ Updated normal-count:", value);
+            } else {
+                console.error("❌ normal-count element not found");
+            }
+
+            if (wildCount) {
+                const value = universe.wildCount || universe.stats?.wildCount || 0;
+                wildCount.textContent = value;
+                console.log("✅ Updated wild-count:", value);
+            } else {
+                console.error("❌ wild-count element not found");
+            }
         }
 
         renderSymbols(symbols, category) {
+            console.log(`🎨 renderSymbols called for category: ${category}, symbols:`, symbols);
+
             const container = document.getElementById('symbols-table-body');
-            if (!container) return;
+            console.log("🔍 symbols-table-body element found:", !!container);
+
+            if (!container) {
+                console.error("❌ symbols-table-body element not found in DOM");
+                return;
+            }
 
             if (!symbols || symbols.length === 0) {
+                console.log("⚠️ No symbols to render, showing empty message");
                 container.innerHTML = `
                     <tr>
                         <td colspan="4" class="text-center text-slate-500 text-sm py-8">
