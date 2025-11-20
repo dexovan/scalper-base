@@ -6,6 +6,9 @@ import CONFIG from "../config/index.js";
 // Globalni event emitter za public evente (ticker/trade/heartbeat)
 const emitter = new EventEmitter();
 
+// Export za eventHub.js
+export const publicEmitter = emitter;
+
 // ============================
 // WS STATUS (za health.js)
 // ============================
