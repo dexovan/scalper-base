@@ -17,6 +17,8 @@ import {
 
 import { initEventHub } from "./ws/eventHub.js";
 
+import { saveTicker, saveTrade, getStorageStats } from "./utils/dataStorage.js";
+
 import CONFIG from "./config/index.js";
 
 import metrics from "./core/metrics.js";
@@ -62,12 +64,13 @@ async function startEngine() {
   onPublicEvent((evt) => {
     // evt = { type: "ticker" | "trade", timestamp, symbol, payload }
 
-    // Ovde ZA SADA samo log, kasnije ćemo:
-    // - slati u metrics
-    // - graditi microstructure
-    // - puniti profile itd.
     if (evt.type === "ticker") {
-      console.log("[TICKER]", evt.symbol, evt.payload.lastPrice || evt.payload.price || "");
+      const lastPrice = evt.payload.lastPrice || evt.payload.price || "";
+      console.log("[TICKER]", evt.symbol, lastPrice);
+
+      // KORAK 2: Save ticker data to CSV file
+      saveTicker(evt.symbol, evt.payload);
+
     } else if (evt.type === "trade") {
       // Bybit v5 trade fields: S=side, p=price, v=volume, L=tick_direction
       const side = evt.payload.S;           // "Buy" | "Sell"
@@ -76,15 +79,28 @@ async function startEngine() {
       const tickDir = evt.payload.L;        // "PlusTick" | "MinusTick" | "ZeroPlusTick" | "ZeroMinusTick"
 
       console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
+
+      // KORAK 2: Save trade data to CSV file
+      saveTrade(evt.symbol, evt.payload);
     }
   });
 
   refreshUniversePeriodically();
 
+  // KORAK 2: Display storage stats
+  const storageStats = getStorageStats();
+  if (storageStats) {
+    console.log("📁 Data Storage Stats:");
+    console.log(`   Date: ${storageStats.date}`);
+    console.log(`   Ticker files: ${storageStats.tickerFiles}`);
+    console.log(`   Trade files: ${storageStats.tradeFiles}`);
+  }
+
   console.log("=====================================================");
   console.log("🌍 Universe service started.");
   console.log("📡 Public WS active.");
   console.log("🧠 AI Event Hub active.");
+  console.log("💾 File Storage active.");
   console.log("⚡ Engine running normally.");
 
   // =====================================================
