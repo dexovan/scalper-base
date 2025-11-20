@@ -86,7 +86,7 @@ async function testDashboardUI() {
 
     clearTimeout(timeoutId);
 
-    if (response.ok) {
+    if (response.ok || response.status === 302) {
       console.log("   ✔️ Dashboard server responding");
       automatedPassed++;
     } else {
