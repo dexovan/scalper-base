@@ -203,6 +203,14 @@ app.get("/", requireAuth, (req, res) => {
   });
 });
 
+// Dashboard alias for tests and direct access
+app.get("/dashboard", requireAuth, (req, res) => {
+  res.render("dashboard", {
+    title: "Dashboard",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
 // 5️⃣ SYSTEM MONITOR PAGE (PROTECTED)
 app.get("/monitor", requireAuth, (req, res) => {
   res.render("monitor", {
