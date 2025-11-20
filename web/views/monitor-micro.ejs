@@ -298,7 +298,7 @@
                             // Handle both string and object formats
                             const symbolName = typeof symbol === 'string' ? symbol : symbol.symbol;
                             const status = typeof symbol === 'string' ? 'active' : (symbol.status || 'active');
-                            
+
                             option.value = symbolName;
                             option.textContent = `${symbolName} (${status})`;
                             selector.appendChild(option);
