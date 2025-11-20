@@ -51,6 +51,7 @@ function buildTopics(symbols = []) {
 async function getPrimeSymbols() {
   // First try config override
   if (CONFIG.custom?.primeSymbols) {
+    console.log("🎯 Using config override Prime symbols:", CONFIG.custom.primeSymbols);
     return CONFIG.custom.primeSymbols;
   }
 
@@ -58,10 +59,12 @@ async function getPrimeSymbols() {
   try {
     const { getSymbolsByCategory } = await import("../market/universe_v2.js");
     const primeSymbols = getSymbolsByCategory("Prime");
+    console.log("🔍 Raw Prime symbols from Universe v2:", primeSymbols);
+
     if (primeSymbols.length > 0) {
       // Extract symbol names from metadata objects
       const symbolNames = primeSymbols.map(s => typeof s === 'string' ? s : s.symbol);
-      console.log(`🎯 Using ${symbolNames.length} Prime symbols from Universe v2:`, symbolNames.slice(0, 5), '...');
+      console.log(`🎯 Using ${symbolNames.length} Prime symbols from Universe v2:`, symbolNames);
       return symbolNames;
     }
   } catch (error) {
