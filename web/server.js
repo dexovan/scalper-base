@@ -51,7 +51,6 @@ import { createDB } from "./auth/auth.js";
 import apiRoutes from "./routes/api.js";
 import universeAPI from "./routes/api-universe.js";
 import apiTest from "./routes/api-test.js";
-import monitorRoutes from "./routes/monitor.js";
 
 import paths from "../src/config/paths.js";
 import { initHealth } from "../src/monitoring/health.js";
@@ -192,7 +191,6 @@ app.get("/login", (req, res) => {
 app.use("/api/universe", universeAPI);
 app.use("/api", apiRoutes);
 app.use("/api/test", apiTest);
-app.use("/api/monitor", monitorRoutes);
 
 // 3️⃣ AUTH ROUTES (login, logout, register)
 app.use(authRoutes);
