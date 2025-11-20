@@ -81,8 +81,8 @@ const CONFIG = {
   },
 
   custom: {
-    // PRIME simboli za WS (VARIJANTA B)
-    primeSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
+    // Allow Universe v2 to provide Prime symbols automatically
+    // primeSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"], // Commented out to use Universe v2
   },
 
   paths,
