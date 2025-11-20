@@ -4,6 +4,16 @@
 // Validates all API endpoints return JSON without errors
 // =========================================
 
+// Check if fetch is available (Node.js compatibility)
+if (typeof fetch === 'undefined') {
+  console.log("⚠️ Importing node-fetch for Node.js compatibility...");
+  const { default: fetch, Headers, Request, Response } = await import('node-fetch');
+  global.fetch = fetch;
+  global.Headers = Headers;
+  global.Request = Request;
+  global.Response = Response;
+}
+
 console.log("🧪 TEST 5: API Endpoints");
 console.log("=" .repeat(50));
 
@@ -11,11 +21,11 @@ async function testAPIEndpoints() {
   const endpoints = [
     "http://localhost:8090/api/monitor/summary",
     "http://localhost:8090/api/monitor/logs",
-    "http://localhost:8090/monitor/api/tickers",
-    "http://localhost:8090/monitor/api/trades",
-    "http://localhost:8090/monitor/api/storage",
-    "http://localhost:8090/monitor/api/universe",
-    "http://localhost:8090/api/universe",
+    "http://localhost:8090/api/monitor/tickers",
+    "http://localhost:8090/api/monitor/trades",
+    "http://localhost:8090/api/monitor/storage",
+    "http://localhost:8090/api/monitor/universe",
+    "http://localhost:8090/api/symbols",
     "http://localhost:8090/api/symbol/BTCUSDT/basic"
   ];
 

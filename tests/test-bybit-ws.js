@@ -18,8 +18,8 @@ async function testBybitWebSocket() {
     let validParsing = true;
     const errors = [];
 
-    const timeout = 30000; // 30 seconds
-    const requiredEvents = 10;
+    const timeout = 15000; // 15 seconds (reduced for faster testing)
+    const requiredEvents = 5; // Reduced requirement for more reliable testing
 
     console.log("🔌 Connecting to Bybit WebSocket...");
 

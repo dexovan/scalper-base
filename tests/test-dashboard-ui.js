@@ -4,6 +4,16 @@
 // Validates: monitor works, real-time updates, stable scroll
 // =========================================
 
+// Check if fetch is available (Node.js compatibility)
+if (typeof fetch === 'undefined') {
+  console.log("⚠️ Importing node-fetch for Node.js compatibility...");
+  const { default: fetch, Headers, Request, Response } = await import('node-fetch');
+  global.fetch = fetch;
+  global.Headers = Headers;
+  global.Request = Request;
+  global.Response = Response;
+}
+
 console.log("🧪 TEST 6: Dashboard UI");
 console.log("=" .repeat(50));
 
