@@ -12,6 +12,12 @@ import { fileURLToPath } from "url";
 import metrics from "../core/metrics.js";
 import wsMetrics from "../monitoring/wsMetrics.js";
 import { getStorageStats } from "../utils/dataStorage.js";
+import {
+  getUniverseSnapshot,
+  getUniverseStats,
+  getSymbolMeta,
+  getSymbolsByCategory
+} from "../market/universe_v2.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
@@ -174,6 +180,95 @@ export function startMonitorApiServer(port = 8090) {
         ok: true,
         timestamp: new Date().toISOString(),
         storage: stats
+      });
+    } catch (error) {
+      return res.json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // GET /api/monitor/universe - Universe overview with stats
+  // ============================================================
+  app.get("/api/monitor/universe", async (req, res) => {
+    try {
+      const universe = getUniverseSnapshot();
+      const stats = getUniverseStats();
+
+      return res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        universe: {
+          fetchedAt: universe.fetchedAt,
+          stats: stats,
+          symbolCount: {
+            total: stats.totalSymbols,
+            prime: stats.primeCount,
+            normal: stats.normalCount,
+            wild: stats.wildCount
+          }
+        }
+      });
+    } catch (error) {
+      return res.json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // GET /api/monitor/symbols/:category - Symbols by category (Prime/Normal/Wild)
+  // ============================================================
+  app.get("/api/monitor/symbols/:category", async (req, res) => {
+    try {
+      const { category } = req.params;
+      const limit = parseInt(req.query.limit || "50", 10);
+
+      const symbols = getSymbolsByCategory(category);
+      const limitedSymbols = symbols.slice(0, limit);
+
+      return res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        category: category,
+        symbols: limitedSymbols,
+        total: symbols.length,
+        returned: limitedSymbols.length
+      });
+    } catch (error) {
+      return res.json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // GET /api/monitor/symbol/:symbol - Individual symbol details
+  // ============================================================
+  app.get("/api/monitor/symbol/:symbol", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const symbolMeta = getSymbolMeta(symbol);
+
+      if (!symbolMeta) {
+        return res.status(404).json({
+          ok: false,
+          error: `Symbol '${symbol}' not found`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      return res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        symbol: symbolMeta
       });
     } catch (error) {
       return res.json({
