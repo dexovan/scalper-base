@@ -69,15 +69,13 @@ async function startEngine() {
     if (evt.type === "ticker") {
       console.log("[TICKER]", evt.symbol, evt.payload.lastPrice || evt.payload.price || "");
     } else if (evt.type === "trade") {
-      // DEBUG: Vidimo šta tačno šalje Bybit
-      console.log("[TRADE-RAW]", evt.symbol, "payload:", JSON.stringify(evt.payload, null, 2));
+      // Bybit v5 trade fields: S=side, p=price, v=volume, L=tick_direction
+      const side = evt.payload.S;           // "Buy" | "Sell"
+      const price = evt.payload.p;          // "91750.20"
+      const qty = evt.payload.v;            // "0.027"
+      const tickDir = evt.payload.L;        // "PlusTick" | "MinusTick" | "ZeroPlusTick" | "ZeroMinusTick"
 
-      // Pokušaj različitih naziva polja
-      const side = evt.payload.side || evt.payload.S || evt.payload.direction;
-      const price = evt.payload.price || evt.payload.p || evt.payload.execPrice;
-      const qty = evt.payload.qty || evt.payload.v || evt.payload.size || evt.payload.execQty;
-
-      console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty})`);
+      console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
     }
   });
 
