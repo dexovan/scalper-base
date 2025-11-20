@@ -78,9 +78,13 @@ async function testBybitWebSocket() {
         if (message.topic && message.topic.startsWith("tickers.")) {
           tickerEvents++;
 
-          // Validate ticker structure
-          if (message.data && message.data.symbol && message.data.lastPrice !== undefined) {
-            console.log(`📊 Ticker: ${message.data.symbol} = ${message.data.lastPrice}`);
+          // Validate ticker structure (delta messages may not have lastPrice)
+          if (message.data && message.data.symbol) {
+            if (message.data.lastPrice !== undefined) {
+              console.log(`📊 Ticker: ${message.data.symbol} = ${message.data.lastPrice}`);
+            } else {
+              console.log(`📊 Ticker delta: ${message.data.symbol} (partial update)`);
+            }
           } else {
             errors.push("Invalid ticker structure");
             validParsing = false;
