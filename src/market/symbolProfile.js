@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import paths from "../config/paths.js";
 
-const PROFILE_DIR = path.join(paths.root, "data", "profiles");
+const PROFILE_DIR = path.join(paths.PROJECT_ROOT, "data", "profiles");
 
 if (!fs.existsSync(PROFILE_DIR)) {
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
