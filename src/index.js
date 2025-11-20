@@ -37,6 +37,7 @@ import { startMonitorApiServer } from "./http/monitorApi.js";
 async function startEngine() {
   console.log("====================================================");
   console.log("🚀 AI Scalper Engine – Phase 2 Booting...");
+  console.log("📁 KORAK 2: File Storage Implementation Active!");
   console.log("====================================================");
 
   metrics.markDecision();
