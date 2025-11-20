@@ -52,10 +52,15 @@ const MAX_RECENT_TRADES = 100;
 
 // Listen to bybitPublic events for real-time data
 export function attachRealtimeListeners(bybitPublic) {
+  console.log("🔗 attachRealtimeListeners: Setting up event listeners");
+
   bybitPublic.on('event', (eventData) => {
+    console.log("📡 MonitorAPI received event:", eventData?.type, eventData?.symbol);
     const { type, symbol, payload } = eventData;
 
     if (type === 'ticker') {
+      console.log("📊 Processing ticker for", symbol, "payload keys:", Object.keys(payload || {}));
+
       // Try different possible price fields from Bybit ticker
       let price = null;
       if (payload.lastPrice) price = parseFloat(payload.lastPrice);
@@ -71,13 +76,16 @@ export function attachRealtimeListeners(bybitPublic) {
       else if (payload.turnover24h) volume24h = parseFloat(payload.turnover24h);
       else if (payload.v) volume24h = parseFloat(payload.v);
 
-      latestTickers.set(symbol, {
+      const tickerData = {
         symbol,
         price,
         change24h,
         volume24h,
         timestamp: new Date().toISOString()
-      });
+      };
+
+      latestTickers.set(symbol, tickerData);
+      console.log("💾 Stored ticker for", symbol, "price:", price, "total tickers:", latestTickers.size);
     }    if (type === 'trade') {
       const trade = {
         symbol,
