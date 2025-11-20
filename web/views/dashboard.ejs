@@ -375,7 +375,7 @@
                 if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_RESET')) {
                     console.warn("Ticker proxy blocked, trying direct API...");
                     try {
-                        const directResponse = await fetch('http://localhost:8090/api/monitor/tickers', {
+                        const directResponse = await fetch('/monitor/api/tickers', {
                             cache: "no-store",
                             headers: { 'Cache-Control': 'no-cache' }
                         });
@@ -414,7 +414,7 @@
                 if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_RESET')) {
                     console.warn("Trades proxy blocked, trying direct API...");
                     try {
-                        const directResponse = await fetch('http://localhost:8090/api/monitor/trades?limit=25', {
+                        const directResponse = await fetch('/monitor/api/trades?limit=25', {
                             cache: "no-store",
                             headers: { 'Cache-Control': 'no-cache' }
                         });
@@ -455,7 +455,7 @@
                 if (error.message.includes('Failed to fetch')) {
                     console.warn("Proxy blocked, trying direct API...");
                     try {
-                        const directResponse = await fetch('http://localhost:8090/api/monitor/storage', {
+                        const directResponse = await fetch('/monitor/api/storage', {
                             cache: "no-store",
                             headers: { 'Cache-Control': 'no-cache' }
                         });
@@ -498,7 +498,7 @@
                 if (error.message.includes('Failed to fetch')) {
                     console.warn("Universe proxy blocked, trying direct API...");
                     try {
-                        const directResponse = await fetch('http://localhost:8090/api/monitor/universe', {
+                        const directResponse = await fetch('/monitor/api/universe', {
                             cache: "no-store",
                             headers: { 'Cache-Control': 'no-cache' }
                         });
@@ -517,11 +517,11 @@
 
         async updateSymbols(category = 'Prime') {
             try {
-                const url = category === 'All' ?
-                    'http://localhost:8090/api/monitor/symbols/All' :
-                    `http://localhost:8090/api/monitor/symbols/${category}`;
+                const apiUrl = category === 'All' ?
+                    '/monitor/api/symbols/All' :
+                    `/monitor/api/symbols/${category}`;
 
-                const response = await fetch(url, {
+                const response = await fetch(apiUrl, {
                     cache: "no-store",
                     headers: { 'Cache-Control': 'no-cache' }
                 });
