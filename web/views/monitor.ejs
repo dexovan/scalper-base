@@ -3,7 +3,7 @@
     <div>
       <h1 class="text-2xl font-semibold text-slate-100">System Monitor</h1>
       <p class="text-sm text-slate-400">
-        Pregled rada DTrade engine-a, Bybit WebSocket konekcije i sistema ispod haube.
+        Pregled rada DTrade engine-a, Bybit WebSocket konekcije i sistema ispod hauve.
       </p>
     </div>
 
@@ -18,6 +18,32 @@
     </div>
   </div>
 </section>
+
+<div class="grid grid-cols-3 gap-4 mt-6">
+
+  <!-- ENGINE STATUS -->
+  <div class="bg-gray-900 p-4 rounded-xl shadow">
+    <div class="text-sm text-gray-400">Engine</div>
+    <div id="engine-status" class="text-xl font-bold text-yellow-300">LOADING...</div>
+    <div class="text-gray-400 text-sm mt-2">Decision Rate: <span id="decision-rate">–</span></div>
+    <div class="text-gray-400 text-sm">Decision Count: <span id="decision-count">–</span></div>
+  </div>
+
+  <!-- WS STATUS -->
+  <div class="bg-gray-900 p-4 rounded-xl shadow">
+    <div class="text-sm text-gray-400">WebSocket</div>
+    <div id="ws-status" class="text-xl font-bold text-yellow-300">LOADING...</div>
+    <div class="text-gray-400 text-sm mt-2">Messages: <span id="ws-messages">–</span></div>
+  </div>
+
+  <!-- MEMORY -->
+  <div class="bg-gray-900 p-4 rounded-xl shadow">
+    <div class="text-sm text-gray-400">System</div>
+    <div class="text-gray-400 text-sm mt-2">RSS: <span id="memory-rss">–</span></div>
+    <div class="text-gray-400 text-sm">Heap: <span id="memory-heap">–</span></div>
+  </div>
+
+</div>
 
 <div class="grid lg:grid-cols-3 gap-6">
   <!-- LEVA STRANA: SYSTEM / ENGINE / WS -->
@@ -309,4 +335,42 @@ Loading logs...
   // periodično osvežavanje
   setInterval(fetchSummary, 3000);
   setInterval(fetchLogs, 5000);
+</script>
+
+<script type="module">
+  import { monitorAPI } from "/js/monitor-api.js";
+
+  monitorAPI.onUpdate = (data) => {
+    if (!data) {
+      document.getElementById("engine-status").innerText = "OFFLINE";
+      document.getElementById("engine-status").className = "text-red-400";
+      return;
+    }
+
+    // ENGINE
+    document.getElementById("engine-status").innerText = "ONLINE";
+    document.getElementById("engine-status").className = "text-green-400";
+
+    document.getElementById("decision-rate").innerText =
+      data.engine.decisionRate;
+
+    document.getElementById("decision-count").innerText =
+      data.engine.decisionCount;
+
+    // WS
+    document.getElementById("ws-status").innerText =
+      data.ws.status === "connected" ? "CONNECTED" : "DISCONNECTED";
+
+    document.getElementById("ws-messages").innerText =
+      data.ws.messageCount;
+
+    // SYSTEM
+    document.getElementById("memory-rss").innerText =
+      (data.system.rss / 1024 / 1024).toFixed(1) + " MB";
+
+    document.getElementById("memory-heap").innerText =
+      (data.system.heap / 1024 / 1024).toFixed(1) + " MB";
+  };
+
+  monitorAPI.start(1000);
 </script>
