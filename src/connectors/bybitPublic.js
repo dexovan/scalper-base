@@ -87,26 +87,60 @@ async function getAllSymbols() {
     return CONFIG.custom.primeSymbols;
   }
 
-  // Try to use Universe v2 Prime + Normal symbols
+  // Try to use Universe v2 Prime + Normal symbols with smart selection for scalping
   try {
     const { getSymbolsByCategory } = await import("../market/universe_v2.js");
 
-    // Get Prime symbols
+    // Get Prime symbols (always include)
     const primeSymbols = await getSymbolsByCategory("Prime");
     console.log("🔍 Raw Prime symbols from Universe v2:", primeSymbols.length);
 
-    // Get Normal symbols (limit to first 244 for 250 total with 6 Prime)
+    // Get Normal symbols for smart selection
     const normalSymbols = await getSymbolsByCategory("Normal");
     console.log("🔍 Raw Normal symbols from Universe v2:", normalSymbols.length);
 
-    // Combine Prime + limited Normal symbols (250 total)
-    const limitedNormal = normalSymbols.slice(0, 244); // Limit Normal to 244 symbols (6 Prime + 244 Normal = 250)
-    const allSymbols = [...primeSymbols, ...limitedNormal];
+    // Smart selection for scalping - prioritize by known high-volume/volatile pairs
+    const scalpingPrioritySymbols = [
+      // Major volume leaders
+      "SOLUSDT", "XRPUSDT", "DOGEUSDT", "PEPEUSDT", "SHIBUSDT",
+      // DeFi high movers
+      "UNIUSDT", "AAVEUSDT", "COMPUSDT", "SUSHIUSDT", "1INCHUSDT",
+      // Layer 1s with volume
+      "MATICUSDT", "FTMUSDT", "ATOMUSDT", "NEARUSDT", "APTUSDT",
+      // Memes with volatility
+      "FLOKIUSDT", "BONKUSDT", "WIFUSDT", "BOMEUSDT", "RENDERUSDT",
+      // AI & Gaming tokens
+      "FETUSDT", "AGIXUSDT", "SANDUSDT", "MANAUSDT", "AXSUSDT",
+      // Recent hot tokens
+      "ARBUSDT", "OPUSDT", "SUIUSDT", "TAIUSDT", "JUPUSDT"
+    ];
+
+    // Filter Normal symbols by priority, then fill remaining slots alphabetically
+    const priorityNormals = normalSymbols.filter(s => {
+      const symbol = typeof s === 'string' ? s : s.symbol;
+      return scalpingPrioritySymbols.includes(symbol);
+    });
+
+    const remainingNormals = normalSymbols.filter(s => {
+      const symbol = typeof s === 'string' ? s : s.symbol;
+      return !scalpingPrioritySymbols.includes(symbol);
+    });
+
+    // Take 294 Normal symbols (6 Prime + 294 Normal = 300 total)
+    const targetNormalCount = 294;
+    const selectedNormals = [
+      ...priorityNormals,
+      ...remainingNormals.slice(0, Math.max(0, targetNormalCount - priorityNormals.length))
+    ].slice(0, targetNormalCount);
+
+    const allSymbols = [...primeSymbols, ...selectedNormals];
 
     if (allSymbols.length > 0) {
       // Extract symbol names from metadata objects
       const symbolNames = allSymbols.map(s => typeof s === 'string' ? s : s.symbol);
-      console.log(`🎯 Using ${symbolNames.length} symbols (${primeSymbols.length} Prime + ${limitedNormal.length} Normal):`, symbolNames.slice(0, 10), '...');
+      console.log(`🎯 Using ${symbolNames.length} symbols for SCALPING (${primeSymbols.length} Prime + ${selectedNormals.length} Normal):`);
+      console.log(`📈 Priority symbols included: ${priorityNormals.length}/${scalpingPrioritySymbols.length}`);
+      console.log(`🔥 Top symbols:`, symbolNames.slice(0, 15), '...');
       return symbolNames;
     }
   } catch (error) {
