@@ -341,12 +341,12 @@
             // Check if fetch is native or modified
             console.log("🔍 Fetch function:", fetch.toString().substring(0, 100) + "...");
 
-            this.tickersUrl = "/monitor/api/symbols"; // Using symbols endpoint for ticker data
-            this.tradesUrl = null; // Disable trades temporarily
-            this.storageUrl = "/monitor/api/health"; // Using health endpoint
-            this.summaryUrl = "/monitor/api/health"; // Using health endpoint
-            this.universeUrl = "/monitor/api/symbols"; // Use symbols endpoint for universe stats
-            this.symbolsUrl = "/monitor/api/symbols";
+            this.tickersUrl = "/monitor/api/tickers";
+            this.tradesUrl = "/monitor/api/trades";
+            this.storageUrl = "/monitor/api/storage";
+            this.summaryUrl = "/monitor/api/summary";
+            this.universeUrl = "/monitor/api/universe";
+            this.symbolsUrl = "/monitor/api/symbols/Prime";
 
             this.wsConnected = false;
             this.lastUpdate = Date.now();
@@ -491,14 +491,6 @@
         }
 
         async updateTrades() {
-            if (!this.tradesUrl) {
-                // Trades temporarily disabled - show message
-                const tradesContainer = document.getElementById('recent-trades');
-                if (tradesContainer) {
-                    tradesContainer.innerHTML = '<div class="no-data">Trades feature temporarily disabled</div>';
-                }
-                return;
-            }
 
             try {
                 const response = await this.fetchWithTimeout(`${this.tradesUrl}?limit=25`);
@@ -588,17 +580,9 @@
                 const data = await response.json();
                 console.log("📊 Universe data received:", data);
 
-                if (data.ok && data.symbols) {
-                    console.log("✅ Valid symbols data, generating universe stats...");
-                    // Generate universe stats from symbols data
-                    const universeStats = {
-                        totalSymbols: data.count || data.symbols.length,
-                        primeSymbols: data.symbols.filter(s => s.category === 'Prime').length,
-                        normalSymbols: data.symbols.filter(s => s.category === 'Normal').length,
-                        wildSymbols: data.symbols.filter(s => s.category === 'Wild').length,
-                        lastUpdate: data.timestamp || new Date().toISOString()
-                    };
-                    this.renderUniverseStats(universeStats);
+                if (data.ok && data.universe) {
+                    console.log("✅ Valid universe data, rendering stats...");
+                    this.renderUniverseStats(data.universe);
                     console.log("🎯 Updating symbols for category:", this.currentCategory);
                     await this.updateSymbols(this.currentCategory);
                 } else if (!data.ok) {
@@ -621,15 +605,8 @@
                             headers: { 'Cache-Control': 'no-cache' }
                         });
                         const directData = await directResponse.json();
-                        if (directData.ok && directData.symbols) {
-                            const universeStats = {
-                                totalSymbols: directData.count || directData.symbols.length,
-                                primeSymbols: directData.symbols.filter(s => s.category === 'Prime').length,
-                                normalSymbols: directData.symbols.filter(s => s.category === 'Normal').length,
-                                wildSymbols: directData.symbols.filter(s => s.category === 'Wild').length,
-                                lastUpdate: directData.timestamp || new Date().toISOString()
-                            };
-                            this.renderUniverseStats(universeStats);
+                        if (directData.ok && directData.universe) {
+                            this.renderUniverseStats(directData.universe);
                             await this.updateSymbols(this.currentCategory);
                         }
                     } catch (directError) {

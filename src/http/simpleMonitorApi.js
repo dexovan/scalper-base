@@ -196,6 +196,41 @@ app.get("/api/monitor/storage", (req, res) => {
   }
 });
 
+// Summary endpoint for dashboard compatibility
+app.get("/api/monitor/summary", async (req, res) => {
+  try {
+    const tickers = readLatestTickers();
+    const primeSymbols = await getSymbolsByCategory("Prime");
+
+    const summary = {
+      symbols: {
+        total: primeSymbols.length,
+        prime: primeSymbols.length,
+        normal: 0,
+        wild: 0
+      },
+      tickers: {
+        count: Object.keys(tickers).length,
+        lastUpdate: new Date().toISOString()
+      },
+      status: "online"
+    };
+
+    return res.json({
+      ok: true,
+      summary: summary,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("❌ Error in /api/monitor/summary:", error.message);
+    return res.status(500).json({
+      ok: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Health check endpoint
 app.get("/api/monitor/health", (req, res) => {
   const tickers = readLatestTickers();

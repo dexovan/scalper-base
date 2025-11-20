@@ -168,12 +168,12 @@ app.use((req, res, next) => {
 // =======================================
 
 // ===========================================
-// PROXY → SIMPLE MONITOR API (port 8091)
+// PROXY → MONITOR API (port 8090)
 // ===========================================
 app.use(
   "/monitor/api",
   createProxyMiddleware({
-    target: "http://localhost:8091/api/monitor",
+    target: "http://localhost:8090/api/monitor",
     changeOrigin: true,
     pathRewrite: {
       "^/monitor/api": ""
