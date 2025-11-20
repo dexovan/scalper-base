@@ -307,6 +307,29 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // GET /api/symbols - All symbols (simplified endpoint for dashboard)
+  // ============================================================
+  app.get("/api/symbols", async (req, res) => {
+    try {
+      const allSymbols = await getSymbolsByCategory('All');
+
+      return res.json({
+        ok: true,
+        symbols: allSymbols, // Array format that dashboard expects
+        count: allSymbols.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [API] Error fetching symbols:", error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // POST /api/monitor/refresh-ws - Refresh WebSocket subscription
   // ============================================================
   app.post("/api/monitor/refresh-ws", async (req, res) => {
