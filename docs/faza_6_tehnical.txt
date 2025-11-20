@@ -1,0 +1,647 @@
+Odlično — sada kreće **OPCIJA A — ULTRA DETALJAN, PRODUKCIJSKI PROGRAMERSKO-TEHNIČKI PLAN ZA FAZU 6**.
+Pisano kao da se pravi interni dokument hedge-fonda.
+Sve odluke su optimalne, bez pitanja, 100% prilagođene tvom AI Scalper sistemu koji smo gradili poslednjih 5 faza.
+
+---
+
+# 🚀 **FAZA 6 – SCORING & SIGNAL ENGINE**
+
+## **ULTRA DETALJAN PROGRAMERSKO-TEHNIČKI PLAN (verzija za implementaciju)**
+
+---
+
+# 🧩 0. KONTEKST – NA ČEMU SE FAZA 6 ZASNIVA
+
+Faza 6 **direktno zavisi** od svega implementiranog do sada:
+
+### 🔵 Faza 1 – Core scaffolding
+
+* CONFIG sistem
+* health monitoring
+* API i ruta struktura
+* path sistem
+* PM2 procesi
+
+### 🔵 Faza 2 – Konektori + Universe
+
+* bybitPublic WS feed
+* REST wrapper
+* SymbolProfile
+* Universe kategorizacija (Prime / Normal / Wild)
+
+### 🔵 Faza 3 – Microstructure engine
+
+* orderbook snapshot
+* trades ring-buffer
+* micro-candles (1s / 3s / 5s / 15s)
+* JSON snapshot pipelines
+
+### 🔵 Faza 4 – Feature engine
+
+Kreiraju se ključni sirovi features:
+
+* orderbook imbalance
+* walls & spoofing
+* trade flow / delta
+* volatility engine
+* fee/leverage engine
+* pump pre-signals
+* kompletan FeatureState snapshot
+
+### 🔵 Faza 5 – Regime engine
+
+Odluke o tržišnom stanju:
+
+* per-symbol režimi
+* global režimi
+* cooldown
+* pump state
+* manipulation state
+* news-driven state
+* PANIC / RISK-OFF sistem globalnog zaključavanja
+
+---
+
+**TEK SADA** scoring engine može da postoji, jer bazira svoje odluke na:
+
+* mikro-strukturi
+* feature-ima
+* režimima
+* fee riziku
+* pump riziku
+* volatilnosti
+* spoof riziku
+* globalnom režimu
+
+---
+
+# 🎯 **1. CILJ FAZE 6**
+
+Faza 6 uvodi *inteligentni matematičko-logički filter* koji:
+
+1. **iz svih features i režima izračunava BaseScalpScoreLong & Short (0–100)**
+2. **primenjuje sve rizike, penale, režime, globalna pravila**
+3. **izračunava FinalScalpScoreLong & Short (0–100)**
+4. **pretvara final score u jednostavne signale:**
+
+* NONE
+* WATCH_LONG / WATCH_SHORT
+* ARM_LONG / ARM_SHORT
+
+🟥 Faza 6 NE otvara pozicije.
+🟩 Ona samo određuje „ko je potencijalno zanimljiv“ – što kasnije koristi State Machine.
+
+---
+
+# 🏗️ **2. ARHITEKTURA FAZE 6**
+
+### Novi moduli koje moraš kreirati:
+
+```
+src/scoring/scoringModel.js     ← čista logika izračunavanja (matematičko jezgro)
+src/scoring/scoringEngine.js    ← orchestrator (event loop i snapshot-i)
+```
+
+### Ostatak sistema koji se menja:
+
+```
+src/features/featureEngine.js  ← dodaje scoring hook
+src/regime/regimeEngine.js     ← scoring čita režime
+src/monitoring/health.js       ← dodaje scoring health sekciju
+web/routes/api.js              ← dodaje score i scanner rute
+data/metrics/<symbol>.json     ← snapshot proširen scoring informacijama
+```
+
+### Držanje state-a u memoriji:
+
+```
+ScoringEngineState = {
+   perSymbol: {
+      BTCUSDT: ScoreState,
+      ETHUSDT: ScoreState,
+      ...
+   },
+   lastUpdateAt: ISO,
+   updateIntervalMs: 1000
+}
+```
+
+---
+
+# 🧠 **3. SCORING MODEL (logičko jezgro)**
+
+### Putanja:
+
+```
+src/scoring/scoringModel.js
+```
+
+Ovaj modul *NE zna ništa* o režimu, risku, globalnom stanju.
+Ovaj modul samo uzima **FeatureState** i matematički generiše:
+
+* baseLong
+* baseShort
+* sve komponente koje grade score
+
+To je „čista nauka“.
+
+---
+
+# 🧩 3.1. Ulazi scoring modela
+
+```
+computeBaseScores(symbol, FeatureState) → { baseLong, baseShort }
+```
+
+FeatureState sadrži:
+
+* imbalance
+* walls
+* spoof
+* flow
+* volatility
+* feeLeverage
+* pumpSignals
+* (future: sentiment, news, global info)
+
+Sve ovo je naš input.
+
+---
+
+# 🧩 3.2. Kako se računaju komponente (najvažni deo)
+
+### 🌐 1) Orderbook score
+
+LONG:
+
+* pozitivan tobImbalance
+* pozitivan zoneImbalanceShort/Mid/Far
+* jaki bid zidovi
+  → povećava scoreLong
+
+SHORT:
+
+* negativan tobImbalance
+* jaki ask zidovi
+  → povećava scoreShort
+
+Normalize → 0–100
+
+---
+
+### 🔥 2) Flow/Delta score
+
+LONG:
+
+* buyVolume1s/5s/15s pozitivan
+* deltaRatio1s/5s/15s pozitivan
+* dominanceStreakSeconds pozitivan
+  → više nego 50% delta = bullish
+
+SHORT:
+
+* isto, ali za sell
+
+Normalize → 0–100
+
+---
+
+### 🧱 3) Walls score
+
+LONG:
+
+* absorbingSupportScore visok
+
+SHORT:
+
+* absorbingResistanceScore visok
+
+Normalize → 0–100
+
+---
+
+### 🎭 4) Spoof penalty
+
+Ovo je penal (0–100).
+High spoofingScore → loše → oduzimamo od finalnog.
+
+---
+
+### 🌪️ 5) Volatility score
+
+Preuzimamo raw volatilityScore iz F4 i skaliramo u 0–100.
+
+Idealno (za scalping):
+
+* previše slaba vol → penal
+* previše jaka vol → penal
+
+→ scoringModel primenjuje funkciju oblika **invertovane parabole** (optimalna srednja vola).
+
+---
+
+### 💰 6) FeeEdge score
+
+Ovo je jedna od NAJVAŽNIJIH komponenti.
+
+Formula (optimalna):
+
+```
+atr5s / minMoveForProfit → edge score
+```
+
+Ako ATR5s mnogo veći od minimalnog potrebnog pomaka za profit → score je velik.
+
+Normalize → 0–100.
+
+---
+
+### 🔥 7) Pump penalty
+
+pumpLikelihoodScore → penal za LONG
+
+Za SHORT:
+
+* penal je 40–60% slabiji, ali NE daje bonus zbog rizika.
+
+---
+
+### 📢 8) News penalty
+
+newsImpactScore (iz RegimeState) → penal za oba smera.
+Ako > 80 → trade nije dozvoljen, finalScore = 0.
+
+---
+
+# 🧩 3.3. Sastavljanje baseScore
+
+Sve komponente se kombinuju:
+
+```
+rawLong =
+   + orderbookScoreLong   * w_orderbookLong
+   + flowScoreLong        * w_flowLong
+   + wallsScoreLong       * w_wallsLong
+   + volatilityScore      * w_vola
+   + feeEdgeScore         * w_fee
+   - spoofPenalty         * w_spoof
+   - pumpPenalty          * w_pump
+   - newsPenalty          * w_news
+```
+
+Ograničiti:
+
+```
+baseScoreLong = clamp(rawLong, 0, 100)
+```
+
+Isto za SHORT.
+
+---
+
+# 🧰 **4. REŽIMI & RIZIK – applyRegimeAndRiskFilters()**
+
+Putanja:
+
+```
+src/scoring/scoringModel.js
+```
+
+Ulazi:
+
+* baseLong, baseShort
+* RegimeState
+* GlobalRegime
+* RiskState (stub)
+* CONFIG.scoring
+
+---
+
+## 🟥 4.1. GlobalRegime filter
+
+PANIC:
+
+```
+allowed = false
+finalScore = 0
+blockedReasons += ["GLOBAL_PANIC"]
+```
+
+RISK-OFF:
+
+```
+allowed = false
+finalScore = 0
+blockedReasons += ["GLOBAL_RISK_OFF"]
+```
+
+NORMAL:
+
+```
+allowed = true
+```
+
+---
+
+## 🟧 4.2. Per-symbol Regime filter
+
+Ako je:
+
+### PUMP:
+
+LONG zabranjen
+SHORT *može* biti dozvoljen ali penalizovan
+
+### MANIPULATED:
+
+Obe strane zabranjene.
+
+### NEWS_DRIVEN:
+
+Obe strane zabranjene.
+
+### COOLDOWN:
+
+Obe strane zabranjene (ili 80% penal).
+
+### NORMAL:
+
+Sve opcije dozvoljene.
+
+---
+
+## 🟨 4.3. Risk filter (stub sada, pun u Fazi 09)
+
+Za Fazu 6 default:
+
+```
+riskAllowNewPositions = true
+riskAllowNewLong = true
+riskAllowNewShort = true
+```
+
+Ali scoringEngine mora imati hook za ovo jer će kasnije risk engine blokirati signale.
+
+---
+
+## 🟩 4.4. Odluka o allowed / finalScore
+
+Ako **allowed = false**:
+→ finalScore = 0
+→ signalState = "NONE"
+
+Ako **allowed = true**:
+→ finalScore = scaleAdjustments(baseScore)
+
+Scale adjustments =
+
+* volatilnost previše velika → reduce 0.8×
+* minMoveForProfit previsok → reduce 0.6×
+* spoofSignal visok → reduce 0.5×
+* pumpRisk umereno visok → reduce 0.7×
+
+---
+
+# 📊 **5. SIGNAL STATE – core logika**
+
+Nakon finalScore:
+
+```
+if finalScore < watchThreshold:
+    signal = "NONE"
+else if finalScore < armThreshold:
+    signal = "WATCH"
+else:
+    signal = "ARM"
+```
+
+Za svaki smer posebno:
+
+* WATCH_LONG
+* WATCH_SHORT
+* ARM_LONG
+* ARM_SHORT
+
+---
+
+# ⚙️ **6. SCORING ENGINE – orchestrator**
+
+Putanja:
+
+```
+src/scoring/scoringEngine.js
+```
+
+Ovaj modul radi:
+
+* periodičan loop
+* update skorova
+* snapshot u JSON
+* hotlist generator
+* API lookup
+
+---
+
+## 🧩 6.1. Inicijalizacija
+
+```
+initScoringEngine() {
+    state = ScoringEngineState
+    setInterval(updateAllScores, CONFIG.scoring.updateIntervalMs)
+}
+```
+
+### Najbolji interval:
+
+* Prime simboli: 1s
+* Normal simboli: 2s
+* Wild simboli: 3–5s
+
+Ali zbog prostote → **1s za sve** i kasnije optimizacija.
+
+---
+
+## 🧩 6.2. updateScoreForSymbol(symbol)
+
+```
+featureState = FeatureEngine.getState(symbol)
+regimeState  = RegimeEngine.getSymbolRegime(symbol)
+globalRegime = RegimeEngine.getGlobalRegime()
+riskState    = RiskEngine.getMinimalStub()
+```
+
+Zatim:
+
+```
+{ baseLong, baseShort } =
+     scoringModel.computeBaseScores(symbol, featureState)
+
+{ finalLong, finalShort } =
+     scoringModel.applyRegimeAndRiskFilters(...)
+
+Save ScoreState → ScoringEngineState.perSymbol[symbol]
+```
+
+Snapshot u:
+
+```
+data/metrics/<symbol>.json
+```
+
+---
+
+## 🧩 6.3. updateAllScores()
+
+Loop kroz Universe Prime + Normal simbole.
+
+---
+
+# 🌟 **7. HOTLIST ENGINE (pre-scanner)**
+
+Putanja:
+
+```
+scoringEngine.getScannerHotlist()
+```
+
+Logika:
+
+```
+filter by:
+ - finalScore >= watchThreshold
+ - allowed == true
+ - regime == NORMAL
+ - global == NORMAL
+
+sort DESC by finalScore
+
+limit to CONFIG.scoring.maxWatchCandidates
+```
+
+Output format:
+
+```
+[
+   {
+     symbol: "BTCUSDT",
+     side: "LONG",
+     finalScore: 81,
+     signal: "ARM",
+     pumpRisk: 0.02,
+     spoofingLevel: 0.1
+   },
+   ...
+]
+```
+
+---
+
+# 🌐 **8. API ENDPOINTS**
+
+Dodaje se:
+
+### 1) Skor po simbolu
+
+```
+GET /api/symbol/:symbol/score
+```
+
+### 2) Hotlist
+
+```
+GET /api/scanner/hotlist
+```
+
+Query parametri:
+
+* side=BOTH/LONG/SHORT
+* minScore
+* limit
+
+---
+
+# ❤️ **9. HEALTH MONITORING**
+
+Dodaje se u health:
+
+```
+services.scoringEngine = {
+   status: "OK",
+   lastUpdateAt: timestamp,
+   symbolsUpdated: number,
+   updateIntervalMs: 1000
+}
+```
+
+---
+
+# 🧪 **10. TEST SCENARIJI (OBAVEZNI)**
+
+### Test 1 — Bullish scenario
+
+* pozitivan orderbook imbalance
+* pozitivan flow
+  → baseLong → visok score
+
+### Test 2 — Pump režim blokira long
+
+RegimeState = PUMP
+→ finalLong = 0
+→ blockedReasons=["PUMP"]
+
+### Test 3 — Spoof blokira skor
+
+spoofingScore=0.8 → finalScoreLong=0
+
+### Test 4 — Global risk-off
+
+globalRegime = RISK_OFF → sve finalScore = 0
+
+### Test 5 — WATCH/ARM logika
+
+finalScoreLong = 55 → WATCH
+finalScoreLong = 85 → ARM
+
+### Test 6 — Hotlist sort
+
+Hotlist mora biti sortiran DESC po finalScore.
+
+---
+
+# 🧨 **11. FINALNI REZULTAT FAZE 6**
+
+Posle implementacije Faze 6:
+
+### ✔ Svaki simbol ima kompletan score za LONG i SHORT
+
+### ✔ Bot zna šta je zanimljivo (WATCH)
+
+### ✔ Bot zna šta je spremno (ARM)
+
+### ✔ Bot ignoriše loše simbole
+
+### ✔ Bot ne trejduje tokom PUMP, MANIPULATION, NEWS, COOLDOWN
+
+### ✔ Bot se zatvara tokom GLOBAL PANIC
+
+### ✔ Dashboard ima HOTLIST u realnom vremenu
+
+### ✔ System spreman za Fazu 7 (STATE MACHINE)
+
+---
+
+# 🔥 SLEDEĆI KORAK
+
+Ako želiš mogu odmah:
+
+### 🔵 **Napraviti FAZU 7 – STATE MACHINE ultra detaljan plan**
+
+ili
+
+### 🔵 **Preći na implementaciju Faze 6 (kod)**
+
+ili
+
+### 🔵 **Napraviti kompletan “visual flowchart” za F6 + F7**
+
+Samo reci šta želiš kao sledeće.
