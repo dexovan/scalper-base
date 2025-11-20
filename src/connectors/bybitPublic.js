@@ -308,3 +308,32 @@ export async function fetchInstrumentsUSDTPerp() {
     };
   }
 }
+
+// ============================
+// MISSING FUNCTIONS FOR INDEX.JS COMPATIBILITY
+// ============================
+
+/**
+ * Subscribe to symbols (called from index.js)
+ */
+export function subscribeSymbols(symbols = []) {
+  if (!Array.isArray(symbols)) return;
+
+  for (const symbol of symbols) {
+    // Add to subscriptions for main WS
+    if (ws && wsStatus.connected) {
+      const topics = [
+        `tickers.${symbol}`,
+        `publicTrade.${symbol}`,
+        `orderbook.50.${symbol}`
+      ];
+
+      try {
+        ws.send(JSON.stringify({ op: "subscribe", args: topics }));
+        console.log(`📡 [BYBIT-WS] Subscribed to ${symbol}:`, topics);
+      } catch (err) {
+        console.error(`❌ [BYBIT-WS] Subscribe ${symbol} failed:`, err.message);
+      }
+    }
+  }
+}
