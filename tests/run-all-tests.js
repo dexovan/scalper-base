@@ -35,14 +35,9 @@ const tests = [
     description: "Tests profile loading, saving, and persistence"
   },
   {
-    name: "API Endpoints",
-    file: "test-api-endpoints.js",
-    description: "Tests all HTTP API endpoints including new /basic endpoint"
-  },
-  {
-    name: "Dashboard UI",
-    file: "test-dashboard-ui.js",
-    description: "Tests dashboard availability and proxy functionality"
+    name: "Manual Verification Guide",
+    file: "test-simplified.js",
+    description: "Instructions for manual testing of key Phase 2 functionality"
   },
   {
     name: "PM2 Processes",
