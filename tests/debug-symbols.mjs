@@ -19,7 +19,22 @@ try {
 
   console.log('\nAll symbols containing X, R, P:');
   const xrpBroad = Object.keys(data.symbols).filter(s => s.includes('X') && s.includes('R') && s.includes('P')).slice(0, 10);
-  console.log(xrpBroad);  console.log('\nCurrent Prime symbols:');
+  console.log(xrpBroad);
+
+  // Check for major cryptos
+  const majors = ['BTC', 'ETH', 'BNB', 'ADA', 'DOT', 'MATIC', 'AVAX', 'LINK', 'UNI', 'LTC'];
+
+  console.log('\n📊 Available major crypto symbols:');
+  majors.forEach(crypto => {
+    const symbols = Object.keys(data.symbols).filter(s => s.includes(crypto + 'USDT'));
+    if (symbols.length > 0) {
+      console.log(`${crypto}: ${symbols.join(', ')}`);
+    } else {
+      console.log(`${crypto}: ❌ Not found`);
+    }
+  });
+
+  console.log('\nCurrent Prime symbols:');
   const primeSymbols = Object.values(data.symbols).filter(s => s.category === 'Prime');
   primeSymbols.forEach(s => console.log(' -', s.symbol));
 
