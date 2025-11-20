@@ -138,6 +138,7 @@ async function startEngine() {
   console.log("🚀 DEBUG: Ready to start Monitor API…");
 
   // Attach real-time listeners for dashboard
+  console.log("🔗 DEBUG: About to call attachRealtimeListeners with publicEmitter:", typeof publicEmitter);
   attachRealtimeListeners(publicEmitter);
   console.log("📡 Real-time dashboard listeners attached");
 
