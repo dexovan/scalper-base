@@ -179,8 +179,8 @@
                             <tr class="border-b border-slate-700">
                                 <th class="text-left p-2 text-slate-400 font-medium">Symbol</th>
                                 <th class="text-left p-2 text-slate-400 font-medium">Category</th>
-                                <th class="text-left p-2 text-slate-400 font-medium">Base</th>
-                                <th class="text-left p-2 text-slate-400 font-medium">Leverage</th>
+                                <th class="text-right p-2 text-slate-400 font-medium">Price (USDT)</th>
+                                <th class="text-right p-2 text-slate-400 font-medium">Leverage</th>
                                 <th class="text-left p-2 text-slate-400 font-medium">Status</th>
                             </tr>
                         </thead>
@@ -838,9 +838,29 @@
                 // Handle both string format (old API) and object format (new API)
                 const symbolName = typeof symbolMeta === 'string' ? symbolMeta : symbolMeta.symbol;
                 const symbolCategory = typeof symbolMeta === 'string' ? category : symbolMeta.category;
-                const baseAsset = typeof symbolMeta === 'string' ? 'USDT' : symbolMeta.quoteAsset || 'USDT';
                 const maxLeverage = typeof symbolMeta === 'string' ? '1-125x' : `1-${symbolMeta.maxLeverage || 125}x`;
                 const status = typeof symbolMeta === 'string' ? 'Active' : (symbolMeta.status === 'Trading' ? 'Active' : symbolMeta.status);
+
+                // Format current price
+                let priceDisplay = '-';
+                let changeDisplay = '';
+                if (typeof symbolMeta === 'object' && symbolMeta.currentPrice) {
+                    const price = parseFloat(symbolMeta.currentPrice);
+                    if (price < 1) {
+                        priceDisplay = price.toFixed(6);
+                    } else if (price < 100) {
+                        priceDisplay = price.toFixed(4);
+                    } else {
+                        priceDisplay = price.toFixed(2);
+                    }
+
+                    if (symbolMeta.change24h) {
+                        const change = parseFloat(symbolMeta.change24h);
+                        const changeColor = change >= 0 ? 'text-green-400' : 'text-red-400';
+                        const changeSign = change >= 0 ? '+' : '';
+                        changeDisplay = `<div class="text-xs ${changeColor} mt-0.5">${changeSign}${change.toFixed(2)}%</div>`;
+                    }
+                }
 
                 return `
                     <tr class="hover:bg-slate-800/30 transition-colors">
@@ -850,8 +870,11 @@
                                 ${symbolCategory}
                             </span>
                         </td>
-                        <td class="p-2 text-slate-400 text-sm">${baseAsset}</td>
-                        <td class="p-2 text-slate-400 text-sm">${maxLeverage}</td>
+                        <td class="p-2 text-right">
+                            <div class="text-slate-200 font-mono text-sm">${priceDisplay}</div>
+                            ${changeDisplay}
+                        </td>
+                        <td class="p-2 text-right text-slate-400 text-sm">${maxLeverage}</td>
                         <td class="p-2 text-slate-300 text-sm">${status}</td>
                     </tr>
                 `;

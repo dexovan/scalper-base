@@ -230,7 +230,21 @@ export function startMonitorApiServer(port = 8090) {
       const limit = parseInt(req.query.limit || "50", 10);
 
       const symbols = getSymbolsByCategory(category);
-      const limitedSymbols = symbols.slice(0, limit);
+
+      // Enrich symbols with real-time ticker data
+      const enrichedSymbols = symbols.map(symbolMeta => {
+        const ticker = latestTickers.get(symbolMeta.symbol);
+        return {
+          ...symbolMeta,
+          // Add real-time market data if available
+          currentPrice: ticker?.price || null,
+          change24h: ticker?.change24h || null,
+          volume24h: ticker?.volume24h || null,
+          priceTimestamp: ticker?.timestamp || null
+        };
+      });
+
+      const limitedSymbols = enrichedSymbols.slice(0, limit);
 
       return res.json({
         ok: true,
