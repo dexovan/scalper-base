@@ -91,12 +91,14 @@ async function startEngine() {
   refreshUniversePeriodically();
 
   // KORAK 2: Display storage stats
-  const storageStats = getStorageStats();
+  const storageStats = await getStorageStats();
   if (storageStats) {
     console.log("📁 Data Storage Stats:");
     console.log(`   Date: ${storageStats.date}`);
-    console.log(`   Ticker files: ${storageStats.tickerFiles}`);
-    console.log(`   Trade files: ${storageStats.tradeFiles}`);
+    console.log(`   Ticker files: ${storageStats.todayFiles?.tickers || 0}`);
+    console.log(`   Trade files: ${storageStats.todayFiles?.trades || 0}`);
+    console.log(`   Ticker size: ${(storageStats.todaySizes?.tickers / 1024).toFixed(1)} KB`);
+    console.log(`   Trade size: ${(storageStats.todaySizes?.trades / 1024).toFixed(1)} KB`);
   }
 
   console.log("=====================================================");

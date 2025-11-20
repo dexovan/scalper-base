@@ -101,9 +101,9 @@ export function saveTrade(symbol, payload) {
 }
 
 /**
- * Get storage statistics
+ * Get storage statistics (async)
  */
-export function getStorageStats() {
+export async function getStorageStats() {
   try {
     const dateStr = getDateString();
     const tickersDir = path.join(process.cwd(), 'data', 'tickers', dateStr);
@@ -111,25 +111,54 @@ export function getStorageStats() {
 
     let tickerFiles = 0;
     let tradeFiles = 0;
+    let tickerTotalSize = 0;
+    let tradesTotalSize = 0;
 
+    // Count ticker files and sizes
     if (fs.existsSync(tickersDir)) {
-      tickerFiles = fs.readdirSync(tickersDir).filter(f => f.endsWith('.csv')).length;
+      const files = fs.readdirSync(tickersDir).filter(f => f.endsWith('.csv'));
+      tickerFiles = files.length;
+      for (const file of files) {
+        const filePath = path.join(tickersDir, file);
+        const stats = fs.statSync(filePath);
+        tickerTotalSize += stats.size;
+      }
     }
 
+    // Count trade files and sizes
     if (fs.existsSync(tradesDir)) {
-      tradeFiles = fs.readdirSync(tradesDir).filter(f => f.endsWith('.csv')).length;
+      const files = fs.readdirSync(tradesDir).filter(f => f.endsWith('.csv'));
+      tradeFiles = files.length;
+      for (const file of files) {
+        const filePath = path.join(tradesDir, file);
+        const stats = fs.statSync(filePath);
+        tradesTotalSize += stats.size;
+      }
     }
 
     return {
       date: dateStr,
-      tickerFiles,
-      tradeFiles,
-      tickersPath: tickersDir,
-      tradesPath: tradesDir
+      todayFiles: {
+        tickers: tickerFiles,
+        trades: tradeFiles
+      },
+      todaySizes: {
+        tickers: tickerTotalSize,
+        trades: tradesTotalSize
+      },
+      paths: {
+        tickers: tickersDir,
+        trades: tradesDir
+      }
     };
 
   } catch (error) {
     console.error('[STORAGE-ERROR] Stats:', error.message);
-    return null;
+    return {
+      date: getDateString(),
+      todayFiles: { tickers: 0, trades: 0 },
+      todaySizes: { tickers: 0, trades: 0 },
+      error: error.message
+    };
   }
 }
