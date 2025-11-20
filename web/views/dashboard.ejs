@@ -300,6 +300,29 @@
                 console.error("Failed to fetch tickers:", error);
                 this.updateConnectionStatus(false);
 
+                // Fallback: Try direct API if proxy fails
+                if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_RESET')) {
+                    console.warn("Ticker proxy blocked, trying direct API...");
+                    try {
+                        const directResponse = await fetch('http://localhost:8090/api/monitor/tickers', {
+                            cache: "no-store",
+                            headers: { 'Cache-Control': 'no-cache' }
+                        });
+                        const directData = await directResponse.json();
+                        if (directData.ok && directData.tickers && directData.tickers.length > 0) {
+                            const validTickers = directData.tickers.filter(t => t.price !== null && !isNaN(t.price));
+                            if (validTickers.length > 0) {
+                                this.renderTickers(validTickers);
+                                this.updateConnectionStatus(true);
+                                this.lastUpdate = Date.now();
+                                return;
+                            }
+                        }
+                    } catch (directError) {
+                        console.error("Direct ticker API also failed:", directError);
+                    }
+                }
+
                 // Show connection error if data is stale (older than 10 seconds)
                 if (Date.now() - this.lastUpdate > 10000) {
                     this.renderTickerError("Connection lost - retrying...");
@@ -315,6 +338,23 @@
                 }
             } catch (error) {
                 console.error("Failed to fetch trades:", error);
+
+                // Fallback: Try direct API if proxy fails
+                if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_RESET')) {
+                    console.warn("Trades proxy blocked, trying direct API...");
+                    try {
+                        const directResponse = await fetch('http://localhost:8090/api/monitor/trades?limit=25', {
+                            cache: "no-store",
+                            headers: { 'Cache-Control': 'no-cache' }
+                        });
+                        const directData = await directResponse.json();
+                        if (directData.ok && directData.trades) {
+                            this.renderTrades(directData.trades);
+                        }
+                    } catch (directError) {
+                        console.error("Direct trades API also failed:", directError);
+                    }
+                }
             }
         }
 
