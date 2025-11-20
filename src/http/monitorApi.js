@@ -59,7 +59,7 @@ export function attachRealtimeListeners(bybitPublic) {
     const { type, symbol, payload } = eventData;
 
     if (type === 'ticker') {
-      console.log("📊 Processing ticker for", symbol, "payload keys:", Object.keys(payload || {}));
+      console.log("📊 Processing ticker for", symbol, "payload:", JSON.stringify(payload, null, 2));
 
       // Try different possible price fields from Bybit ticker
       let price = null;
@@ -67,7 +67,12 @@ export function attachRealtimeListeners(bybitPublic) {
       else if (payload.price) price = parseFloat(payload.price);
       else if (payload.c) price = parseFloat(payload.c); // Bybit sometimes uses 'c' for close price
 
-      let change24h = null;
+      console.log("🔍 Price extraction:", {
+        lastPrice: payload.lastPrice,
+        price: payload.price,
+        c: payload.c,
+        finalPrice: price
+      });      let change24h = null;
       if (payload.price24hPcnt) change24h = parseFloat(payload.price24hPcnt);
       else if (payload.priceChangePercent) change24h = parseFloat(payload.priceChangePercent);
 
