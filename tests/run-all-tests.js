@@ -69,7 +69,7 @@ async function runAllTests() {
     try {
       const startTime = Date.now();
 
-      await execAsync(`node tests/${test.file}`, {
+      await execAsync(`node ${test.file}`, {
         cwd: process.cwd(),
         timeout: 60000 // 60 second timeout per test
       });
