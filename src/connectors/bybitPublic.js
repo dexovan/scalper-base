@@ -58,7 +58,7 @@ async function getPrimeSymbols() {
   // Try to use Universe v2 Prime symbols
   try {
     const { getSymbolsByCategory } = await import("../market/universe_v2.js");
-    const primeSymbols = getSymbolsByCategory("Prime");
+    const primeSymbols = await getSymbolsByCategory("Prime");
     console.log("🔍 Raw Prime symbols from Universe v2:", primeSymbols);
 
     if (primeSymbols.length > 0) {

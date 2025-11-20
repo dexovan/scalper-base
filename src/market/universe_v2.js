@@ -171,7 +171,14 @@ export function getSymbolMeta(symbol) {
   return UniverseState.symbols?.[symbol] || null;
 }
 
-export function getSymbolsByCategory(category) {
+export async function getSymbolsByCategory(category) {
+  // Ako je state prazan, pokušaj da učitaš postojeći snapshot
+  if (!UniverseState.fetchedAt || Object.keys(UniverseState.symbols || {}).length === 0) {
+    console.log("🌍 [UNIVERSE] State prazan, učitavam postojeći snapshot...");
+    await loadExistingUniverse();
+    console.log("🌍 [UNIVERSE] Nakon učitavanja - symbols:", Object.keys(UniverseState.symbols || {}).length);
+  }
+
   const target = String(category || "").toLowerCase();
 
   // Special case for "All" - return all symbol metadata
@@ -179,8 +186,11 @@ export function getSymbolsByCategory(category) {
     return Object.values(UniverseState.symbols || {});
   }
 
-  return Object.values(UniverseState.symbols || {})
+  const filtered = Object.values(UniverseState.symbols || {})
     .filter((meta) => meta.category && meta.category.toLowerCase() === target);
+
+  console.log(`🌍 [UNIVERSE] Category '${category}' → found ${filtered.length} symbols`);
+  return filtered;
 }export function getUniverseStats() {
   return { ...UniverseState.stats };
 }
