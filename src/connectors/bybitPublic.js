@@ -101,7 +101,11 @@ function scheduleReconnect() {
 
 async function connectWS(symbolsOverride = null) {
   const wsUrl = CONFIG.bybit?.wsPublic || "wss://stream.bybit.com/v5/public/linear";
+
+  console.log("🔍 [DEBUG] connectWS called, symbolsOverride:", symbolsOverride);
   const primeSymbols = symbolsOverride || await getPrimeSymbols();
+  console.log("🔍 [DEBUG] Final primeSymbols for WebSocket:", primeSymbols);
+
   const topics = buildTopics(primeSymbols);
 
   console.log("📡 [BYBIT-WS] Connecting to:", wsUrl);
