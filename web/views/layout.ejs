@@ -97,9 +97,9 @@
         </div>
 
         <div class="flex items-center space-x-3">
-          <% if (user) { %>
+          <% if (locals.user) { %>
             <div class="hidden sm:block text-sm text-slate-300">
-              👤 <span class="font-medium"><%= user %></span>
+              👤 <span class="font-medium"><%= locals.user %></span>
             </div>
           <% } %>
           <a href="/logout"
