@@ -2,7 +2,9 @@
 import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
-import { DATA_DIR } from "../config/paths.js";
+import paths from "../config/paths.js";
+
+const { DATA_DIR } = paths;
 
 // ================================================================
 // TYPE → PODFOLDER MAPPING

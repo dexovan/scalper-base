@@ -7,8 +7,8 @@ async function testJsonStore() {
   try {
     // Test 1: writeSnapshot
     console.log("1️⃣ Testing writeSnapshot...");
-    const snapshotResult = await jsonStore.writeSnapshot("orderbook", "TESTUSDT", { 
-      testData: "snapshot", 
+    const snapshotResult = await jsonStore.writeSnapshot("orderbook", "TESTUSDT", {
+      testData: "snapshot",
       timestamp: Date.now(),
       bids: [{ price: 90000, qty: 1.5 }],
       asks: [{ price: 90100, qty: 2.0 }]
