@@ -330,9 +330,9 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
-  // GET /monitor/api/symbols - All symbols (monitor API version)
+  // GET /api/monitor/symbols - All symbols (monitor API version)
   // ============================================================
-  app.get("/monitor/api/symbols", async (req, res) => {
+  app.get("/api/monitor/symbols", async (req, res) => {
     try {
       const allSymbols = await getSymbolsByCategory('All');
 
