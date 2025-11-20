@@ -85,14 +85,6 @@ app.use(express.json());
 app.set("trust proxy", false);
 
 // ---------------------------------------
-// GLOBAL VIEW VARIABLES (IMPORTANT)
-// ---------------------------------------
-app.use((req, res, next) => {
-  res.locals.user = req.session?.user?.username || null;
-  next();
-});
-
-// ---------------------------------------
 // SESSION STORAGE (SQLite)
 // ---------------------------------------
 const SQLiteStore = SQLiteStoreFactory(session);
@@ -136,6 +128,14 @@ app.use(
 );
 
 console.log("✅ SQLite session store active");
+
+// ---------------------------------------
+// GLOBAL VIEW VARIABLES (IMPORTANT)
+// ---------------------------------------
+app.use((req, res, next) => {
+  res.locals.user = req.session?.user?.username || null;
+  next();
+});
 
 // ---------------------------------------
 // DB INIT (ATTACH DB TO REQ)
