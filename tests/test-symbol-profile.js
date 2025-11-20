@@ -63,7 +63,7 @@ async function testSymbolProfile() {
     // Test 3: Verify file was created/updated
     console.log("\n📄 Verifying file operations...");
 
-    const profilesDir = path.resolve("data", "profiles");
+    const profilesDir = path.resolve("..", "data", "profiles");
     const profileFile = path.join(profilesDir, `${testSymbol}.json`);
 
     if (!fs.existsSync(profileFile)) {
