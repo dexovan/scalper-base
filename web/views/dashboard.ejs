@@ -342,7 +342,7 @@
             console.log("🔍 Fetch function:", fetch.toString().substring(0, 100) + "...");
 
             this.tickersUrl = "/monitor/api/symbols"; // Using symbols endpoint for ticker data
-            this.tradesUrl = "/monitor/api/symbols"; // Fallback to symbols for now
+            this.tradesUrl = null; // Disable trades temporarily
             this.storageUrl = "/monitor/api/health"; // Using health endpoint
             this.summaryUrl = "/monitor/api/health"; // Using health endpoint
             this.universeUrl = "/monitor/api/universe";
@@ -491,6 +491,15 @@
         }
 
         async updateTrades() {
+            if (!this.tradesUrl) {
+                // Trades temporarily disabled - show message
+                const tradesContainer = document.getElementById('recent-trades');
+                if (tradesContainer) {
+                    tradesContainer.innerHTML = '<div class="no-data">Trades feature temporarily disabled</div>';
+                }
+                return;
+            }
+            
             try {
                 const response = await this.fetchWithTimeout(`${this.tradesUrl}?limit=25`);
 
