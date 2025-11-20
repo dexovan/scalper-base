@@ -162,15 +162,44 @@ async function testAPIEndpoints() {
 
 // Check if we can import fetch (Node.js 18+ or polyfill needed)
 if (typeof fetch === 'undefined') {
-  console.log("⚠️ WARNING: fetch not available, trying to import node-fetch...");
-  try {
-    const { default: fetch } = await import('node-fetch');
-    global.fetch = fetch;
-  } catch (error) {
-    console.error("❌ Cannot run test: fetch not available and node-fetch not installed");
-    console.error("Install with: npm install node-fetch");
-    process.exit(1);
-  }
+  console.log("⚠️ WARNING: fetch not available, using simple http request...");
+
+  // Simple fetch polyfill for Node.js
+  global.fetch = async function(url, options = {}) {
+    const https = await import('https');
+    const http = await import('http');
+    const urlModule = await import('url');
+
+    return new Promise((resolve, reject) => {
+      const parsedUrl = new urlModule.URL(url);
+      const client = parsedUrl.protocol === 'https:' ? https : http;
+
+      const req = client.request(parsedUrl, {
+        method: options.method || 'GET',
+        headers: options.headers || {},
+        timeout: 10000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            statusText: res.statusMessage,
+            headers: {
+              get: (name) => res.headers[name.toLowerCase()]
+            },
+            json: async () => JSON.parse(data),
+            text: async () => data
+          });
+        });
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => reject(new Error('Request timeout')));
+      req.end(options.body);
+    });
+  };
 }
 
 // Run test

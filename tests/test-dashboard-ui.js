@@ -184,14 +184,40 @@ async function testDashboardUI() {
 
 // Check if fetch is available
 if (typeof fetch === 'undefined') {
-  console.log("⚠️ Importing node-fetch...");
-  try {
-    const { default: fetch } = await import('node-fetch');
-    global.fetch = fetch;
-  } catch (error) {
-    console.error("❌ Cannot run test: fetch not available");
-    process.exit(1);
-  }
+  console.log("⚠️ Fetch not available in Node.js - using simple HTTP request");
+  // Use Node.js built-in http module instead of fetch
+  const http = require('http');
+  global.fetch = (url) => {
+    return new Promise((resolve, reject) => {
+      const urlObj = new URL(url);
+      const options = {
+        hostname: urlObj.hostname,
+        port: urlObj.port || 80,
+        path: urlObj.pathname + urlObj.search,
+        method: 'GET'
+      };
+
+      const req = http.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          resolve({
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            text: () => Promise.resolve(data),
+            json: () => Promise.resolve(JSON.parse(data))
+          });
+        });
+      });
+
+      req.on('error', reject);
+      req.setTimeout(5000, () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+      req.end();
+    });
+  };
 }
 
 // Run test

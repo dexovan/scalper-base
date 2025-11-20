@@ -37,7 +37,7 @@ async function testBybitWebSocket() {
         console.log(`❌ FAILED: Only received ${messageCount}/${requiredEvents} messages`);
         resolve(false);
       }
-    }, timeout);
+    }, Math.min(timeout, 8000)); // Cap timeout at 8 seconds for faster testing
 
     ws.on("open", () => {
       console.log("✔️ WebSocket connected");

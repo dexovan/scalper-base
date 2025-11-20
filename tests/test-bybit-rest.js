@@ -20,13 +20,19 @@ async function testBybitRest() {
     console.log(`⏱️ Fetch completed in ${duration}ms`);
 
     // Test 1: Success check
-    if (!instruments || !Array.isArray(instruments)) {
-      throw new Error("❌ Invalid response - not an array");
+    if (!instruments || typeof instruments !== 'object' || !instruments.success) {
+      throw new Error(`❌ API call failed: ${instruments?.error || 'Unknown error'}`);
     }
     console.log("✔️ SUCCESS: Valid response received");
 
-    // Test 2: Symbol count check (~500 expected)
-    const symbolCount = instruments.length;
+    // Test 2: Extract symbols array
+    const symbolsArray = instruments.symbols;
+    if (!Array.isArray(symbolsArray)) {
+      throw new Error("❌ Symbols is not an array");
+    }
+
+    // Test 3: Symbol count check (~500 expected)
+    const symbolCount = symbolsArray.length;
     console.log(`📊 Symbol count: ${symbolCount}`);
 
     if (symbolCount < 400) {
@@ -37,9 +43,9 @@ async function testBybitRest() {
       console.log("✔️ SUCCESS: Symbol count within expected range (400-600)");
     }
 
-    // Test 3: Valid fields check
-    const sampleSymbol = instruments[0];
-    const requiredFields = ['symbol', 'status', 'baseCoin', 'quoteCoin', 'launchTime'];
+    // Test 4: Valid fields check
+    const sampleSymbol = symbolsArray[0];
+    const requiredFields = ['symbol', 'baseAsset', 'quoteAsset', 'status'];
     const optionalFields = ['tickSize', 'lotSize', 'maxLeverage'];
 
     console.log("🔍 Sample symbol:", sampleSymbol.symbol);
@@ -65,8 +71,8 @@ async function testBybitRest() {
     console.log("📄 Sample data:");
     console.log(`   Symbol: ${sampleSymbol.symbol}`);
     console.log(`   Status: ${sampleSymbol.status}`);
-    console.log(`   Base: ${sampleSymbol.baseCoin}`);
-    console.log(`   Quote: ${sampleSymbol.quoteCoin}`);
+    console.log(`   Base: ${sampleSymbol.baseAsset}`);
+    console.log(`   Quote: ${sampleSymbol.quoteAsset}`);
 
     console.log("\n🎉 TEST 1 PASSED: Bybit REST API working correctly");
     return true;
