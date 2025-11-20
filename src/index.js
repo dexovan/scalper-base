@@ -88,7 +88,9 @@ async function startEngine() {
   console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);
   console.log("⚡ Engine running normally.");
 
+  console.log("🚀 DEBUG: Ready to start Monitor API…");
   startMonitorApiServer(8090);
+  console.log("🚀 DEBUG: Monitor API successfully started");
 
   metrics.heartbeat();
 }
