@@ -4,24 +4,57 @@
 // Validates: monitor works, real-time updates, stable scroll
 // =========================================
 
-// Check if fetch is available (Node.js compatibility)
-if (typeof fetch === 'undefined') {
-  console.log("⚠️ Importing node-fetch for Node.js compatibility...");
-  try {
-    // Try ES module import first (node-fetch v3+)
-    const nodeFetch = await import('node-fetch');
-    global.fetch = nodeFetch.default;
-  } catch (error) {
-    try {
-      // Fallback to CommonJS require (node-fetch v2)
-      const fetch = require('node-fetch');
-      global.fetch = fetch;
-    } catch (error2) {
-      console.error("❌ Cannot import node-fetch:", error2.message);
-      process.exit(1);
+// Simple fetch polyfill using Node.js built-in http module
+import http from 'http';
+
+function simpleFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const requestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: options.method || 'GET',
+      headers: options.headers || {},
+      timeout: 5000
+    };
+
+    const req = http.request(requestOptions, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          statusText: res.statusMessage,
+          headers: {
+            get: (name) => res.headers[name.toLowerCase()]
+          },
+          text: () => Promise.resolve(data),
+          json: () => Promise.resolve(JSON.parse(data))
+        });
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+
+    if (options.signal) {
+      options.signal.addEventListener('abort', () => {
+        req.destroy();
+        reject(new Error('Request aborted'));
+      });
     }
-  }
+
+    req.end();
+  });
 }
+
+// Use our simple fetch implementation
+global.fetch = simpleFetch;
 
 console.log("🧪 TEST 6: Dashboard UI");
 console.log("=" .repeat(50));
