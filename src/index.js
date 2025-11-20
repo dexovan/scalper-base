@@ -26,6 +26,9 @@ import * as wsMetrics from "./monitoring/wsMetrics.js";
 // Parallel metrics WS connector (stable)
 import { BybitPublicWS } from "./connectors/bybit/publicWS.js";
 
+// Monitor API server (Opcija A)
+import { startMonitorApiServer } from "./http/monitorApi.js";
+
 async function startEngine() {
   console.log("====================================================");
   console.log("🚀 AI Scalper Engine – Phase 2 Booting...");
@@ -83,7 +86,9 @@ async function startEngine() {
   });
 
   console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);
-  console.log("=====================================================");
+  console.log("⚡ Engine running normally.");
+
+  startMonitorApiServer(8090);
 
   metrics.heartbeat();
 }
