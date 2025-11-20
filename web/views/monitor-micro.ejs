@@ -296,12 +296,17 @@
                         symbols.forEach(symbol => {
                             const option = document.createElement('option');
                             // Handle both string and object formats
-                            const symbolName = typeof symbol === 'string' ? symbol : symbol.symbol;
+                            const symbolName = typeof symbol === 'string' ? symbol : (symbol.symbol || symbol.name || symbol);
                             const status = typeof symbol === 'string' ? 'active' : (symbol.status || 'active');
 
-                            option.value = symbolName;
-                            option.textContent = `${symbolName} (${status})`;
-                            selector.appendChild(option);
+                            // Ensure we have a valid symbol name
+                            if (symbolName && typeof symbolName === 'string') {
+                                option.value = symbolName;
+                                option.textContent = `${symbolName} (${status})`;
+                                selector.appendChild(option);
+                            } else {
+                                console.warn('Invalid symbol format:', symbol);
+                            }
                         });
 
                         document.getElementById('active-symbols-count').textContent = symbols.length;
