@@ -249,20 +249,38 @@
 
         async updateTickers() {
             try {
-                const response = await fetch(this.tickersUrl, { cache: "no-store" });
+                const response = await fetch(this.tickersUrl, {
+                    cache: "no-store",
+                    headers: { 'Cache-Control': 'no-cache' }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
                 const data = await response.json();
 
-                if (data.ok && data.tickers) {
-                    this.renderTickers(data.tickers);
-                    this.updateConnectionStatus(true);
+                if (data.ok && data.tickers && data.tickers.length > 0) {
+                    // Only render if we have valid data
+                    const validTickers = data.tickers.filter(t => t.price !== null && !isNaN(t.price));
+                    if (validTickers.length > 0) {
+                        this.renderTickers(validTickers);
+                        this.updateConnectionStatus(true);
+                        this.lastUpdate = Date.now();
+                    }
+                } else {
+                    console.warn("No valid ticker data received");
                 }
             } catch (error) {
                 console.error("Failed to fetch tickers:", error);
                 this.updateConnectionStatus(false);
-            }
-        }
 
-        async updateTrades() {
+                // Show connection error if data is stale (older than 10 seconds)
+                if (Date.now() - this.lastUpdate > 10000) {
+                    this.renderTickerError("Connection lost - retrying...");
+                }
+            }
+        }        async updateTrades() {
             try {
                 const response = await fetch(`${this.tradesUrl}?limit=50`, { cache: "no-store" });
                 const data = await response.json();
@@ -286,6 +304,15 @@
             } catch (error) {
                 console.error("Failed to fetch storage stats:", error);
             }
+        }
+
+        renderTickerError(message) {
+            const container = document.getElementById('tickers-container');
+            if (!container) return;
+
+            container.innerHTML = `<div class="col-span-full text-center text-amber-400 text-sm py-8">
+                <div class="animate-pulse">⚠️ ${message}</div>
+            </div>`;
         }
 
         renderTickers(tickers) {

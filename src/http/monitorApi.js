@@ -50,11 +50,6 @@ export function attachRealtimeListeners(bybitPublic) {
     const { type, symbol, payload } = eventData;
 
     if (type === 'ticker') {
-      // Debug: Log first few ticker payloads to understand structure
-      if (Math.random() < 0.01) { // 1% chance to log
-        console.log(`[DEBUG-TICKER] ${symbol}:`, JSON.stringify(payload));
-      }
-
       // Try different possible price fields from Bybit ticker
       let price = null;
       if (payload.lastPrice) price = parseFloat(payload.lastPrice);
