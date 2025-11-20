@@ -133,19 +133,75 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   // GET /api/monitor/summary
   // ============================================================
-  app.get("/api/monitor/summary", (req, res) => {
-    return res.json({
-      timestamp: new Date().toISOString(),
+  app.get("/api/monitor/summary", async (req, res) => {
+    try {
+      // Get universe stats
+      const { getUniverseStats } = await import("../market/universe_v2.js");
+      const universeStats = getUniverseStats();
 
-      engine: metrics.getSummary(),
-      ws: wsMetrics.getSummary(),
+      // Get WebSocket connection status from bybitPublic
+      let marketDataMetrics = {
+        wsConnected: false,
+        lastMessageAt: null,
+        reconnectAttempts: 0,
+        subscribedSymbols: 0
+      };
 
-      system: {
-        uptime: process.uptime(),
-        rss: process.memoryUsage().rss,
-        heap: process.memoryUsage().heapUsed,
-      },
-    });
+      try {
+        // Try to get WS status from bybitPublic connector
+        const bybitPublicModule = await import("../connectors/bybitPublic.js");
+        if (bybitPublicModule.getConnectionStatus) {
+          const wsStatus = bybitPublicModule.getConnectionStatus();
+          marketDataMetrics = {
+            wsConnected: wsStatus.connected || false,
+            lastMessageAt: wsStatus.lastMessageAt || null,
+            reconnectAttempts: wsStatus.reconnectAttempts || 0,
+            subscribedSymbols: wsStatus.subscribedSymbols || 0
+          };
+        }
+      } catch (error) {
+        console.warn("⚠️ [SUMMARY] Could not get WS status from bybitPublic:", error.message);
+      }
+
+      return res.json({
+        timestamp: new Date().toISOString(),
+
+        engine: metrics.getSummary(),
+        ws: wsMetrics.getSummary(),
+
+        // NEW: Universe metrics
+        universe: {
+          totalSymbols: universeStats.totalSymbols || 0,
+          primeCount: universeStats.primeCount || 0,
+          normalCount: universeStats.normalCount || 0,
+          wildCount: universeStats.wildCount || 0,
+          lastUniverseUpdateAt: universeStats.lastUniverseUpdateAt || null
+        },
+
+        // NEW: Market data metrics
+        marketData: marketDataMetrics,
+
+        system: {
+          uptime: process.uptime(),
+          rss: process.memoryUsage().rss,
+          heap: process.memoryUsage().heapUsed,
+        },
+      });
+
+    } catch (error) {
+      console.error("❌ [SUMMARY] Error generating summary:", error.message);
+      return res.status(500).json({
+        timestamp: new Date().toISOString(),
+        error: error.message,
+        engine: metrics.getSummary(),
+        ws: wsMetrics.getSummary(),
+        system: {
+          uptime: process.uptime(),
+          rss: process.memoryUsage().rss,
+          heap: process.memoryUsage().heapUsed,
+        },
+      });
+    }
   });
 
   // ============================================================
@@ -323,6 +379,54 @@ export function startMonitorApiServer(port = 8090) {
       });
     } catch (error) {
       return res.json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // GET /api/symbol/:symbol/basic - Combined symbol data for Faza 3 dashboard
+  // Returns: {symbol, meta from universe_v2, profile from SymbolProfile}
+  // ============================================================
+  app.get("/api/symbol/:symbol/basic", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+
+      // Import SymbolProfile functions
+      const { loadProfile } = await import("../market/symbolProfile.js");
+
+      // Get meta from universe_v2
+      const symbolMeta = getSymbolMeta(symbol);
+
+      // Get profile from SymbolProfile
+      const symbolProfile = await loadProfile(symbol);
+
+      // If symbol not found in universe, still return basic data with profile
+      if (!symbolMeta) {
+        return res.json({
+          ok: true,
+          timestamp: new Date().toISOString(),
+          symbol: symbol,
+          meta: null,
+          profile: symbolProfile,
+          warning: "Symbol not found in universe, profile data only"
+        });
+      }
+
+      // Return combined data
+      return res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        symbol: symbol,
+        meta: symbolMeta,
+        profile: symbolProfile
+      });
+
+    } catch (error) {
+      console.error(`❌ [API] Error getting basic data for ${req.params.symbol}:`, error.message);
+      return res.status(500).json({
         ok: false,
         error: error.message,
         timestamp: new Date().toISOString()
