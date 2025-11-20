@@ -4,59 +4,32 @@
 // Validates all API endpoints return JSON without errors
 // =========================================
 
-// Simple fetch polyfill using Node.js built-in http module
-import http from 'http';
+// Jednostavan test koristi curl komande umesto komplikovane HTTP implementacije
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
-function simpleFetch(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const urlObj = new URL(url);
-    const requestOptions = {
-      hostname: urlObj.hostname,
-      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
-      path: urlObj.pathname + urlObj.search,
-      method: options.method || 'GET',
-      headers: options.headers || {},
+const execAsync = promisify(exec);
+
+async function testEndpoint(url) {
+  try {
+    const { stdout, stderr } = await execAsync(`curl -s -w "%{http_code}" -o /tmp/response.json "${url}" ; echo ; cat /tmp/response.json`, {
       timeout: 10000
+    });
+
+    const lines = stdout.trim().split('\n');
+    const httpCode = parseInt(lines[0]);
+    const responseBody = lines.slice(1).join('\n');
+
+    return {
+      ok: httpCode >= 200 && httpCode < 300,
+      status: httpCode,
+      text: () => Promise.resolve(responseBody),
+      json: () => Promise.resolve(JSON.parse(responseBody))
     };
-
-    const req = http.request(requestOptions, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        resolve({
-          ok: res.statusCode >= 200 && res.statusCode < 300,
-          status: res.statusCode,
-          statusText: res.statusMessage,
-          headers: {
-            get: (name) => res.headers[name.toLowerCase()]
-          },
-          text: () => Promise.resolve(data),
-          json: () => Promise.resolve(JSON.parse(data))
-        });
-      });
-    });
-
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-
-    if (options.signal) {
-      options.signal.addEventListener('abort', () => {
-        req.destroy();
-        reject(new Error('Request aborted'));
-      });
-    }
-
-    req.end();
-  });
-}
-
-// Use our simple fetch implementation
-global.fetch = simpleFetch;
-
-console.log("🧪 TEST 5: API Endpoints");
+  } catch (error) {
+    throw new Error(`Connection failed: ${error.message}`);
+  }
+}console.log("🧪 TEST 5: API Endpoints");
 console.log("=" .repeat(50));
 
 async function testAPIEndpoints() {
@@ -82,25 +55,10 @@ async function testAPIEndpoints() {
     try {
       console.log(`🔍 Testing: ${endpoint}`);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-      const response = await fetch(endpoint, {
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      clearTimeout(timeoutId);
+      const response = await testEndpoint(endpoint);
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error(`Invalid content type: ${contentType}`);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();

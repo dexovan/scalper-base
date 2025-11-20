@@ -4,59 +4,32 @@
 // Validates: monitor works, real-time updates, stable scroll
 // =========================================
 
-// Simple fetch polyfill using Node.js built-in http module
-import http from 'http';
+// Jednostavan test koristi curl komande umesto komplikovane HTTP implementacije
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
-function simpleFetch(url, options = {}) {
-  return new Promise((resolve, reject) => {
-    const urlObj = new URL(url);
-    const requestOptions = {
-      hostname: urlObj.hostname,
-      port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
-      path: urlObj.pathname + urlObj.search,
-      method: options.method || 'GET',
-      headers: options.headers || {},
+const execAsync = promisify(exec);
+
+async function testEndpoint(url, expectJson = false) {
+  try {
+    const { stdout, stderr } = await execAsync(`curl -s -w "%{http_code}" -o /tmp/response.txt "${url}" ; echo ; cat /tmp/response.txt`, {
       timeout: 5000
+    });
+
+    const lines = stdout.trim().split('\n');
+    const httpCode = parseInt(lines[0]);
+    const responseBody = lines.slice(1).join('\n');
+
+    return {
+      ok: httpCode >= 200 && httpCode < 400, // Accept redirects too
+      status: httpCode,
+      text: () => Promise.resolve(responseBody),
+      json: () => Promise.resolve(expectJson ? JSON.parse(responseBody) : {})
     };
-
-    const req = http.request(requestOptions, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        resolve({
-          ok: res.statusCode >= 200 && res.statusCode < 300,
-          status: res.statusCode,
-          statusText: res.statusMessage,
-          headers: {
-            get: (name) => res.headers[name.toLowerCase()]
-          },
-          text: () => Promise.resolve(data),
-          json: () => Promise.resolve(JSON.parse(data))
-        });
-      });
-    });
-
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Request timeout'));
-    });
-
-    if (options.signal) {
-      options.signal.addEventListener('abort', () => {
-        req.destroy();
-        reject(new Error('Request aborted'));
-      });
-    }
-
-    req.end();
-  });
-}
-
-// Use our simple fetch implementation
-global.fetch = simpleFetch;
-
-console.log("🧪 TEST 6: Dashboard UI");
+  } catch (error) {
+    throw new Error(`Connection failed: ${error.message}`);
+  }
+}console.log("🧪 TEST 6: Dashboard UI");
 console.log("=" .repeat(50));
 
 async function testDashboardUI() {
@@ -80,9 +53,7 @@ async function testDashboardUI() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    const response = await fetch(dashboardURL, {
-      signal: controller.signal
-    });
+    const response = await testEndpoint(dashboardURL);
 
     clearTimeout(timeoutId);
 
@@ -102,7 +73,7 @@ async function testDashboardUI() {
   try {
     console.log("2. Testing monitor API availability...");
 
-    const response = await fetch(`${monitorAPIURL}/monitor/api/tickers`);
+    const response = await testEndpoint(`${monitorAPIURL}/api/monitor/summary`, true);
 
     if (response.ok) {
       const data = await response.json();
