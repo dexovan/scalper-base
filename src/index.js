@@ -69,7 +69,15 @@ async function startEngine() {
     if (evt.type === "ticker") {
       console.log("[TICKER]", evt.symbol, evt.payload.lastPrice || evt.payload.price || "");
     } else if (evt.type === "trade") {
-      console.log("[TRADE]", evt.symbol, evt.payload.side, evt.payload.price, evt.payload.qty);
+      // DEBUG: Vidimo šta tačno šalje Bybit
+      console.log("[TRADE-RAW]", evt.symbol, "payload:", JSON.stringify(evt.payload, null, 2));
+
+      // Pokušaj različitih naziva polja
+      const side = evt.payload.side || evt.payload.S || evt.payload.direction;
+      const price = evt.payload.price || evt.payload.p || evt.payload.execPrice;
+      const qty = evt.payload.qty || evt.payload.v || evt.payload.size || evt.payload.execQty;
+
+      console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty})`);
     }
   });
 
