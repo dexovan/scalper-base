@@ -4,7 +4,7 @@
 
 export class MonitorAPI {
     constructor() {
-        this.url = "http://localhost:8090/api/monitor/summary";
+        this.url = "/monitor/api/summary";
         this.data = null;
         this.lastOK = false;
 

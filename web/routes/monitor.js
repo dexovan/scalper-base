@@ -1,38 +1,37 @@
 // web/routes/monitor.js
 import express from "express";
-import fetch from "node-fetch";
+import { fetchMonitorSummary } from "../core/metrics.js";
 
 const router = express.Router();
 
-/**
- * Proxy helper to call ENGINE API
- */
-async function engineGet(path) {
-  const url = `http://localhost:8090${path}`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Engine API error: ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.error("[MONITOR] Engine API error:", err.message);
-    return { error: true, message: err.message };
-  }
-}
-
-/**
- * SUMMARY — proxy to engine
- */
-router.get("/summary", async (req, res) => {
-  const summary = await engineGet("/api/monitor/summary");
-  res.json(summary);
+// GET /monitor – render stranice
+router.get("/", (req, res) => {
+  res.render("monitor/index", {
+    title: "System Monitor",
+  });
 });
 
-/**
- * LOGS — proxy to engine
- */
-router.get("/logs", async (req, res) => {
-  const logs = await engineGet("/api/monitor/logs");
-  res.json(logs);
+// GET /monitor/api/summary – proxy ka engine monitor API-ju
+router.get("/api/summary", async (req, res) => {
+  try {
+    const data = await fetchMonitorSummary();
+
+    if (data?.error) {
+      return res.status(502).json({
+        ok: false,
+        source: "engine",
+        error: data.message || "Engine monitor unavailable",
+      });
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error("❌ [MONITOR] API route error:", err);
+    res.status(500).json({
+      ok: false,
+      error: "Monitor API internal error",
+    });
+  }
 });
 
 export default router;
