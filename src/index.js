@@ -7,7 +7,7 @@ import {
   initUniverse,
   refreshUniversePeriodically,
   getSymbolsByCategory
-} from "./market/universe.js";
+} from "./market/universe_v2.js";
 
 import {
   initPublicConnection,
