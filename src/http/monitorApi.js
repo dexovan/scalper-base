@@ -336,10 +336,25 @@ export function startMonitorApiServer(port = 8090) {
     try {
       const allSymbols = await getSymbolsByCategory('All');
 
+      // Enrich symbols with real-time ticker data
+      const enrichedSymbols = allSymbols.map(symbolMeta => {
+        const symbolName = typeof symbolMeta === 'string' ? symbolMeta : symbolMeta.symbol;
+        const ticker = latestTickers.get(symbolName);
+
+        return {
+          ...symbolMeta,
+          // Add real-time market data if available
+          currentPrice: ticker?.price || null,
+          change24h: ticker?.change24h || null,
+          volume24h: ticker?.volume24h || null,
+          priceTimestamp: ticker?.timestamp || null
+        };
+      });
+
       return res.json({
         ok: true,
-        symbols: allSymbols,
-        count: allSymbols.length,
+        symbols: enrichedSymbols,
+        count: enrichedSymbols.length,
         timestamp: new Date().toISOString()
       });
     } catch (error) {
