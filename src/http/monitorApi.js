@@ -50,16 +50,34 @@ export function attachRealtimeListeners(bybitPublic) {
     const { type, symbol, payload } = eventData;
 
     if (type === 'ticker') {
+      // Debug: Log first few ticker payloads to understand structure
+      if (Math.random() < 0.01) { // 1% chance to log
+        console.log(`[DEBUG-TICKER] ${symbol}:`, JSON.stringify(payload));
+      }
+
+      // Try different possible price fields from Bybit ticker
+      let price = null;
+      if (payload.lastPrice) price = parseFloat(payload.lastPrice);
+      else if (payload.price) price = parseFloat(payload.price);
+      else if (payload.c) price = parseFloat(payload.c); // Bybit sometimes uses 'c' for close price
+
+      let change24h = null;
+      if (payload.price24hPcnt) change24h = parseFloat(payload.price24hPcnt);
+      else if (payload.priceChangePercent) change24h = parseFloat(payload.priceChangePercent);
+
+      let volume24h = null;
+      if (payload.volume24h) volume24h = parseFloat(payload.volume24h);
+      else if (payload.turnover24h) volume24h = parseFloat(payload.turnover24h);
+      else if (payload.v) volume24h = parseFloat(payload.v);
+
       latestTickers.set(symbol, {
         symbol,
-        price: parseFloat(payload.lastPrice),
-        change24h: parseFloat(payload.price24hPcnt),
-        volume24h: parseFloat(payload.volume24h),
+        price,
+        change24h,
+        volume24h,
         timestamp: new Date().toISOString()
       });
-    }
-
-    if (type === 'trade') {
+    }    if (type === 'trade') {
       const trade = {
         symbol,
         side: payload.S,
