@@ -41,6 +41,8 @@ async function startEngine() {
   console.log("📁 KORAK 2: File Storage Implementation Active!");
   console.log("====================================================");
 
+  console.log("🔍 DEBUG: About to initialize Universe and WebSocket...");
+
   metrics.markDecision();
   metrics.heartbeat();
 
@@ -50,8 +52,10 @@ async function startEngine() {
   await initUniverse();
 
   // MAIN WS (dynamic)
+  console.log("🔍 DEBUG: Calling initPublicConnection...");
   await initPublicConnection(); // koristi CONFIG.custom.primeSymbols
 
+  console.log("🔍 DEBUG: Initializing EventHub...");
   initEventHub();
 
   const primeSymbols = getSymbolsByCategory("Prime");
