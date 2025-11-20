@@ -115,32 +115,37 @@ async function getAllSymbols() {
       "ARBUSDT", "OPUSDT", "SUIUSDT", "TAIUSDT", "JUPUSDT"
     ];
 
-    // Filter Normal symbols by priority, then fill remaining slots alphabetically
-    const priorityNormals = normalSymbols.filter(s => {
-      const symbol = typeof s === 'string' ? s : s.symbol;
-      return scalpingPrioritySymbols.includes(symbol);
-    });
+    // Create priority-based selection for scalping
+    const allNormalSymbolNames = normalSymbols.map(s => typeof s === 'string' ? s : s.symbol);
 
-    const remainingNormals = normalSymbols.filter(s => {
-      const symbol = typeof s === 'string' ? s : s.symbol;
-      return !scalpingPrioritySymbols.includes(symbol);
-    });
+    // Step 1: Find priority symbols that exist in our universe
+    const availablePrioritySymbols = scalpingPrioritySymbols.filter(symbol =>
+      allNormalSymbolNames.includes(symbol)
+    );
 
-    // Take 294 Normal symbols (6 Prime + 294 Normal = 300 total)
+    // Step 2: Get remaining symbols (exclude priority ones)
+    const remainingSymbols = allNormalSymbolNames.filter(symbol =>
+      !scalpingPrioritySymbols.includes(symbol)
+    );
+
+    // Step 3: Create final selection - priority first, then fill remaining slots
     const targetNormalCount = 294;
-    const selectedNormals = [
-      ...priorityNormals,
-      ...remainingNormals.slice(0, Math.max(0, targetNormalCount - priorityNormals.length))
-    ].slice(0, targetNormalCount);
+    const scalpingOrderedSymbols = [
+      ...availablePrioritySymbols, // Priority symbols first
+      ...remainingSymbols.slice(0, targetNormalCount - availablePrioritySymbols.length) // Fill remaining
+    ];
 
-    const allSymbols = [...primeSymbols, ...selectedNormals];
+    // Step 4: Convert back to metadata objects for consistency
+    const selectedNormals = scalpingOrderedSymbols.map(symbolName =>
+      normalSymbols.find(s => (typeof s === 'string' ? s : s.symbol) === symbolName)
+    ).filter(Boolean).slice(0, targetNormalCount);    const allSymbols = [...primeSymbols, ...selectedNormals];
 
     if (allSymbols.length > 0) {
       // Extract symbol names from metadata objects
       const symbolNames = allSymbols.map(s => typeof s === 'string' ? s : s.symbol);
       console.log(`🎯 Using ${symbolNames.length} symbols for SCALPING (${primeSymbols.length} Prime + ${selectedNormals.length} Normal):`);
-      console.log(`📈 Priority symbols included: ${priorityNormals.length}/${scalpingPrioritySymbols.length}`);
-      console.log(`🔥 Top symbols:`, symbolNames.slice(0, 15), '...');
+      console.log(`📈 Priority symbols included: ${availablePrioritySymbols.length}/${scalpingPrioritySymbols.length}`);
+      console.log(`🔥 Top symbols (priority first):`, symbolNames.slice(0, 20), '...');
       return symbolNames;
     }
   } catch (error) {
