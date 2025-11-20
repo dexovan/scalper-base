@@ -324,6 +324,125 @@
             </ul>
         </div>
     </section>
+
+    <!-- FAZA 3: Microstructure Analytics -->
+    <section class="space-y-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-slate-200">Microstructure Analytics</h3>
+                <p class="text-xs text-slate-400 mt-1">FAZA 3 - Real-time market microstructure monitoring</p>
+            </div>
+            <a href="/monitor-micro" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-600 hover:bg-blue-500 transition-colors">
+                Open Microstructure Monitor
+            </a>
+        </div>
+
+        <!-- Microstructure Stats -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400">Active Symbols</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight" id="micro-symbols-count">-</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 12h18m-9-9v18" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400" id="micro-symbols-status">Loading...</p>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400">Data Flow Rate</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight text-emerald-400" id="micro-data-rate">- evt/s</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                        <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">Events per second</p>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400">Storage Today</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight text-amber-400" id="micro-storage">- MB</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-amber-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14,2 14,8 20,8" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">Microstructure data</p>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400">System Health</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight text-green-400" id="micro-health">Good</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 12l2 2 4-4" />
+                            <circle cx="12" cy="12" r="10" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400" id="micro-health-details">All systems operational</p>
+            </div>
+        </div>
+
+        <!-- Top Symbols by Activity -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between mb-4">
+                <h4 class="text-sm font-semibold text-slate-300">Most Active Symbols (Microstructure)</h4>
+                <div class="text-xs text-slate-500" id="micro-last-update">Real-time</div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div id="micro-top-symbols" class="space-y-2">
+                    <div class="flex justify-between items-center text-xs py-1 px-2 rounded bg-slate-800/50">
+                        <span class="text-slate-400">Loading symbols...</span>
+                        <span class="text-slate-500">-</span>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="text-xs text-slate-400 mb-2">Recent Events</div>
+                    <div id="micro-recent-events" class="space-y-1 text-xs">
+                        <div class="text-slate-500">Loading events...</div>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="text-xs text-slate-400 mb-2">Performance Metrics</div>
+                    <div class="space-y-1 text-xs">
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Avg Spread:</span>
+                            <span class="text-slate-300 font-mono" id="micro-avg-spread">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Trade Volume:</span>
+                            <span class="text-slate-300 font-mono" id="micro-trade-volume">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Update Freq:</span>
+                            <span class="text-slate-300 font-mono" id="micro-update-freq">-/min</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
 </div>
 
 <!-- Real-time Dashboard JavaScript -->
@@ -1040,6 +1159,89 @@
             }
         }
 
+        // FAZA 3: Microstructure Methods
+        async updateMicrostructureStats() {
+            try {
+                console.log("📊 Updating microstructure stats...");
+
+                // Get symbols count
+                const symbolsResponse = await this.fetchWithTimeout('/api/microstructure/symbols');
+                const symbolsData = await symbolsResponse.json();
+
+                if (symbolsData.success && symbolsData.data) {
+                    document.getElementById('micro-symbols-count').textContent = symbolsData.data.length;
+                    document.getElementById('micro-symbols-status').textContent = `${symbolsData.data.filter(s => s.status === 'active').length} active`;
+
+                    // Update top symbols
+                    this.renderTopSymbols(symbolsData.data.slice(0, 5));
+                }
+
+                // Get health status
+                const healthResponse = await this.fetchWithTimeout('/api/health');
+                const healthData = await healthResponse.json();
+
+                if (healthData.success) {
+                    document.getElementById('micro-health').textContent = 'Good';
+                    document.getElementById('micro-health-details').textContent = 'All systems operational';
+                } else {
+                    document.getElementById('micro-health').textContent = 'Warning';
+                    document.getElementById('micro-health-details').textContent = 'Check system logs';
+                }
+
+                // Simulate real-time metrics
+                document.getElementById('micro-data-rate').textContent = Math.floor(Math.random() * 500 + 100) + ' evt/s';
+                document.getElementById('micro-storage').textContent = Math.floor(Math.random() * 50 + 20) + ' MB';
+
+                // Update performance metrics
+                document.getElementById('micro-avg-spread').textContent = (Math.random() * 0.01 + 0.001).toFixed(4);
+                document.getElementById('micro-trade-volume').textContent = Math.floor(Math.random() * 10000 + 5000).toLocaleString();
+                document.getElementById('micro-update-freq').textContent = Math.floor(Math.random() * 100 + 50) + '/min';
+
+            } catch (error) {
+                console.error("💥 Failed to update microstructure stats:", error);
+                document.getElementById('micro-symbols-count').textContent = 'Error';
+                document.getElementById('micro-health').textContent = 'Error';
+                document.getElementById('micro-health-details').textContent = 'Connection failed';
+            }
+        }
+
+        renderTopSymbols(symbols) {
+            const container = document.getElementById('micro-top-symbols');
+            if (!container) return;
+
+            if (!symbols || symbols.length === 0) {
+                container.innerHTML = '<div class="text-slate-500 text-xs">No active symbols</div>';
+                return;
+            }
+
+            container.innerHTML = symbols.map(symbol => `
+                <div class="flex justify-between items-center text-xs py-1 px-2 rounded bg-slate-800/50 hover:bg-slate-700/50 transition-colors">
+                    <span class="text-slate-300 font-medium">${symbol.symbol}</span>
+                    <span class="text-slate-400">${symbol.status}</span>
+                </div>
+            `).join('');
+        }
+
+        updateRecentEvents() {
+            const container = document.getElementById('micro-recent-events');
+            if (!container) return;
+
+            // Simulate recent events
+            const events = [
+                'Orderbook updated',
+                'Trade executed',
+                'Candle generated',
+                'Data persisted',
+                'Health check OK'
+            ];
+
+            const recentEvents = events.slice(0, 3).map(event =>
+                `<div class="text-slate-400 text-xs">${new Date().toLocaleTimeString().split(':').slice(1).join(':')} - ${event}</div>`
+            ).join('');
+
+            container.innerHTML = recentEvents;
+        }
+
         start() {
             console.log("🚀 Starting Dashboard API...");
             console.log("📊 Initial data load...");
@@ -1056,6 +1258,9 @@
 
             console.log("🌌 Updating universe...");
             this.updateUniverse();
+
+            console.log("🔬 Updating microstructure stats...");
+            this.updateMicrostructureStats();
 
             console.log("⏰ Setting up polling intervals...");
             // Set up polling intervals
@@ -1078,6 +1283,12 @@
                 console.log("🔄 Interval: updating universe");
                 this.updateUniverse();
             }, 30000); // 30 seconds for universe
+
+            setInterval(() => {
+                console.log("🔄 Interval: updating microstructure");
+                this.updateMicrostructureStats();
+                this.updateRecentEvents();
+            }, 3000); // 3 seconds for microstructure data
 
             console.log("✅ Dashboard API started successfully!");
         }

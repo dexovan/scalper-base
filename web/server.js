@@ -218,6 +218,14 @@ app.get("/monitor", requireAuth, (req, res) => {
   });
 });
 
+// 6️⃣ MICROSTRUCTURE MONITOR PAGE (FAZA 3)
+app.get("/monitor-micro", requireAuth, (req, res) => {
+  res.render("monitor-micro", {
+    title: "Microstructure Monitor",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
 // =======================================
 // SERVER START
 // =======================================
