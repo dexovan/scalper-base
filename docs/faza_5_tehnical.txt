@@ -1,0 +1,510 @@
+Razumem.
+Sada želiš **ULTRA DETALJAN PLAN RADA za FAZU 5**, kompletan, profesionalan, tehnički, operativni, 100% praktičan roadmap — zasnovan na FAZI 1, 2, 3 i 4.
+
+I ja ću ti ga sada **napraviti u najvišem mogućem kvalitetu**, kao da je interni dokument jednog HFT fonda.
+
+🎯 **Ti nećeš morati ništa da odlučuješ — ja biram najbolje opcije za tvoj sistem.**
+🎯 **Neću postavljati pitanja — odmah idem u finalnu verziju.**
+
+---
+
+# 🔥 FAZA 5 — ULTRA DETALJAN PLAN RADA
+
+## **REGIME ENGINE (PER-SYMBOL + GLOBAL MARKET REGIME)**
+
+*(Potpuni tehnički i operativni plan koji direktno nastavlja na Faze 1–4)*
+
+---
+
+# 🧩 **0. KONTEKST — šta smo završili do sada**
+
+Tvoj sistem sada ima:
+
+* **Faza 1** → Bazni framework, konfiguraciju, engine skeleton
+* **Faza 2** → Bybit Public Connector + Universe + Path System
+* **Faza 3** → Orderbook, Trades, Micro-Candles pipeline
+* **Faza 4** → Feature Engine (imbalance, walls, spoofing, flow, vola, pump-pre-signals, fee/leverage, metrics snapshot)
+
+**FAZA 5 SADA UVODI:**
+
+* inteligentnu interpretaciju feature-a
+* per-symbol režime (NORMAL, PUMP, MANIPULATED, NEWS_DRIVEN, COOLDOWN)
+* global market režime (NORMAL, RISK_OFF, PANIC)
+* logiku prelaza
+* cooldown mehanizme
+* integraciju sa state-mašinom i scoring engine-om
+* blokade i risk interfejs
+
+---
+
+# 🚀 **1. CILJ FAZE 5 — ŠTA TAČNO GRADIMO**
+
+U ovoj fazi mora da se implementira **potpuno funkcionalan Regime Engine** koji radi:
+
+### **1. Per-symbol režim**
+
+Za svaki simbol bot mora realno da zna:
+
+* da li je simbol normalan → scalping dozvoljen
+* da li je u pump modu → LONG zabranjen, short specijalan
+* da li je manipulisan → trgovanje blokirano
+* da li je news-driven → oprez, minimalni trade
+* da li je u cooldown → privremena zabrana posle eksplozije volatilnosti
+
+### **2. Global regime (BTC/ETH + tržište)**
+
+Bot mora da prepozna:
+
+* RISK_OFF → ne otvaraj nove pozicije
+* PANIC → zatvori postojeće pozicije ASAP
+* NORMAL → sve dozvoljeno
+
+### **3. Kompletan kontrolni sloj između Faza 4 i buduće Faze 6/7**
+
+Regime Engine određuje da li će scoring/state-machine uopšte moći da razmatra trejdove.
+
+Regime je najvažniji mehanizam sprečavanja *“idiotskih ulaza”* i sistemskih gubitaka.
+
+---
+
+# 🚀 **2. STRUKTURA FAZE 5 — ŠTA SE TAČNO IMPLEMENTIRA**
+
+## 📌 Nova 3 modula:
+
+```
+src/regime/symbolRegime.js
+src/regime/globalRegime.js
+src/regime/regimeEngine.js
+```
+
+## 📌 Izmene:
+
+```
+src/features/featureEngine.js
+src/monitoring/health.js
+web/routes/api.js
+```
+
+## 📌 Novi fajlovi u data/:
+
+```
+data/system/global_regime.json
+```
+
+I dopuna:
+
+```
+data/metrics/<symbol>.json  ← feature + regime snapshot
+```
+
+---
+
+# 🚀 **3. KORAK-PO-KORAK TEHNIČKI PLAN (ULTRA DETALJAN)**
+
+## ------------------------------------------------------------
+
+# **STEP 1 — Kreirati strukturu RegimeEngine**
+
+Putanja:
+
+```
+src/regime/regimeEngine.js
+```
+
+RegimeEngineState:
+
+```
+{
+  perSymbol: {
+     BTCUSDT: RegimeStateObject,
+     ETHUSDT: RegimeStateObject,
+     ...
+  },
+  globalRegime: GlobalMarketRegimeObject
+}
+```
+
+### Zadatak:
+
+* inicijalizacija prazne mape `perSymbol`
+* inicijalizacija `globalRegime = GLOBAL_NORMAL`
+* import svih potrebnih dependencija:
+
+  * featureEngine
+  * universe
+  * logger
+  * config
+
+### Najbolja praksa:
+
+Sve režime u memoriji držati kao **čisti JavaScript objekti** (bez klasa) jer su brži za GC i snapshot.
+
+---
+
+# **STEP 2 — Implementacija Symbol Regime modula**
+
+Putanja:
+
+```
+src/regime/symbolRegime.js
+```
+
+### RegimeState format (finalni):
+
+```
+{
+  symbol: "BTCUSDT",
+  current: "NORMAL",
+  updatedAt: "2025-11-19T21:05:11.122Z",
+
+  pumpState: "NONE",
+  pumpStrength: 0.0,
+
+  spoofingLevel: 0.0,
+  newsImpactScore: 0,
+  volatilityScore: 0.0,
+
+  cooldownActive: false,
+  cooldownEndsAt: null,
+  cooldownReason: null
+}
+```
+
+### Logika određivanja režima:
+
+#### PRIORITETI (najjači → najslabiji)
+
+1. NEWS_DRIVEN
+2. MANIPULATED
+3. PUMP
+4. COOLDOWN
+5. NORMAL
+
+### Ulazi iz Feature Engine-a:
+
+* spoofingScore
+* pumpLikelihoodScore
+* pumpSignals.priceChange5sPct
+* volatility.explosionFlag
+* volatilityScore
+
+### Ulaz iz NewsEngine:
+
+* impactScore
+* type
+
+---
+
+# **STEP 3 — Implementirati determineSymbolRegime()**
+
+Ovo je srce per-symbol logike.
+
+Parametri:
+
+```
+(symbol, featureState, newsState, previousRegime)
+```
+
+### Profesionalno podešeni pragovi (bez pitanja):
+
+```
+NEWS_THRESHOLD = 80
+SPOOF_THRESHOLD = 0.72
+PUMP_THRESHOLD = 0.65
+VOLATILITY_EXPLOSION = featureState.volatility.explosionFlag
+COOLDOWN_MS = 12_000
+```
+
+### Sekvenca:
+
+#### 1) NEWS DRIVEN
+
+Ako:
+
+```
+newsImpactScore ≥ 80
+```
+
+→ režim = "NEWS_DRIVEN"
+
+#### 2) MANIPULATED
+
+Ako:
+
+```
+featureState.spoofing.spoofingScore ≥ 0.72
+```
+
+→ režim = "MANIPULATED"
+
+#### 3) PUMP
+
+Ako:
+
+```
+featureState.pumpSignals.pumpLikelihoodScore ≥ 0.65
+```
+
+→ režim = "PUMP"
+
+Dodatno:
+Ako priceChange5sPct > 6% → PUMP odmah bez diskusije.
+
+#### 4) COOLDOWN
+
+Ako:
+
+```
+volatility.explosionFlag == true
+```
+
+I prethodni režim NIJE cooldown:
+
+→ cooldownActive = true
+→ cooldownEndsAt = now + 12s
+→ režim = "COOLDOWN"
+
+Ako je u cooldown:
+
+* ako cooldown nije istekao → ostaje u cooldown
+* ako je istekao → pređe u NORMAL
+
+#### 5) NORMAL
+
+Ako ništa gore nije aktivirano → NORMAL
+
+---
+
+# **STEP 4 — Spojiti rezultat u finalni RegimeState objekt**
+
+Dodati:
+
+* pumpStrength = pumpLikelihoodScore
+* spoofingLevel = spoofingScore
+* volatilityScore
+* newsImpactScore
+* cooldownActive + timestamps
+
+Ovo se upisuje u:
+
+```
+RegimeEngineState.perSymbol[symbol]
+data/metrics/<symbol>.json
+```
+
+---
+
+# **STEP 5 — Global Market Regime**
+
+Putanja:
+
+```
+src/regime/globalRegime.js
+```
+
+### Ulaz:
+
+* BTC featureState
+* ETH featureState
+* svi per-symbol režimi
+* broad market delta (agregat flow na 30–50 simbola)
+
+### Profesionalno podešeni pragovi:
+
+```
+GLOBAL_PANIC_BTC_VOL = 0.92
+GLOBAL_RISK_OFF_BTC_VOL = 0.75
+GLOBAL_PANIC_DUMP_5S = -3.5%
+GLOBAL_RISK_OFF_DUMP_5S = -2.0%
+```
+
+### Logika:
+
+#### 1) GLOBAL PANIC
+
+Ako:
+
+* BTC vol > 0.92
+* ili BTC 5s dump < -3.5%
+* ili >40% simbola u MANIPULATED / COOLDOWN
+
+→ globalRegime = GLOBAL_PANIC
+→ forceClosePositions = true
+→ allowNewPositions = false
+
+#### 2) GLOBAL RISK OFF
+
+Ako:
+
+* BTC vol > 0.75
+* ili ETH vol > 0.70
+* ili značajan broj simbola u PUMP
+
+→ globalRegime = GLOBAL_RISK_OFF
+→ forceClosePositions = false
+→ allowNewPositions = false
+
+#### 3) GLOBAL NORMAL
+
+Sve ostalo.
+
+---
+
+# **STEP 6 — RegimeEngine update loop**
+
+U `regimeEngine.js` dodati:
+
+```
+initRegimeEngine()
+  - učita config
+  - registruje interval (npr. svakih 1000ms)
+  - svaka iteracija radi:
+    updateAllSymbolRegimes()
+    updateGlobalRegime()
+```
+
+### Performanse:
+
+* ažurirati **prime** simbole svaki 1s
+* **normal** simbole svaki 2s
+* **wild** simbole svaki 3–5s
+
+Optimalno:
+**round-robin scheduling** (najbolja praksa u HFT).
+
+---
+
+# **STEP 7 — API Endpoints**
+
+Dodati u `web/routes/api.js`:
+
+### 1) Per symbol:
+
+```
+GET /api/symbol/:symbol/regime
+```
+
+### 2) Global regime:
+
+```
+GET /api/regime/global
+```
+
+### 3) Overview:
+
+```
+GET /api/regime/overview
+```
+
+Dashboard sada realno vidi:
+
+* 🔥 pump
+* 🎭 spoof
+* 🚨 news
+* ❄️ cooldown
+* ⛔ global risk-off
+* 🟥 global panic
+
+---
+
+# **STEP 8 — Integracija sa Feature Engine (Faza 4)**
+
+U `featureEngine.js`:
+
+Posle izračunavanja feature-a:
+
+```
+regimeEngine.updateSymbolRegime(symbol)
+```
+
+i u JSON snapshot dodati:
+
+```
+featureState.regime = regimeState;
+```
+
+---
+
+# **STEP 9 — Health Monitoring**
+
+Izmeniti:
+
+```
+src/monitoring/health.js
+```
+
+Dodati:
+
+```
+services.regimeEngine = {
+   status,
+   lastUpdateAt,
+   lastSymbolUpdated,
+   globalRegime: globalRegime.current
+}
+```
+
+---
+
+# **STEP 10 — Test scenariji (obavezni za Fazu 5)**
+
+### Test 1 — Pump režim
+
+Simulirati pumpLikelihoodScore = 0.9
+→ expected: "PUMP"
+
+### Test 2 — Spoof režim
+
+spoofingScore = 0.8
+→ MANIPULATED
+
+### Test 3 — News režim
+
+impactScore = 95
+→ NEWS_DRIVEN
+
+### Test 4 — Cooldown
+
+explosionFlag = true
+→ COOLDOWN 12s
+
+### Test 5 — Global Panic
+
+BTC vol > 0.92
+→ PANIC + forceClosePositions=true
+
+---
+
+# 🧨 FINALNI REZULTAT FAZE 5
+
+Posle ove faze tvoj sistem:
+
+## ✔ Zna kada je tržište opasno
+
+## ✔ Sprečava loše trejdove
+
+## ✔ Prepoznaje pump, spoofing, news i volatilnost
+
+## ✔ Može da zamrzne trgovanje
+
+## ✔ Može da “panic close all”
+
+## ✔ Šalje jasnu sliku scoring/state-machine-u
+
+## ✔ Štiti kapital i sprečava katastrofalne gubitke
+
+---
+
+# 🎯 Ako želiš, sledeći korak mogu odmah da napravim:
+
+## **ULTRA-DETALJAN PLAN RADA ZA FAZU 6 (SCORING ENGINE)**
+
+ili
+
+## **FAZA 7 (STATE MACHINE)**
+
+ili
+
+## **FAZA 5 – implementacione module jedan po jedan (kod)**
+
+Samo reci: **Šta je sledeće?**
