@@ -281,17 +281,34 @@
                     const data = await response.json();
                     console.log('📊 Primary API data:', data);
 
-                    if (data.success && data.data && data.data.length > 0) {
-                        console.log(`✅ Loaded ${data.data.length} symbols from primary API`);
-                        data.data.forEach(symbol => {
+                    // Check different response formats
+                    let symbols = null;
+                    if (data.success && data.data) {
+                        symbols = data.data;
+                    } else if (data.ok && data.symbols) {
+                        symbols = data.symbols;
+                    } else if (Array.isArray(data)) {
+                        symbols = data;
+                    }
+
+                    if (symbols && symbols.length > 0) {
+                        console.log(`✅ Loaded ${symbols.length} symbols from primary API`);
+                        symbols.forEach(symbol => {
                             const option = document.createElement('option');
-                            option.value = symbol.symbol;
-                            option.textContent = `${symbol.symbol} (${symbol.status || 'active'})`;
+                            // Handle both string and object formats
+                            const symbolName = typeof symbol === 'string' ? symbol : symbol.symbol;
+                            const status = typeof symbol === 'string' ? 'active' : (symbol.status || 'active');
+                            
+                            option.value = symbolName;
+                            option.textContent = `${symbolName} (${status})`;
                             selector.appendChild(option);
                         });
 
-                        document.getElementById('active-symbols-count').textContent = data.data.length;
-                        document.getElementById('symbols-status').textContent = `${data.data.filter(s => (s.status || 'active') === 'active').length} active`;
+                        document.getElementById('active-symbols-count').textContent = symbols.length;
+                        document.getElementById('symbols-status').textContent = `${symbols.filter(s => {
+                            const status = typeof s === 'string' ? 'active' : (s.status || 'active');
+                            return status === 'active';
+                        }).length} active`;
                         symbolsLoaded = true;
                     }
                 }
