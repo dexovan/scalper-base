@@ -7,11 +7,20 @@
 // Check if fetch is available (Node.js compatibility)
 if (typeof fetch === 'undefined') {
   console.log("⚠️ Importing node-fetch for Node.js compatibility...");
-  const { default: fetch, Headers, Request, Response } = await import('node-fetch');
-  global.fetch = fetch;
-  global.Headers = Headers;
-  global.Request = Request;
-  global.Response = Response;
+  try {
+    // Try ES module import first (node-fetch v3+)
+    const nodeFetch = await import('node-fetch');
+    global.fetch = nodeFetch.default;
+  } catch (error) {
+    try {
+      // Fallback to CommonJS require (node-fetch v2)
+      const fetch = require('node-fetch');
+      global.fetch = fetch;
+    } catch (error2) {
+      console.error("❌ Cannot import node-fetch:", error2.message);
+      process.exit(1);
+    }
+  }
 }
 
 console.log("🧪 TEST 5: API Endpoints");
