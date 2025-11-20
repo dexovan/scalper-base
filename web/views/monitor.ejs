@@ -317,5 +317,23 @@ Loading logs...
       JSON.stringify(data, null, 2);
   };
 
+  // ============================
+  // LOGS CALLBACK
+  // ============================
+  monitorAPI.onLogsUpdate = (lines) => {
+    const logOutput = document.getElementById("log-output");
+    if (!lines || lines.length === 0) {
+      logOutput.textContent = "No logs available...";
+      return;
+    }
+
+    // Show only last 30 lines to avoid scroll issues
+    const recentLines = lines.slice(-30);
+    logOutput.textContent = recentLines.join("\n");
+
+    // Auto-scroll to bottom
+    logOutput.scrollTop = logOutput.scrollHeight;
+  };
+
   monitorAPI.start(1000);
 </script>

@@ -5,10 +5,12 @@
 export class MonitorAPI {
     constructor() {
         this.url = "/monitor/api/summary";
+        this.logsUrl = "/monitor/api/logs";
         this.data = null;
         this.lastOK = false;
 
         this.onUpdate = null; // callback
+        this.onLogsUpdate = null; // logs callback
     }
 
     async poll() {
@@ -29,9 +31,28 @@ export class MonitorAPI {
         }
     }
 
+    async getLogs(lines = 50) {
+        try {
+            const res = await fetch(`${this.logsUrl}?lines=${lines}`, { cache: "no-store" });
+            if (!res.ok) throw new Error("Logs fetch failed");
+
+            const data = await res.json();
+            if (this.onLogsUpdate) this.onLogsUpdate(data.lines);
+            return data.lines;
+        } catch (err) {
+            console.log("❌ Logs API offline");
+            if (this.onLogsUpdate) this.onLogsUpdate(["<logs unavailable>", err.message]);
+            return [];
+        }
+    }
+
     start(intervalMs = 1000) {
         this.poll(); // immediately
         setInterval(() => this.poll(), intervalMs);
+
+        // Also fetch logs immediately, then every 5 seconds
+        this.getLogs();
+        setInterval(() => this.getLogs(), 5000);
     }
 }
 
