@@ -1468,7 +1468,7 @@
                 const healthData = JSON.parse(responseText);
                 console.log("🔍 Parsed health data:", healthData);
 
-                if (healthData.success && healthData.data) {
+                if (healthData.status === 'success' && healthData.data) {
                     const data = healthData.data;
 
                     // Update main stats
@@ -1508,7 +1508,7 @@
                 const overviewText = await overviewResponse.text();
                 const overviewData = JSON.parse(overviewText);
 
-                if (overviewData.success && overviewData.data) {
+                if (overviewData.status === 'success' && overviewData.data) {
                     this.updateFeatureOverview(overviewData.data);
                 } else {
                     console.log("ℹ️ No Feature Engine overview data available yet");
