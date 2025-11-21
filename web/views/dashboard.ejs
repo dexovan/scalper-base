@@ -1453,8 +1453,8 @@
             try {
                 console.log("🚀 Updating Feature Engine stats...");
 
-                // Get health status
-                const healthResponse = await this.fetchWithTimeout('/api/features/health');
+                // Get health status - using simple fetch
+                const healthResponse = await fetch('/api/features/health');
                 console.log("🔍 Health response status:", healthResponse.status);
                 console.log("🔍 Health response ok:", healthResponse.ok);
 
@@ -1462,8 +1462,11 @@
                     throw new Error(`HTTP ${healthResponse.status}: ${healthResponse.statusText}`);
                 }
 
-                const healthData = await healthResponse.json();
-                console.log("🔍 Health data received:", healthData);
+                const responseText = await healthResponse.text();
+                console.log("🔍 Raw response text:", responseText.substring(0, 200));
+
+                const healthData = JSON.parse(responseText);
+                console.log("🔍 Parsed health data:", healthData);
 
                 if (healthData.success && healthData.data) {
                     const data = healthData.data;
@@ -1500,9 +1503,10 @@
                     console.error("❌ Failed to get Feature Engine health data");
                 }
 
-                // Get overview data
-                const overviewResponse = await this.fetchWithTimeout('/api/features/overview');
-                const overviewData = await overviewResponse.json();
+                // Get overview data - using simple fetch
+                const overviewResponse = await fetch('/api/features/overview');
+                const overviewText = await overviewResponse.text();
+                const overviewData = JSON.parse(overviewText);
 
                 if (overviewData.success && overviewData.data) {
                     this.updateFeatureOverview(overviewData.data);
