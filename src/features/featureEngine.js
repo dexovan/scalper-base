@@ -602,22 +602,26 @@ class FeatureEngine {
      * Get health status of the Feature Engine
      */
     getHealthStatus() {
+        const symbolData = this.symbolData || {};
+        const performanceMetrics = this.performanceMetrics || {};
+        const engines = this.engines || {};
+
         const status = {
             status: 'healthy',
             uptime: process.uptime(),
             memory: process.memoryUsage(),
-            activeSymbols: Object.keys(this.symbolData).length,
-            totalAnalyses: Object.values(this.symbolData).reduce((total, data) => {
-                return total + Object.keys(data.features || {}).length;
+            activeSymbols: Object.keys(symbolData).length,
+            totalAnalyses: Object.values(symbolData).reduce((total, data) => {
+                return total + Object.keys((data && data.features) || {}).length;
             }, 0),
-            performanceMetrics: this.performanceMetrics,
+            performanceMetrics: performanceMetrics,
             engines: {
-                imbalance: !!this.engines.imbalance,
-                walls: !!this.engines.walls,
-                flow: !!this.engines.flow,
-                volatility: !!this.engines.volatility,
-                leverage: !!this.engines.leverage,
-                pumps: !!this.engines.pumps
+                imbalance: !!engines.imbalance,
+                walls: !!engines.walls,
+                flow: !!engines.flow,
+                volatility: !!engines.volatility,
+                leverage: !!engines.leverage,
+                pumps: !!engines.pumps
             },
             lastUpdate: new Date().toISOString()
         };
