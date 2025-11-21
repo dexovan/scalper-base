@@ -1312,10 +1312,11 @@
                 console.log("📊 Updating microstructure stats...");
 
                 // Get symbols count
-                const symbolsResponse = await this.fetchWithTimeout('/api/microstructure/symbols');
-                const symbolsData = await symbolsResponse.json();
+                const symbolsResponse = await fetch('/api/microstructure/symbols');
+                const symbolsText = await symbolsResponse.text();
+                const symbolsData = JSON.parse(symbolsText);
 
-                if (symbolsData.success && symbolsData.data) {
+                if (symbolsData.status === 'success' && symbolsData.data) {
                     document.getElementById('micro-symbols-count').textContent = symbolsData.data.length;
                     document.getElementById('micro-symbols-status').textContent = `${symbolsData.data.filter(s => s.status === 'active').length} active`;
 
@@ -1324,10 +1325,11 @@
                 }
 
                 // Get health status
-                const healthResponse = await this.fetchWithTimeout('/api/health');
-                const healthData = await healthResponse.json();
+                const healthResponse = await fetch('/api/health');
+                const healthText = await healthResponse.text();
+                const healthData = JSON.parse(healthText);
 
-                if (healthData.success) {
+                if (healthData.status === 'success') {
                     document.getElementById('micro-health').textContent = 'Good';
                     document.getElementById('micro-health-details').textContent = 'All systems operational';
                 } else {
