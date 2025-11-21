@@ -217,10 +217,11 @@ function onTradeEvent(symbol, eventData) {
     // Update timestamp
     s.lastUpdateAt = now;
 
+    // DISABLED: Trades stream fills disk too fast (1.6GB + 299 files in 4 hours!)
     // Async store to disk
-    storeTradeEvent(symbol, eventData).catch(err =>
-      console.error(`Error storing trade event for ${symbol}:`, err)
-    );
+    // storeTradeEvent(symbol, eventData).catch(err =>
+    //   console.error(`Error storing trade event for ${symbol}:`, err)
+    // );
 
   } catch (error) {
     console.error(`Error processing trade event for ${symbol}:`, error);
@@ -328,8 +329,9 @@ async function flushSnapshotsToDisk() {
   const promises = [];
 
   for (const [symbol, symbolState] of Object.entries(state.symbols)) {
+    // DISABLED: Orderbook snapshots fill disk too fast (8.8GB + 2.2M files in 4 hours!)
     // Orderbook snapshot
-    promises.push(storeOrderbookSnapshot(symbol, symbolState.orderbook));
+    // promises.push(storeOrderbookSnapshot(symbol, symbolState.orderbook));
 
     // Candles snapshots
     // DISABLED: Microcandles disk storage fills disk too fast (17GB+ in days!)
