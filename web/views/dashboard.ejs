@@ -1455,7 +1455,15 @@
 
                 // Get health status
                 const healthResponse = await this.fetchWithTimeout('/api/features/health');
+                console.log("🔍 Health response status:", healthResponse.status);
+                console.log("🔍 Health response ok:", healthResponse.ok);
+
+                if (!healthResponse.ok) {
+                    throw new Error(`HTTP ${healthResponse.status}: ${healthResponse.statusText}`);
+                }
+
                 const healthData = await healthResponse.json();
+                console.log("🔍 Health data received:", healthData);
 
                 if (healthData.success && healthData.data) {
                     const data = healthData.data;
@@ -1504,8 +1512,10 @@
 
             } catch (error) {
                 console.error("❌ Error updating Feature Engine stats:", error);
+                console.error("❌ Error details:", error.message);
+                console.error("❌ Error stack:", error.stack);
                 document.getElementById('features-health').textContent = 'Error';
-                document.getElementById('features-health-details').textContent = 'Connection failed';
+                document.getElementById('features-health-details').textContent = `Error: ${error.message}`;
             }
         }
 
