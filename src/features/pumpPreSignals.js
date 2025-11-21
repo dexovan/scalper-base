@@ -9,7 +9,7 @@
  * - Multi-factor pump likelihood scoring
  */
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger.js';
 
 class PumpPreSignalsEngine {
     constructor(config = {}) {

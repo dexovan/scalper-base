@@ -9,7 +9,7 @@
  * - Wall strength and persistence tracking
  */
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger.js';
 
 class WallsSpoofingEngine {
     constructor(config = {}) {

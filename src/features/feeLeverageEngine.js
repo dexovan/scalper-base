@@ -9,7 +9,7 @@
  * - Optimal leverage suggestions
  */
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger.js';
 
 class FeeLeverageEngine {
     constructor(config = {}) {
