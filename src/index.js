@@ -87,8 +87,9 @@ async function startEngine() {
 
       console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
 
+      // DISABLED: Trades disk storage fills disk too fast (15GB+ in days!)
       // KORAK 2: Save trade data to CSV file
-      saveTrade(evt.symbol, evt.payload);
+      // saveTrade(evt.symbol, evt.payload);
     }
   });
 

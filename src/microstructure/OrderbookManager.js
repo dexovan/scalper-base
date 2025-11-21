@@ -332,13 +332,14 @@ async function flushSnapshotsToDisk() {
     promises.push(storeOrderbookSnapshot(symbol, symbolState.orderbook));
 
     // Candles snapshots
-    for (const [timeframe, candles] of Object.entries(symbolState.candles)) {
-      if (candles.length > 0) {
-        promises.push(
-          jsonStore.writeSnapshot("microcandles", symbol, candles, timeframe)
-        );
-      }
-    }
+    // DISABLED: Microcandles disk storage fills disk too fast (17GB+ in days!)
+    // for (const [timeframe, candles] of Object.entries(symbolState.candles)) {
+    //   if (candles.length > 0) {
+    //     promises.push(
+    //       jsonStore.writeSnapshot("microcandles", symbol, candles, timeframe)
+    //     );
+    //   }
+    // }
   }
 
   await Promise.allSettled(promises);
