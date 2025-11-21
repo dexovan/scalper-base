@@ -1313,15 +1313,14 @@
 
                 // Get symbols count
                 const symbolsResponse = await fetch('/api/microstructure/symbols');
-                const symbolsText = await symbolsResponse.text();
-                const symbolsData = JSON.parse(symbolsText);
+                const symbolsData = await symbolsResponse.json();
 
-                if (symbolsData.status === 'success' && symbolsData.data) {
-                    document.getElementById('micro-symbols-count').textContent = symbolsData.data.length;
-                    document.getElementById('micro-symbols-status').textContent = `${symbolsData.data.filter(s => s.status === 'active').length} active`;
+                if (symbolsData.ok && symbolsData.symbols) {
+                    document.getElementById('micro-symbols-count').textContent = symbolsData.symbols.length;
+                    document.getElementById('micro-symbols-status').textContent = `${symbolsData.symbols.filter(s => s.tradesCount > 0).length} active`;
 
                     // Update top symbols
-                    this.renderTopSymbols(symbolsData.data.slice(0, 5));
+                    this.renderTopSymbols(symbolsData.symbols.slice(0, 5));
                 }
 
                 // Get health status
@@ -1363,10 +1362,16 @@
                 return;
             }
 
-            container.innerHTML = symbols.map(symbol => `
+            // Sort by trade count and take top 5
+            const topSymbols = symbols
+                .filter(s => s.tradesCount > 0)
+                .sort((a, b) => b.tradesCount - a.tradesCount)
+                .slice(0, 5);
+
+            container.innerHTML = topSymbols.map(symbol => `
                 <div class="flex justify-between items-center text-xs py-1 px-2 rounded bg-slate-800/50 hover:bg-slate-700/50 transition-colors">
                     <span class="text-slate-300 font-medium">${symbol.symbol}</span>
-                    <span class="text-slate-400">${symbol.status}</span>
+                    <span class="text-slate-400">${symbol.tradesCount} trades</span>
                 </div>
             `).join('');
         }
