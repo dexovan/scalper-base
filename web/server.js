@@ -218,6 +218,20 @@ app.use(
   })
 );
 
+// ===========================================
+// PROXY → FEATURE ENGINE API (port 8090)
+// ===========================================
+app.use(
+  "/api/features",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/features",
+    changeOrigin: true,
+    pathRewrite: {
+      "^/api/features": ""
+    }
+  })
+);
+
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/");

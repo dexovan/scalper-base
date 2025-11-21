@@ -1,0 +1,893 @@
+Krećem odmah. Ovo će biti FULL replay kroz ceo AI pipeline, bez ikakvih prečica.
+
+---
+
+# FAZA 12 – LOGGING, JSON ARHIVA & FULL REPLAY ENGINE
+
+(**Opcija B – RAW MARKET DATA → kompletan AI decision pipeline**)
+
+---
+
+## 0. Šta već imamo (oslonac iz Faza 1–11)
+
+Do ove tačke tvoj sistem već ima:
+
+* **Public market feed** (Bybit linear WS) + **microstructure / feature engine** (Phase 2–4)
+* **Regime engine** (Phase 5)
+* **Scoring / signal engine** (Phase 6)
+* **State machine po simbolu** (Phase 7)
+* **Risk & portfolio engine** (Phase 8)
+* **TP/SL / Trailing / Fee-first logiku** (Phase 9)
+* **Execution engine (SIM/DRY/LIVE)** (Phase 10)
+* **Dashboard sa svim slojevima** (Phase 11)
+
+FAZA 12 dodaje:
+
+1. **Centralni logging sloj** – svi moduli loguju kroz jedan `logger.js`.
+2. **Raw market recorder** – snima *sve što “ulazi” u pipeline* (trades, orderbook delte, tickers).
+3. **Replay session builder** – od logova gradi „film“ (events.jsonl + manifest).
+4. **Replay engine (runMode: REPLAY)** – umesto Bybit WS-a, pipeline dobija evente iz logova.
+5. **Retention** – automatsko čišćenje starih logova / sesija.
+6. **Dashboard replay panel** – start / stop / pregled sesija.
+
+---
+
+## 1. Novi config blokovi
+
+### 1.1 CONFIG.logging
+
+```js
+CONFIG.logging = {
+  baseDir: "data",
+  prettyPrintSnapshots: true,   // risk, tpsl, execution, health
+  maxLineLength: 10000          // safety (truncate prevelike evente)
+};
+```
+
+### 1.2 CONFIG.retention (finalni)
+
+```js
+CONFIG.retention = {
+  tradesLogDays: 30,
+  ordersLogDays: 30,
+  eventsDays: 7,
+  replaySessionsDays: 30,
+  rawMarketDataHours: 48        // koliko sati čuvamo raw market data
+};
+```
+
+### 1.3 CONFIG.replay
+
+```js
+CONFIG.replay = {
+  enabled: true,
+  defaultSpeedFactor: 4.0,
+  maxEventsPerSession: 500000,
+  mode: "SCORING_ONLY" // ili "FULL_DECISION" kasnije, ali mi radimo FULL_DECISION
+};
+```
+
+> Napomena: pored ovoga dodaćemo globalni flag tipa `CONFIG.runMode = "LIVE" | "REPLAY"`.
+
+---
+
+## 2. Centralni logger (src/logging/logger.js & streams.js)
+
+### 2.1 streams.js – low-level I/O
+
+**Fajl:** `src/logging/streams.js`
+
+API:
+
+```js
+export const FileStreamManager = {
+  appendLine(filePath, line) : Promise<void>,
+  writeJson(filePath, object) : Promise<void>
+};
+```
+
+* `appendLine`:
+
+  * `mkdir -p` parent direktorijuma.
+  * Otvori / koristi cached `fs.createWriteStream` za taj fajl.
+  * Doda `line + "\n"`.
+* `writeJson`:
+
+  * `JSON.stringify(obj, null, 2)` (ako `prettyPrintSnapshots`).
+  * `fs.writeFile` (overwrite).
+
+### 2.2 logger.js – centralni API
+
+**Fajl:** `src/logging/logger.js`
+
+Exportuje singleton `logger`:
+
+```js
+export const logger = {
+  logStateEvent(symbol, stateEvent),
+  logTrade(tradeRecord),
+  logOrder(orderRecord),
+  writeRiskSnapshot(riskSnapshot),
+  writeTpslSnapshot(tpslSnapshot),
+  writeExecutionSnapshot(executionSnapshot),
+  writeHealthSnapshot(healthSnapshot),
+
+  writeReplayManifest(sessionId, manifest),
+  appendReplayEvent(sessionId, replayEvent)
+};
+```
+
+#### 2.2.1 Destinacije:
+
+* **State events** → `data/events/<symbol>.jsonl`
+* **Trade log** → `data/trades_log/day-YYYY-MM-DD.jsonl`
+* **Order log** → `data/orders/day-YYYY-MM-DD.jsonl`
+* **Snapshots**:
+
+  * `data/system/risk_snapshot.json`
+  * `data/system/tpsl_snapshot.json`
+  * `data/system/execution_snapshot.json`
+  * `data/system/health_snapshot.json`
+* **Replay**:
+
+  * `data/replay/sessions/<sessionId>/manifest.json`
+  * `data/replay/sessions/<sessionId>/events.jsonl`
+
+Sve funkcije su `async` (Promise).
+
+---
+
+## 3. Standardizovani formati zapisa
+
+Ovo uglavnom preuzimamo iz tvog speca, samo ih cementiramo.
+
+### 3.1 StateEvent (Phase 7) → events/*.jsonl
+
+```ts
+StateEvent {
+  timestamp: string,   // ISO
+  symbol: string,
+  fromState: string,
+  toState: string,
+  eventType: string,   // "SCORING_UPDATE" | "REGIME_UPDATE" | "RISK_UPDATE" | ...
+  reason: string,
+  extra: object        // { finalScoreLong, signalLong, ... } ili {}
+}
+```
+
+### 3.2 TradeLogRecord (Phase 8) → trades_log/day-*.jsonl
+
+```ts
+TradeLogRecord {
+  timestamp: string,
+  dateKey: string,  // "YYYY-MM-DD"
+  symbol: string,
+  side: "LONG" | "SHORT",
+  entryPrice: number,
+  closePrice: number,
+  qty: number,
+  leverage: number,
+  realizedPnl: number,
+  mfe: number,
+  mae: number,
+  durationSeconds: number,
+  mode: "SIM" | "DRY_RUN" | "LIVE"
+}
+```
+
+### 3.3 OrderLogRecord (Phase 10) → orders/day-*.jsonl
+
+```ts
+OrderLogRecord {
+  timestamp: string,
+  clientOrderId: string,
+  exchangeOrderId: string | null,
+  symbol: string,
+  side: "BUY" | "SELL",
+  type: string,
+  timeInForce: string,
+  price: number | null,
+  triggerPrice: number | null,
+  qty: number,
+  reduceOnly: boolean,
+  status: string,
+  filledQty: number,
+  avgFillPrice: number | null,
+  notionalUsd: number,
+  mode: "SIM" | "DRY_RUN" | "LIVE",
+  source: string,
+  lastError: string | null
+}
+```
+
+### 3.4 Snapshoti
+
+* **RiskSnapshot**, **TpslSnapshot**, **ExecutionSnapshot**, **HealthSnapshot** – iste strukture kao što smo definisali u fazama 8–11, samo jednom za sva vremena.
+
+---
+
+## 4. RAW market recorder (ključ za FULL replay)
+
+Želimo da snimimo *sve što Bybit public WS šalje* u obliku normalizovanih eventa.
+
+### 4.1 Novi fajl: src/logging/marketRecorder.js
+
+Svrha:
+
+* subscribe na **internalni market hub** / WS adapter (isti layer koji sada dobija Bybit poruke).
+* na svaki tick kreira `RawMarketEvent` i zapisuje u `.jsonl`.
+
+#### 4.1.1 Struktura RawMarketEvent
+
+```ts
+RawMarketEvent {
+  timestamp: string,        // ISO iz WS, ili Date.now() → ISO
+  source: "BYBIT_WS",       // za sada
+  type: "TICKER" | "TRADE" | "ORDERBOOK_SNAPSHOT" | "ORDERBOOK_DELTA" | "KLINE",
+  symbol: string,
+  payload: object           // raw prečišćeni podaci
+}
+```
+
+Primeri:
+
+* `type = "TRADE"`:
+
+```ts
+payload = {
+  price: number,
+  qty: number,
+  side: "Buy" | "Sell",
+  ts: number               // originalni exchange timestamp
+}
+```
+
+* `type = "ORDERBOOK_DELTA"`:
+
+```ts
+payload = {
+  bids: [ [price:number, size:number], ... ],
+  asks: [ [price:number, size:number], ... ],
+  ts: number
+}
+```
+
+### 4.2 Struktura fajlova za raw market
+
+Predlažem ovu organizaciju:
+
+```
+data/market/
+  YYYY-MM-DD/
+    BTCUSDT-trades.jsonl
+    BTCUSDT-orderbook.jsonl
+    BTCUSDT-ticker.jsonl
+    AI16ZUSDT-trades.jsonl
+    ...
+```
+
+Logika:
+
+* **Trades**: samo `RawMarketEvent` gde `type="TRADE"`.
+* **Orderbook**: snapshot + delta u istom fajlu (vrsta u `payload.subtype`).
+
+Format linije: `JSON.stringify(RawMarketEvent)`.
+
+### 4.3 Integracija u već postojeći WS layer
+
+U tvom public connector / `marketHub` modulu:
+
+* Svaki put kad dobijemo događaj od Bybit WS:
+
+  1. Normalizuje se za interni pipeline (kao do sada).
+  2. Pozove se `marketRecorder.record(event)`:
+
+```js
+marketRecorder.recordRawMarketEvent({
+  timestamp: nowIso,
+  source: "BYBIT_WS",
+  type: "...",
+  symbol,
+  payload: normalizedPayload
+});
+```
+
+`marketRecorder` interno koristi `logger`/`FileStreamManager.appendLine` u odgovarajuće fajlove.
+
+---
+
+## 5. Unified ReplayEvent format
+
+Replay event je „ulaz“ u pipeline kada radimo REPLAY.
+
+```ts
+ReplayEvent {
+  timestamp: string,         // originalni timestamp
+  type: string,              // "MARKET_TRADE", "MARKET_ORDERBOOK", "FEATURE_SNAPSHOT", "SCORING_UPDATE", "STATE_EVENT", ...
+  symbol?: string | null,
+  payload: object
+}
+```
+
+Za **FULL pipeline replay (B)**:
+
+* Glavni ulazni tipovi će biti:
+
+  * `"MARKET_TRADE"` (sa payload-om iz RawMarketEvent)
+  * `"MARKET_ORDERBOOK"` (snapshot/delta)
+  * `"MARKET_TICKER"` (ako ga koristiš)
+* Ostali tipovi (SCORING_UPDATE, REGIME_UPDATE) su opciono za **debug**, ali ne i koniečni za odluke – njih pipeline sam računa ponovo.
+
+---
+
+## 6. ReplaySession store + manifest
+
+### 6.1 Fajl: src/replay/replaySessionStore.js
+
+API:
+
+```js
+export const replaySessionStore = {
+  listSessions(): Promise<ReplayManifest[]>,
+  getSession(sessionId: string): Promise<ReplayManifest | null>,
+  saveSession(manifest: ReplayManifest): Promise<void>
+};
+```
+
+`ReplayManifest`:
+
+```ts
+ReplayManifest {
+  sessionId: string,
+  createdAt: string,
+  createdBy: string, // "MANUAL" | "AUTO" | "TEST"
+  sourceDateRange: {
+    from: string,
+    to: string
+  },
+  symbols: string[],
+  eventTypes: string[],
+  speedFactor: number,
+  totalEvents: number,
+  notes: string | null
+}
+```
+
+* `manifest.json` se nalazi u `data/replay/sessions/<sessionId>/manifest.json`.
+* `replaySessionStore.listSessions()` može da:
+
+  * skenira `data/replay/sessions/*`,
+  * učita svaki `manifest.json`,
+  * vrati listu.
+
+---
+
+## 7. buildReplaySession – kreiranje sesije (OFFLINE)
+
+**Fajl:** `src/replay/replayEngine.js` (funkcija build-a može biti ovde ili u posebnom modulu).
+
+Signature:
+
+```js
+async function buildReplaySession(options: BuildReplayOptions): Promise<ReplayManifest>
+```
+
+```ts
+BuildReplayOptions {
+  sessionId?: string | null,
+  from: string,           // ISO
+  to: string,             // ISO
+  symbols: string[],
+  includeTypes: string[], // npr ["MARKET_TRADE","MARKET_ORDERBOOK"]
+  maxEvents?: number | null,
+  notes?: string | null
+}
+```
+
+### 7.1 Proces
+
+1. **Generiši sessionId** ako nije zadat
+   npr. `2025-11-18T10-11-BTCUSDT-AIUSDT`.
+
+2. Napravi folder:
+   `data/replay/sessions/<sessionId>/`.
+
+3. Otwori output `events.jsonl`.
+
+4. Za svaki symbol u `symbols`:
+
+   * Izračunaj koje datume pokriva `[from, to]`.
+
+   * Otvori:
+
+     * `data/market/YYYY-MM-DD/<symbol>-trades.jsonl`
+     * `data/market/YYYY-MM-DD/<symbol>-orderbook.jsonl`
+     * (po potrebi i ticker)
+
+   * Čitaj liniju po liniju:
+
+     * parse JSON → `RawMarketEvent`
+     * filter: `timestamp in [from, to]`
+     * map u `ReplayEvent`:
+
+```ts
+ReplayEvent {
+  timestamp: raw.timestamp,
+  type: raw.type === "TRADE" ? "MARKET_TRADE" : "MARKET_ORDERBOOK",
+  symbol: raw.symbol,
+  payload: raw.payload
+}
+```
+
+5. Skupljaj sve `ReplayEvent` u RAM (ili radi chunk + sort), sort po `timestamp`.
+
+6. Ako `maxEvents` nije null → truncate listu.
+
+7. Upis u `events.jsonl` (svaki event kao JSON + newline).
+
+8. Napravi `manifest`:
+
+```ts
+manifest = {
+  sessionId,
+  createdAt: nowIso,
+  createdBy: "MANUAL",
+  sourceDateRange: { from, to },
+  symbols,
+  eventTypes: includeTypes,
+  speedFactor: CONFIG.replay.defaultSpeedFactor,
+  totalEvents,
+  notes: options.notes || null
+}
+```
+
+9. `logger.writeReplayManifest(sessionId, manifest)`.
+
+10. `replaySessionStore.saveSession(manifest)` (opciono centralni index).
+
+---
+
+## 8. ReplayEngine – runtime (FULL pipeline)
+
+**Fajl:** `src/replay/replayEngine.js`
+
+### 8.1 Replay mode u sistemu
+
+U glavnom `index.js`:
+
+* `CONFIG.runMode = "LIVE" | "REPLAY"`
+
+Ako `runMode === "REPLAY"`:
+
+* **NE pokrećeš Bybit public WS connector**.
+* Umesto toga:
+
+  * pokreneš `replayEngine.runSession(...)`
+  * i registruješ „feed adapter“ koji prihvata ReplayEvent-e umesto WS poruka.
+
+### 8.2 Status struktura
+
+```ts
+ReplayStatus {
+  sessionId: string | null,
+  running: boolean,
+  currentEventIndex: number,
+  totalEvents: number,
+  startedAt: string | null,
+  lastEventTimestamp: string | null,
+  speedFactor: number
+}
+```
+
+### 8.3 API replayEngine
+
+```js
+export const replayEngine = {
+  loadSession(sessionId): Promise<ReplayManifest>,
+  runSession(sessionId, options?): Promise<void>,
+  stop(): void,
+  getStatus(): ReplayStatus
+};
+```
+
+`RunReplayOptions`:
+
+```ts
+RunReplayOptions {
+  speedFactor?: number,
+  loop?: boolean,
+  injectMode?: "SCORING_ONLY" | "FULL_DECISION"
+}
+```
+
+Za tebe → uvek **"FULL_DECISION"**.
+
+### 8.4 Emisija događaja u pipeline
+
+Core idea: ReplayEngine *emulira* Bybit WS i šalje:
+
+* `MARKET_TRADE` → modul koji inače prima `trade` tick (microstructure/tradeTape).
+* `MARKET_ORDERBOOK` → modul koji inače prima orderbook delta/snapshot.
+
+Implementacija:
+
+* Napravi **adapter interfejs** koji već koristiš za real feed, npr:
+
+```js
+marketHub.onRawTrade(symbol, payload)
+marketHub.onRawOrderbook(symbol, payload)
+```
+
+U LIVE modu:
+
+* WS callback → `marketHub.onRawTrade(...)`.
+
+U REPLAY modu:
+
+* `replayEngine` umesto WS poziva `marketHub.onRawTrade(...)` sa payload-om iz `ReplayEvent`.
+
+Time:
+
+* microstructure engine, feature engine, regime engine, scoring engine, state machine, risk, TPSL, execution – sve rade kao uživo.
+
+### 8.5 Timing (speedFactor)
+
+Algoritam petlje:
+
+1. Učitaj sve `ReplayEvent` iz `events.jsonl` u memoriju (ili streaming sa indexom).
+2. Kreiraj `loop`:
+
+```js
+for(i=0..events.length-1) {
+  if (stopRequested) break;
+
+  const ev = events[i];
+
+  if (i > 0) {
+    const prev = events[i-1];
+    const deltaRealMs = new Date(ev.timestamp) - new Date(prev.timestamp);
+    const deltaReplayMs = deltaRealMs / speedFactor;
+    await sleep(Math.max(1, deltaReplayMs));
+  }
+
+  dispatchReplayEvent(ev);
+  status.currentEventIndex = i;
+  status.lastEventTimestamp = ev.timestamp;
+}
+```
+
+3. Ako `options.loop === true`, posle kraja kreće od početka.
+
+`dispatchReplayEvent(ev)`:
+
+```js
+switch(ev.type) {
+  case "MARKET_TRADE":
+    marketHub.onRawTrade(ev.symbol, ev.payload);
+    break;
+  case "MARKET_ORDERBOOK":
+    marketHub.onRawOrderbook(ev.symbol, ev.payload);
+    break;
+  // kasnije možeš dodati MARKET_TICKER, itd.
+}
+```
+
+---
+
+## 9. Retention job (src/logging/retention.js)
+
+**Fajl:** `src/logging/retention.js`
+
+API:
+
+```js
+export async function runRetentionJob(now: Date | string): Promise<RetentionReport>
+```
+
+```ts
+RetentionReport {
+  timestamp: string,
+  deletedFiles: string[],
+  keptFiles: string[],
+  errors: { file: string, error: string }[]
+}
+```
+
+### 9.1 Šta brišemo
+
+* `data/trades_log/day-YYYY-MM-DD.jsonl`
+  → starije od `CONFIG.retention.tradesLogDays` dana.
+* `data/orders/day-YYYY-MM-DD.jsonl`
+  → starije od `ordersLogDays`.
+* `data/events/*.jsonl`
+  → starije od `eventsDays` (prema mtime).
+* `data/replay/sessions/<sessionId>`
+  → ako `manifest.sourceDateRange.to` stariji od `replaySessionsDays` dana.
+* `data/market/YYYY-MM-DD/*`
+  → starije od `rawMarketDataHours` (preko datuma + sata, ili mtime).
+
+Implementacija:
+
+* enumerate fajlove i foldere,
+* parsirati datume iz naziva (gde je moguće),
+* uporediti sa `now`,
+* `fs.unlink` ili `fs.rm -r` (za sesije).
+
+Job se poziva:
+
+* ili iz `index.js` jednom dnevno `setInterval(...)`,
+* ili eksterno cron-om (dovoljno da ima export funkcije).
+
+---
+
+## 10. Replay API (web/routes/api-replay.js)
+
+### 10.1 GET /api/replay/sessions
+
+**Response:**
+
+```json
+{
+  "timestamp": "...",
+  "sessions": [ ReplayManifest, ... ]
+}
+```
+
+### 10.2 GET /api/replay/sessions/:sessionId
+
+Vrati `ReplayManifest` ili `{ error }`.
+
+### 10.3 POST /api/replay/sessions
+
+Body:
+
+```json
+{
+  "from": "2025-11-18T10:00:00Z",
+  "to": "2025-11-18T11:00:00Z",
+  "symbols": ["BTCUSDT","AI16ZUSDT"],
+  "includeTypes": ["MARKET_TRADE", "MARKET_ORDERBOOK"],
+  "maxEvents": 50000,
+  "sessionId": null,
+  "notes": "BTC+AI scalp test"
+}
+```
+
+Server:
+
+* validira parametre,
+* poziva `buildReplaySession(options)`,
+* vraća `ReplayManifest`.
+
+### 10.4 POST /api/replay/run
+
+Body:
+
+```json
+{
+  "sessionId": "2025-11-18T10-11-BTCUSDT-AI16ZUSDT",
+  "speedFactor": 4.0,
+  "injectMode": "FULL_DECISION",
+  "loop": false
+}
+```
+
+* poziva `replayEngine.runSession`.
+* setuje `CONFIG.runMode = "REPLAY"` ili internu varijablu (bitno da LIVE konektori ne rade).
+
+Response: `{ success, message }`.
+
+### 10.5 POST /api/replay/stop
+
+* `replayEngine.stop()`
+* Response: `{ success, message }`.
+
+### 10.6 GET /api/replay/status
+
+Vrati `ReplayStatus`.
+
+---
+
+## 11. Dashboard integracija – Replay panel
+
+U **Phase 11 dashboard** dodajemo:
+
+* novi panel u npr. „Logs & Events“ tabu: **Replay**.
+
+### 11.1 Frontend (dashboard.js)
+
+Dodaj:
+
+* `DashboardApp.loadReplaySessions()` → GET `/api/replay/sessions`
+* renderuje tabelu:
+
+Kolone:
+
+* `sessionId`
+* `sourceDateRange.from` / `to`
+* `symbols`
+* `totalEvents`
+* `speedFactor`
+
+Dugmad:
+
+* `Run` (onclick → POST /api/replay/run)
+* `Stop` (globalno)
+
+### 11.2 Global status
+
+U „Global Overview“ panelu:
+
+* GET `/api/replay/status`.
+
+* Ako `status.running === true`:
+
+  * prikaži badge `REPLAY MODE` (npr. ljubičasti).
+  * tekst: `Session: <sessionId> @ <speedFactor>x`.
+
+* I *jako jasno* vizuelno odvojiti od LIVE (da ne postoji zabuna da je pravi trading).
+
+---
+
+## 12. Integracije postojećih modula na centralni logger
+
+### 12.1 StateMachine
+
+Umesto ručnog pisanja `data/events/<symbol>.json`:
+
+* u `stateMachine.applyTransition`:
+
+```js
+await logger.logStateEvent(symbol, {
+  timestamp: nowIso,
+  symbol,
+  fromState,
+  toState,
+  eventType,
+  reason,
+  extra
+});
+```
+
+### 12.2 positionTracker (Phase 8)
+
+Kada se zatvara pozicija:
+
+* kreira `TradeLogRecord`.
+* poziva `logger.logTrade(tradeRecord)`.
+
+### 12.3 orderRouter (Phase 10)
+
+Svaki put kada je nalog:
+
+* kreiran,
+* update statusa (FILLED/CANCELED/REJECTED),
+
+kreira `OrderLogRecord` i šalje:
+
+```js
+await logger.logOrder(orderLogRecord);
+```
+
+### 12.4 Risk, TPSL, Execution, Health
+
+Umesto ručnog `fs.writeFile`, sada:
+
+* `riskEngine.recalcRiskState` → `logger.writeRiskSnapshot(snapshot)`.
+* `tpslEngine` → `logger.writeTpslSnapshot`.
+* `executionEngine` → `logger.writeExecutionSnapshot`.
+* `health` → `logger.writeHealthSnapshot`.
+
+---
+
+## 13. Plan implementacije FAZE 12 – korak po korak
+
+Da možeš realno da implementiraš bez gušenja sesije:
+
+### KORAK 1 – Centralni logging sloj
+
+1. Napravi `streams.js` (appendLine + writeJson).
+2. Napravi `logger.js` sa gore navedenim funkcijama.
+3. Refaktoriši:
+
+   * `stateMachine` da koristi `logger.logStateEvent`.
+   * `positionTracker` da koristi `logger.logTrade`.
+   * `orderRouter` da koristi `logger.logOrder`.
+   * risk/TPSL/execution/health da koriste snapshot funkcije.
+
+### KORAK 2 – RAW market recorder
+
+1. Kreiraj `marketRecorder.js` sa:
+
+```js
+recordRawMarketEvent(event: RawMarketEvent)
+```
+
+2. Poveži ga sa Bybit WS connectorom / marketHub-om:
+
+   * za trade tick,
+   * za orderbook,
+   * za ticker (ako koristiš).
+
+3. Verifikuj da se `data/market/YYYY-MM-DD/*.jsonl` pune.
+
+### KORAK 3 – Retention
+
+1. Implementiraj `retention.js` prema CONFIG.retention.
+2. Dodaj u `index.js` (engine):
+
+```js
+setInterval(() => runRetentionJob(new Date()).catch(console.error), 24 * 60 * 60 * 1000);
+```
+
+*(ili ručno pokretanje za početak).*
+
+### KORAK 4 – ReplaySessionStore + buildReplaySession
+
+1. Implementiraj `replaySessionStore`.
+2. Implementiraj `buildReplaySession(options)`:
+
+   * čitanje raw market fajlova,
+   * filtracija po vremenu,
+   * mapiranje u `ReplayEvent`,
+   * sort + upis u `events.jsonl`,
+   * pisan manifest.
+3. Testiraj kreiranje male sesije (par minuta, par simbola).
+
+### KORAK 5 – ReplayEngine runtime
+
+1. Implementiraj `replayEngine` sa:
+
+   * `runSession`, `stop`, `getStatus`.
+
+2. Napravi adapter u marketHub-u:
+
+   * `marketHub.feedFromReplay(event)` koji internu logiku mapira na iste funkcije kao WS.
+
+3. U `dispatchReplayEvent` zovi taj adapter.
+
+### KORAK 6 – API za replay
+
+1. Napravi `web/routes/api-replay.js` sa:
+
+   * `/api/replay/sessions`
+   * `/api/replay/sessions/:id`
+   * `/api/replay/sessions` (POST – build)
+   * `/api/replay/run`
+   * `/api/replay/stop`
+   * `/api/replay/status`
+2. Registruj rute u `web/server.js`.
+
+### KORAK 7 – Dashboard integracija
+
+1. U `dashboard.js` dodaj replay panel:
+
+   * učitavanje sesija,
+   * dugme Run / Stop.
+2. U global overview panel dodaj `REPLAY MODE` badge.
+
+### KORAK 8 – Test scenariji (praktično)
+
+* **Test 1 – logovi**: vidi da se `events`, `orders`, `trades_log`, `market` pune.
+* **Test 2 – buildSession**: za 5–10 minuta tradinga napravi replay sesiju.
+* **Test 3 – run REPLAY**:
+
+  * ugasi WS konektor,
+  * pokreni `runSession`,
+  * posmatraj:
+
+    * da se feature / scoring / state / risk / execution ponašaju kao u snimljenom periodu
+    * dashboard se „pomera“ kao live.
+* **Test 4 – retention**: napravi veštački stare fajlove, pusti job, proveri da su obrisani.
+
+---
+
+Ako želiš, sledeći korak može da bude:
+da pređemo iz ove specifikacije u **konkretan skeleton koda** za:
+
+* `logger.js`
+* `marketRecorder.js`
+* `replayEngine.js`
+* `api-replay.js`
+
+tako da ih bukvalno nalepiš u projekat i kreneš sa prvom malom REPLAY sesijom.

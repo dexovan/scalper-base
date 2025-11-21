@@ -20,6 +20,7 @@ import {
   getSymbolsByCategory
 } from "../market/universe_v2.js";
 import * as OrderbookManager from "../microstructure/OrderbookManager.js";
+import { FeatureEngine } from "../features/featureEngine.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
@@ -748,6 +749,119 @@ export function startMonitorApiServer(port = 8090) {
       console.error("❌ [API] Error checking microstructure health:", error.message);
       return res.status(500).json({
         ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // FAZA 4: FEATURE ENGINE API ROUTES
+  // ============================================================
+
+  // Initialize Feature Engine
+  const featureEngine = new FeatureEngine();
+  console.log("🔧 Feature Engine initialized for API");
+
+  // GET /api/features/health - Feature Engine health status
+  app.get("/api/features/health", async (req, res) => {
+    try {
+      const health = featureEngine.getHealthStatus();
+      res.json({
+        status: "success",
+        data: health,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [FEATURES/HEALTH] Error:", error);
+      res.status(500).json({
+        status: "error",
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/features/config - Feature Engine configuration
+  app.get("/api/features/config", async (req, res) => {
+    try {
+      const config = featureEngine.getConfiguration();
+      res.json({
+        status: "success",
+        data: config,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [FEATURES/CONFIG] Error:", error);
+      res.status(500).json({
+        status: "error",
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/features/overview - Features analysis overview
+  app.get("/api/features/overview", async (req, res) => {
+    try {
+      const overview = featureEngine.getFeaturesOverview();
+      res.json({
+        status: "success",
+        data: overview,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [FEATURES/OVERVIEW] Error:", error);
+      res.status(500).json({
+        status: "error",
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/features/symbol/:symbol - Symbol-specific features
+  app.get("/api/features/symbol/:symbol", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const features = featureEngine.getFeaturesForSymbol(symbol);
+      res.json({
+        status: "success",
+        data: features,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [FEATURES/SYMBOL/${req.params.symbol}] Error:`, error);
+      res.status(500).json({
+        status: "error",
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // POST /api/features/update - Trigger features update
+  app.post("/api/features/update", async (req, res) => {
+    try {
+      const { symbol } = req.body;
+      if (!symbol) {
+        return res.status(400).json({
+          status: "error",
+          error: "Symbol is required",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      await featureEngine.updateFeaturesForSymbol(symbol);
+      res.json({
+        status: "success",
+        message: `Features updated for ${symbol}`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [FEATURES/UPDATE] Error:", error);
+      res.status(500).json({
+        status: "error",
         error: error.message,
         timestamp: new Date().toISOString()
       });
