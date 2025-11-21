@@ -74,8 +74,9 @@ async function startEngine() {
       const lastPrice = evt.payload.lastPrice || evt.payload.price || "";
       console.log("[TICKER]", evt.symbol, lastPrice);
 
+      // DISABLED: Tickers disk storage fills disk too fast
       // KORAK 2: Save ticker data to CSV file
-      saveTicker(evt.symbol, evt.payload);
+      // saveTicker(evt.symbol, evt.payload);
 
     } else if (evt.type === "trade") {
       // Bybit v5 trade fields: S=side, p=price, v=volume, L=tick_direction

@@ -30,7 +30,8 @@ export function initEventHub() {
     // ----------------------
     if (topic.startsWith("tickers.")) {
       const symbol = topic.split(".")[1];
-      storeTicker(symbol, msg.data);
+      // DISABLED: Ticker disk storage fills disk too fast
+      // storeTicker(symbol, msg.data);
       return;
     }
 

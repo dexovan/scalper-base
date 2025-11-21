@@ -94,10 +94,11 @@ function onOrderbookEvent(symbol, eventData) {
     s.orderbook.lastUpdateAt = now;
     s.lastUpdateAt = now;
 
+    // DISABLED: Orderbook snapshots fill disk too fast (400k+ files in hours)
     // Async store to disk (ne čekamo)
-    storeOrderbookSnapshot(symbol, s.orderbook).catch(err =>
-      console.error(`Error storing orderbook snapshot for ${symbol}:`, err)
-    );
+    // storeOrderbookSnapshot(symbol, s.orderbook).catch(err =>
+    //   console.error(`Error storing orderbook snapshot for ${symbol}:`, err)
+    // );
 
   } catch (error) {
     console.error(`Error processing orderbook event for ${symbol}:`, error);

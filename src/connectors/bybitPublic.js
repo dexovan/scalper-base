@@ -262,8 +262,9 @@ async function connectWS(symbolsOverride = null) {
       latestTickers.set(symbol, tickerData);
       console.log(`💰 Ticker ${symbol}: $${tickerData.price} (${latestTickers.size} total)`);
 
+      // DISABLED: Ticker disk storage fills disk too fast
       // Write to file periodically (every ticker update)
-      writeTickersToFile();
+      // writeTickersToFile();
 
       emitter.emit("event", {
         type: "ticker",
@@ -306,7 +307,8 @@ async function connectWS(symbolsOverride = null) {
             };
             latestTickers.set(symbol, updatedTicker);
             console.log(`🚀 Updated ${symbol} ticker from trade: $${tradePrice}`);
-            writeTickersToFile();
+            // DISABLED: Ticker disk storage fills disk too fast
+            // writeTickersToFile();
           }
         }
 
