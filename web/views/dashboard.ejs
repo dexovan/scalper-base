@@ -443,6 +443,153 @@
         </div>
     </section>
 
+    <!-- FAZA 4: Feature Engine -->
+    <section class="space-y-4">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-slate-200">Feature Engine</h3>
+                <p class="text-xs text-slate-400 mt-1">FAZA 4 - Advanced market analysis & signal generation</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/40 text-violet-300 text-xs">
+                    <span class="w-2 h-2 rounded-full bg-violet-400 animate-pulse"></span>
+                    FAZA 4 Active
+                </span>
+            </div>
+        </div>
+
+        <!-- Feature Engine Stats -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400">Active Symbols</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight" id="features-symbols-count">-</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-violet-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-violet-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 19c-5 0-8-3-8-8s3-8 8-8 8 3 8 8-3 8-8 8" />
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                            <line x1="9" y1="9" x2="9.01" y2="9" />
+                            <line x1="15" y1="9" x2="15.01" y2="9" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400" id="features-symbols-status">Analyzing markets...</p>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400">Updates/Second</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight text-emerald-400" id="features-update-rate">-</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                        <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">Real-time processing</p>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400">Avg Update Time</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight text-blue-400" id="features-avg-time">- ms</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12,6 12,12 16,14" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400">Performance metric</p>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs text-slate-400">System Status</p>
+                        <p class="mt-1 text-2xl font-semibold tracking-tight text-green-400" id="features-health">Healthy</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                        </svg>
+                    </div>
+                </div>
+                <p class="mt-2 text-xs text-slate-400" id="features-health-details">All engines operational</p>
+            </div>
+        </div>
+
+        <!-- Engine Status Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <h4 class="text-sm font-semibold text-slate-300 mb-3">Active Engines</h4>
+                <div class="space-y-2" id="features-engines">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Loading engines...</span>
+                        <span class="text-slate-500">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <h4 class="text-sm font-semibold text-slate-300 mb-3">Performance Metrics</h4>
+                <div class="space-y-2" id="features-performance">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Symbols Processed</span>
+                        <span class="text-slate-300" id="perf-symbols">-</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Total Analyses</span>
+                        <span class="text-slate-300" id="perf-analyses">-</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Error Count</span>
+                        <span class="text-red-400" id="perf-errors">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <h4 class="text-sm font-semibold text-slate-300 mb-3">System Memory</h4>
+                <div class="space-y-2" id="features-memory">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">RSS Memory</span>
+                        <span class="text-slate-300" id="mem-rss">- MB</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Heap Used</span>
+                        <span class="text-slate-300" id="mem-heap">- MB</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Uptime</span>
+                        <span class="text-emerald-400" id="mem-uptime">- sec</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feature Analysis Overview -->
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="flex items-center justify-between mb-4">
+                <h4 class="text-sm font-semibold text-slate-300">Feature Analysis Overview</h4>
+                <button onclick="refreshFeatureData()" class="px-2 py-1 rounded text-xs bg-violet-600 hover:bg-violet-500 transition-colors">
+                    Refresh
+                </button>
+            </div>
+
+            <div id="features-overview" class="space-y-2">
+                <div class="flex justify-between items-center text-xs py-2 px-3 rounded bg-slate-800/50">
+                    <span class="text-slate-400">Loading feature analysis...</span>
+                    <span class="text-slate-500">-</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
 </div>
 
 <!-- Real-time Dashboard JavaScript -->
@@ -1262,6 +1409,9 @@
             console.log("🔬 Updating microstructure stats...");
             this.updateMicrostructureStats();
 
+            console.log("🚀 Updating Feature Engine stats...");
+            this.updateFeatureEngineStats();
+
             console.log("⏰ Setting up polling intervals...");
             // Set up polling intervals
             setInterval(() => {
@@ -1290,15 +1440,157 @@
                 this.updateRecentEvents();
             }, 3000); // 3 seconds for microstructure data
 
+            setInterval(() => {
+                console.log("🔄 Interval: updating Feature Engine");
+                this.updateFeatureEngineStats();
+            }, 2000); // 2 seconds for Feature Engine data
+
             console.log("✅ Dashboard API started successfully!");
         }
+
+        // FAZA 4: Feature Engine Methods
+        async updateFeatureEngineStats() {
+            try {
+                console.log("🚀 Updating Feature Engine stats...");
+
+                // Get health status
+                const healthResponse = await this.fetchWithTimeout('/api/features/health');
+                const healthData = await healthResponse.json();
+
+                if (healthData.success && healthData.data) {
+                    const data = healthData.data;
+
+                    // Update main stats
+                    document.getElementById('features-symbols-count').textContent = data.activeSymbols || 0;
+                    document.getElementById('features-symbols-status').textContent = `${data.activeSymbols || 0} symbols analyzed`;
+                    document.getElementById('features-update-rate').textContent = data.performanceMetrics?.updatesPerSecond || 0;
+                    document.getElementById('features-avg-time').textContent =
+                        data.performanceMetrics?.averageUpdateTime ? `${data.performanceMetrics.averageUpdateTime.toFixed(1)} ms` : '0 ms';
+                    document.getElementById('features-health').textContent = data.status === 'healthy' ? 'Healthy' : 'Warning';
+                    document.getElementById('features-health-details').textContent =
+                        data.status === 'healthy' ? 'All systems operational' : 'Some issues detected';
+
+                    // Update performance metrics
+                    document.getElementById('perf-symbols').textContent = data.performanceMetrics?.symbolsProcessed || 0;
+                    document.getElementById('perf-analyses').textContent = data.totalAnalyses || 0;
+                    document.getElementById('perf-errors').textContent = data.performanceMetrics?.errorsCount || 0;
+
+                    // Update memory stats
+                    if (data.memory) {
+                        document.getElementById('mem-rss').textContent = `${(data.memory.rss / 1024 / 1024).toFixed(1)} MB`;
+                        document.getElementById('mem-heap').textContent = `${(data.memory.heapUsed / 1024 / 1024).toFixed(1)} MB`;
+                        document.getElementById('mem-uptime').textContent = `${Math.floor(data.uptime)} sec`;
+                    }
+
+                    // Update engines status
+                    if (data.engines) {
+                        this.updateEnginesStatus(data.engines);
+                    }
+
+                    console.log("✅ Feature Engine stats updated successfully");
+                } else {
+                    console.error("❌ Failed to get Feature Engine health data");
+                }
+
+                // Get overview data
+                const overviewResponse = await this.fetchWithTimeout('/api/features/overview');
+                const overviewData = await overviewResponse.json();
+
+                if (overviewData.success && overviewData.data) {
+                    this.updateFeatureOverview(overviewData.data);
+                } else {
+                    console.log("ℹ️ No Feature Engine overview data available yet");
+                }
+
+            } catch (error) {
+                console.error("❌ Error updating Feature Engine stats:", error);
+                document.getElementById('features-health').textContent = 'Error';
+                document.getElementById('features-health-details').textContent = 'Connection failed';
+            }
+        }
+
+        updateEnginesStatus(engines) {
+            const container = document.getElementById('features-engines');
+            if (!container) return;
+
+            const engineNames = {
+                imbalance: 'Order Book Imbalance',
+                walls: 'Walls & Spoofing',
+                flow: 'Flow Delta',
+                volatility: 'Volatility Engine',
+                leverage: 'Fee Leverage',
+                pumps: 'Pump Signals'
+            };
+
+            container.innerHTML = Object.entries(engines).map(([key, active]) => {
+                const name = engineNames[key] || key;
+                const status = active ? 'Active' : 'Inactive';
+                const statusClass = active ? 'text-emerald-400' : 'text-slate-500';
+                const iconClass = active ? 'bg-emerald-400' : 'bg-slate-500';
+
+                return `
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full ${iconClass}"></div>
+                            <span class="text-slate-400">${name}</span>
+                        </div>
+                        <span class="${statusClass}">${status}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        updateFeatureOverview(data) {
+            const container = document.getElementById('features-overview');
+            if (!container) return;
+
+            if (!data || data.length === 0) {
+                container.innerHTML = `
+                    <div class="flex justify-between items-center text-xs py-2 px-3 rounded bg-slate-800/50">
+                        <span class="text-slate-400">No active analysis data</span>
+                        <span class="text-slate-500">Waiting for market data...</span>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = data.map(item => {
+                const symbol = item.symbol || 'Unknown';
+                const score = item.score !== undefined ? item.score.toFixed(3) : '-';
+                const lastUpdate = item.lastUpdate ? new Date(item.lastUpdate).toLocaleTimeString() : '-';
+                const scoreClass = item.score > 0.5 ? 'text-emerald-400' : 'text-slate-300';
+
+                return `
+                    <div class="flex justify-between items-center text-xs py-2 px-3 rounded bg-slate-800/50 hover:bg-slate-700/50 transition-colors">
+                        <div class="flex items-center gap-2">
+                            <span class="text-slate-200 font-mono">${symbol}</span>
+                            <span class="text-slate-500">•</span>
+                            <span class="text-slate-400">Score: <span class="${scoreClass}">${score}</span></span>
+                        </div>
+                        <span class="text-slate-500">${lastUpdate}</span>
+                    </div>
+                `;
+            }).join('');
+        }
     }
+
+    // Global dashboard instance for button callbacks
+    let globalDashboard = null;
+
+    // Global function for Feature Engine refresh button
+    window.refreshFeatureData = function() {
+        if (globalDashboard) {
+            console.log("🔄 Manual Feature Engine refresh triggered");
+            globalDashboard.updateFeatureEngineStats();
+        }
+    };
 
     // Start dashboard when DOM is ready
     document.addEventListener('DOMContentLoaded', () => {
         console.log("🎯 DOM Content Loaded - Starting Dashboard...");
         console.log("🏗️ Creating DashboardAPI instance...");
         const dashboard = new DashboardAPI();
+        globalDashboard = dashboard; // Store for global access
         console.log("▶️ Starting dashboard...");
         dashboard.start();
 
