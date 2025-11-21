@@ -597,6 +597,33 @@ class FeatureEngine {
         this.logger.warn('Analysis failed, using empty result:', error);
         return null;
     }
+
+    /**
+     * Get health status of the Feature Engine
+     */
+    getHealthStatus() {
+        const status = {
+            status: 'healthy',
+            uptime: process.uptime(),
+            memory: process.memoryUsage(),
+            activeSymbols: Object.keys(this.symbolData).length,
+            totalAnalyses: Object.values(this.symbolData).reduce((total, data) => {
+                return total + Object.keys(data.features || {}).length;
+            }, 0),
+            performanceMetrics: this.performanceMetrics,
+            engines: {
+                imbalance: !!this.engines.imbalance,
+                walls: !!this.engines.walls,
+                flow: !!this.engines.flow,
+                volatility: !!this.engines.volatility,
+                leverage: !!this.engines.leverage,
+                pumps: !!this.engines.pumps
+            },
+            lastUpdate: new Date().toISOString()
+        };
+
+        return status;
+    }
 }
 
 export default FeatureEngine;
