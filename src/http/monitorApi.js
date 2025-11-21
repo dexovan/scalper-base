@@ -20,7 +20,7 @@ import {
   getSymbolsByCategory
 } from "../market/universe_v2.js";
 import * as OrderbookManager from "../microstructure/OrderbookManager.js";
-import { FeatureEngine } from "../features/featureEngine.js";
+import FeatureEngine from "../features/featureEngine.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
