@@ -181,3 +181,8 @@ export function getSymbolsByCategory(category) {
 export function getUniverse() {
   return UNIVERSE; // backwards compatibility
 }
+
+export function getUniverseSymbols() {
+  // Return all active symbols from universe
+  return Object.keys(UNIVERSE.symbols || {});
+}
