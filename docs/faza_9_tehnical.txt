@@ -1,0 +1,973 @@
+Razumem te potpuno – i da, iz **Faze 7 + 8** je jasno da radimo sa **jednim aktivnim scenarijem / pozicijom po simbolu** (default 1 per symbol, bez pyramiding-a).
+Na tome baziram ceo plan za **FAZU 9**. Idemo ultra-detaljno.
+
+---
+
+# PHASE 09 – TP/SL ENGINE, BREAK-EVEN, TRAILING & FEE-FIRST PROFIT
+
+**Programersko-tehnički plan rada (bez koda, ali spremno za implementaciju)**
+
+## 0. KONTEKST I ZAVISNOSTI
+
+Phase 09 se naslanja na:
+
+* **Phase 04 – Feature Engine**
+
+  * `feeLeverageFeatures` (minMoveForProfitMaker/Taker, liqSafetyScore)
+  * `volatilityFeatures` (atr1s/5s/15s, volatilityScore, explosionFlag)
+  * `pumpSignals` (pumpLikelihoodScore, priceChangeX, volumeSpikeX)
+  * `spoofingFeatures` (spoofingScore)
+* **Phase 05 – Regime Engine**
+
+  * `RegimeState` per simbol: NORMAL, PUMP, MANIPULATED, NEWS_DRIVEN, COOLDOWN, PumpState = PREPUMP/PUMPING/BLOWOFF/DUMP
+  * `GlobalMarketRegime`: GLOBAL_NORMAL / GLOBAL_RISK_OFF / GLOBAL_PANIC
+* **Phase 07 – State Machine**
+
+  * stanja: `IN_POSITION_LONG/SHORT`, `MANAGING_LONG/SHORT`, `EXITED`, `COOLDOWN`
+  * `SymbolStateContext.positionContext`
+* **Phase 08 – Risk & Portfolio Engine**
+
+  * `PositionState` (entryPrice, qty, SL, TP, MFE/MAE, unrealized/realized PnL)
+  * `RiskFlags` (riskAllowNewPositions, riskForceCloseAll, portfolioHeatPct)
+
+**Faza 9 NE šalje realne Bybit naloge**, ali:
+
+* generiše **TP/SL odluke i evente**,
+* ažurira `PositionState` + `TPSLState`,
+* šalje evente ka **StateMachine** i (kasnije) Execution engine-u.
+
+---
+
+## 1. ARHITEKTURA FAZE 9 – MODULI
+
+### 1.1 Novi moduli
+
+* `src/execution/tpslPlanner.js`
+
+  * planira inicijalne **TP1 / TP2 / SL / Break-even** na osnovu pozicije + feature/regime stanja.
+* `src/execution/tpslEngine.js`
+
+  * glavni runtime **TP/SL engine**:
+
+    * prati cenu,
+    * aktivira break-even,
+    * aktivira i pomera trailing,
+    * detektuje TP1/TP2/SL hit,
+    * šalje evente ka StateMachine i Execution-u.
+* `src/execution/trailingEngine.js`
+
+  * izolovana logika za **računanje novog SL-a** (trailing), uz pump/spoof/volatility override.
+
+### 1.2 Izmene postojećih modula
+
+* `src/state/stateMachine.js`
+
+  * prima **TPSL events**:
+
+    * `TPSL_INITIALIZED`
+    * `TPSL_BREAK_EVEN_TRIGGERED`
+    * `TPSL_TRAILING_ACTIVATED`
+    * `TPSL_TP1_HIT`
+    * `TPSL_TP2_HIT`
+    * `TPSL_SL_HIT`
+    * `TPSL_EXIT`
+* `src/risk/positionTracker.js`
+
+  * malo se proširuje:
+
+    * dodatna polja za BE/TP1/TP2 flagove,
+    * hook-ovi za parcijalno zatvaranje (TP1).
+* `src/scoring/scoringEngine.js`
+
+  * minimalna integracija (samo čitanje risk/regime i eventualno prikaz info – nije kritično za TP/SL).
+* `src/monitoring/health.js`
+
+  * nova sekcija `services.tpslEngine`.
+* `web/routes/api.js`
+
+  * novi endpoint-i:
+
+    * `GET /api/tpsl/:symbol`
+    * `GET /api/tpsl/overview`
+  * proširen info u `/api/positions`.
+
+### 1.3 JSON fajlovi
+
+* `data/system/tpsl_snapshot.json`
+
+  * globalni snapshot zadnje aktivne TPSL situacije (ili mapa svih).
+* `data/positions/<symbol>.json`
+
+  * per-symbol snapshot (pozicija + TPSL state).
+
+---
+
+## 2. CONFIG – CONFIG.TPSL
+
+U `src/config/index.js` dodaje se sekcija:
+
+```js
+CONFIG.tpsl = {
+  tp1Factor: 0.35,                  // % pomaka od entry do TP1 (baseline)
+  tp2Factor: 0.70,                  // % (ili multiplikator na TP1 distancu)
+  breakEvenBufferPct: 0.02,         // dodatni buffer iznad fee-first min move (%)
+  trailingActivationPct: 0.25,      // kada unrealizedPnL% >= ovoga → trailing može da se uključi
+  trailingDistancePct: 0.10,        // osnovni trailing (u % od cene)
+  pumpTightenFactor: 0.6,           // kada PumpState=BLOWOFF → trailingDist *= 0.6 (tighter)
+  spoofingProtectionDistancePct: 0.05, // dodatni % udaljenja SL-a kad je spoof visok
+  highVolatilityFactor: 1.4,        // ako je vola visoka → trailingDistance *= 1.4 (širi SL)
+  minimalTickSizeSafety: 4          // minimalan broj tick-ova koji SL ne sme probiti (preblizu entry)
+};
+```
+
+> Sve vrednosti su u **% price movement-a**, osim `minimalTickSizeSafety` (tickovi).
+
+---
+
+## 3. MODEL PODATAKA – TPSL STATE + PROŠIRENI POSITIONSTATE
+
+### 3.1 TPSLState (per aktivna pozicija, per symbol+side)
+
+U memoriji i kao JSON:
+
+```ts
+TPSLState = {
+  symbol: string,
+  side: "LONG" | "SHORT",
+  entryPrice: number,
+
+  tp1Price: number,
+  tp2Price: number,
+
+  stopLossPrice: number,
+  breakEvenPrice: number,
+
+  trailingActive: boolean,
+  trailingDistancePct: number,
+
+  isBreakEvenHit: boolean,
+  isTp1Hit: boolean,
+  isTp2Hit: boolean,
+
+  pumpOverrideApplied: boolean,
+  spoofingOverrideApplied: boolean,
+  volatilityOverrideApplied: boolean,
+
+  createdAt: string,      // ISO
+  lastUpdateAt: string    // ISO
+};
+```
+
+TPSLState se drži u nekoj globalnoj mapi u `tpslEngine`:
+
+```ts
+TpslEngineState = {
+  positions: { [key: string]: TPSLState } // key = `${symbol}_${side}`
+};
+```
+
+### 3.2 Proširenje `PositionState` (Phase 8)
+
+U `src/risk/positionTracker.js`, `PositionState` dopunimo:
+
+```ts
+PositionState = {
+  // već definisano:
+  symbol: string,
+  side: "LONG" | "SHORT",
+  leverage: number,
+  entryPrice: number,
+  qty: number,
+  notionalValue: number,
+  stopLossPrice: number | null,
+  takeProfit1Price: number | null,
+  takeProfit2Price: number | null,
+  maxFavorableExcursion: number, // u % ili USDT
+  maxAdverseExcursion: number,
+  unrealizedPnl: number,
+  unrealizedPnlPct: number,
+  realizedPnl: number,
+  openedAt: string,
+  updatedAt: string,
+  isActive: boolean,
+
+  // DODATO ZA TP/SL:
+  isBreakEvenSet: boolean,
+  isTp1Hit: boolean,
+  isTp2Hit: boolean,
+  breakEvenPrice: number | null,
+  trailingActive: boolean,
+  trailingDistancePct: number | null
+};
+```
+
+### 3.3 JSON snapshot fajlovi
+
+#### `data/system/tpsl_snapshot.json`
+
+* ili jedan globalni objekat sa mapom:
+
+```json
+{
+  "timestamp": "2025-11-18T15:41:00.000Z",
+  "positions": {
+    "AI16ZUSDT_LONG": {
+      "symbol": "AI16ZUSDT",
+      "side": "LONG",
+      "entryPrice": 0.12345,
+      "tp1Price": 0.12410,
+      "tp2Price": 0.12490,
+      "stopLossPrice": 0.12330,
+      "breakEvenPrice": 0.12352,
+      "trailingActive": true,
+      "trailingDistancePct": 0.10,
+      "isBreakEvenHit": true,
+      "isTp1Hit": false,
+      "isTp2Hit": false,
+      "pumpOverrideApplied": false,
+      "spoofingOverrideApplied": true,
+      "volatilityOverrideApplied": false,
+      "createdAt": "2025-11-18T15:30:00.000Z",
+      "lastUpdateAt": "2025-11-18T15:41:00.000Z"
+    }
+  }
+}
+```
+
+#### `data/positions/<symbol>.json`
+
+* per simbol, može sadržati i LONG i SHORT (ako ih ikada dozvolimo istovremeno):
+
+```json
+{
+  "symbol": "AI16ZUSDT",
+  "positions": [
+    {
+      "side": "LONG",
+      "position": { ...PositionState... },
+      "tpsl": { ...TPSLState... }
+    }
+  ],
+  "lastUpdateAt": "2025-11-18T15:41:00.000Z"
+}
+```
+
+---
+
+## 4. FEE-FIRST PROFIT – MATEMATIČKA LOGIKA
+
+### 4.1 Ulazni podaci
+
+Za dati symbol+side:
+
+* Iz `FeatureState.feeLeverage` (Phase 4):
+
+  * `assumedMakerFeeRate`
+  * `assumedTakerFeeRate`
+  * `minMoveForProfitMaker`
+  * `minMoveForProfitTaker`
+* Iz `PositionState`:
+
+  * `entryPrice`
+  * `leverage`
+  * `qty`
+* Iz `CONFIG.tpsl`:
+
+  * `breakEvenBufferPct`
+
+### 4.2 MinMoveForProfit
+
+Za **maker entry + maker exit** varijantu (default):
+
+* `minMovePctFeeOnly = feeLeverage.minMoveForProfitMaker`
+  (ovo već treba da bude „2 × maker fee + minimal buffer“ iz Phase 4)
+
+Ako želimo dodatni safety, TP/SL Engine može da doda svoj buffer:
+
+```text
+minMoveForProfitPct = minMovePctFeeOnly + breakEvenBufferPct
+```
+
+Za **LONG**:
+
+```text
+breakEvenPrice = entryPrice * (1 + minMoveForProfitPct / 100)
+```
+
+Za **SHORT**:
+
+```text
+breakEvenPrice = entryPrice * (1 - minMoveForProfitPct / 100)
+```
+
+Ovo je **minimalni nivo** na kome:
+
+* bruto PnL ≥ all fees + mali buffer.
+
+**Princip:**
+TP/SL Engine **nikad** ne postavlja TP1 ispod ovog break-even nivoa.
+
+---
+
+## 5. MODUL: `src/execution/tpslPlanner.js`
+
+### 5.1 Funkcija: `planInitialTPSL(position, featureState, regimeState, config)`
+
+**Ulaz:**
+
+* `position: PositionState`
+* `featureState: FeatureState` (Phase 4 – uključuje `feeLeverage`, `volatility`, `pumpSignals`, `spoofing`)
+* `regimeState: RegimeState` (Phase 5 – uključuje `pumpState`, `current`)
+* `config: CONFIG.tpsl`
+
+**Izlaz:**
+
+```ts
+TPSLPlan = {
+  tp1Price: number,
+  tp2Price: number,
+  stopLossPrice: number,
+  breakEvenPrice: number,
+  trailingActiveInitially: boolean,
+  trailingDistancePct: number
+}
+```
+
+### 5.2 Koraci u algoritmu (LONG/SHORT neutralno opisano)
+
+1. **Odredi smer i osnovne vrednosti**
+
+   * `side = position.side`
+   * `entryPrice = position.entryPrice`
+   * `minMoveForProfitPct = feeLeverage.minMoveForProfitMaker + config.breakEvenBufferPct`
+
+2. **Izračunaj break-even price**
+
+   * LONG:
+
+     ```text
+     breakEvenPrice = entryPrice * (1 + minMoveForProfitPct / 100)
+     ```
+   * SHORT:
+
+     ```text
+     breakEvenPrice = entryPrice * (1 - minMoveForProfitPct / 100)
+     ```
+
+3. **Osnovna TP1 distanca**
+
+   * `baseTp1Pct = max(config.tp1Factor, minMoveForProfitPct + 0.02–0.05)`
+     (može biti +0.02% kao dodatni „profit buffer“)
+
+   * LONG:
+
+     ```text
+     tp1Price = entryPrice * (1 + baseTp1Pct / 100)
+     ```
+
+   * SHORT:
+
+     ```text
+     tp1Price = entryPrice * (1 - baseTp1Pct / 100)
+     ```
+
+4. **Osnovna TP2 distanca**
+
+   Opcija A (jednostavno):
+
+   * `baseTp2Pct = max(config.tp2Factor, baseTp1Pct * 2)`
+   * LONG:
+
+     ```text
+     tp2Price = entryPrice * (1 + baseTp2Pct / 100)
+     ```
+   * SHORT:
+
+     ```text
+     tp2Price = entryPrice * (1 - baseTp2Pct / 100)
+     ```
+
+5. **Osnovni SL (risk-based)**
+
+   * Koristimo default risk per trade, npr. ~1% price move (ili iz config-a).
+
+   * `defaultRiskPct = CONFIG.risk.maxRiskPerTradePct` **NE direktno**, ali možemo definisati:
+
+     ```text
+     slDistancePct = someRiskPct (npr. 0.5–1.0%) u zavisnosti od vola/liquidity
+     ```
+
+   * LONG:
+
+     ```text
+     stopLossPriceBase = entryPrice * (1 - slDistancePct / 100)
+     ```
+
+   * SHORT:
+
+     ```text
+     stopLossPriceBase = entryPrice * (1 + slDistancePct / 100)
+     ```
+
+6. **Pump-aware tuning**
+
+   Na osnovu `regimeState.pumpState` ili `pumpSignals.pumpLikelihoodScore`:
+
+   * Ako `pumpState = "PREPUMP"`:
+
+     * `baseTp1Pct *= 1.10–1.20` (malo dalje)
+     * `baseTp2Pct *= 1.10–1.20`
+   * Ako `pumpState = "BLOWOFF"`:
+
+     * `baseTp2Pct *= 0.7–0.8` (bliže, brže uzimanje profita)
+     * `trailingActiveInitially = true`
+
+7. **Spoof-aware SL**
+
+   Ako `spoofing.spoofingScore > 0.7`:
+
+   * `slDistancePct += config.spoofingProtectionDistancePct`
+   * time SL ide dalje od entry, manja šansa da te wick izbaci.
+
+8. **Volatility-aware trailing distanca**
+
+   Ako `volatility.volatilityScore > 0.7` ili `atr5s` iznad thresh:
+
+   * `trailingDistancePct = config.trailingDistancePct * config.highVolatilityFactor`
+   * inače `trailingDistancePct = config.trailingDistancePct`
+
+9. **Minimalni tick safety**
+
+   * preračunaj razliku `entryPrice - stopLossPriceBase` u tickove.
+   * ako < `config.minimalTickSizeSafety` → pomeri SL dalje.
+
+10. **Formiranje izlaza**
+
+* vrati `TPSLPlan` sa izračunatim:
+
+  * `tp1Price`
+  * `tp2Price`
+  * `stopLossPrice`
+  * `breakEvenPrice`
+  * `trailingActiveInitially`
+  * `trailingDistancePct`
+
+---
+
+## 6. MODUL: `src/execution/tpslEngine.js`
+
+Glavni runtime modul – „živi“ zajedno sa market loop-om.
+
+### 6.1 Interna struktura
+
+```ts
+TpslEngineState = {
+  positions: { [key: string]: TPSLState }
+};
+```
+
+Key = `${symbol}_${side}`.
+
+### 6.2 Funkcija: `initTpslEngine()`
+
+* prazni `positions` mapu.
+* registruje se na:
+
+  * `EXECUTION_POSITION_OPENED` (Phase 11, ali već definišemo interfejs),
+  * `PRICE_TICK` feed (market/microstructure loop),
+  * eventualno `REGIME_UPDATE`/`FEATURE_UPDATE` event-e, ako želimo realtime override.
+
+### 6.3 Funkcija: `onPositionOpened(position: PositionState, featureState, regimeState)`
+
+1. Pozove `TPSLPlan = tpslPlanner.planInitialTPSL(position, featureState, regimeState, CONFIG.tpsl)`.
+
+2. Napravi `TPSLState`:
+
+   ```ts
+   const tpsl: TPSLState = {
+     symbol: position.symbol,
+     side: position.side,
+     entryPrice: position.entryPrice,
+     tp1Price: TPSLPlan.tp1Price,
+     tp2Price: TPSLPlan.tp2Price,
+     stopLossPrice: TPSLPlan.stopLossPrice,
+     breakEvenPrice: TPSLPlan.breakEvenPrice,
+     trailingActive: TPSLPlan.trailingActiveInitially,
+     trailingDistancePct: TPSLPlan.trailingDistancePct,
+     isBreakEvenHit: false,
+     isTp1Hit: false,
+     isTp2Hit: false,
+     pumpOverrideApplied: false,
+     spoofingOverrideApplied: false,
+     volatilityOverrideApplied: false,
+     createdAt: nowIso,
+     lastUpdateAt: nowIso
+   };
+   ```
+
+3. Upisuje ga u `TpslEngineState.positions[key]`.
+
+4. Ažurira `PositionState`:
+
+   * `stopLossPrice`, `takeProfit1Price`, `takeProfit2Price`, `breakEvenPrice`, `trailingActive`.
+
+5. Upisuje snapshot u `data/system/tpsl_snapshot.json` i `data/positions/<symbol>.json`.
+
+6. Em ituje **TPSL_INITIALIZED** event ka StateMachine:
+
+   * `type: "TPSL_INITIALIZED"`
+   * `payload`: `symbol`, `side`, `tp1Price`, `tp2Price`, `stopLossPrice`, `breakEvenPrice`.
+
+### 6.4 Funkcija: `onPriceUpdate(symbol, side, currentPrice, featureState, regimeState, positionState)`
+
+Ovo se zove svaki put kad dobijemo update cene za simbol dok postoji aktivna pozicija.
+
+**Koraci:**
+
+1. Dohvati `TPSLState` za `key = symbol_side`.
+
+2. Ako ne postoji ili `positionState.isActive == false` → `return`.
+
+3. Izračunaj `unrealizedPnlPct` (već radi `positionTracker`, samo pročitati).
+
+4. **Break-even logika:**
+
+   * Ako `isBreakEvenHit == false`:
+
+     * ako `unrealizedPnlPct >= minMoveForProfitPct` (iz feeLeverage)
+       → **aktiviraj break-even**:
+
+       * LONG:
+
+         * `newSL = max(tpsl.stopLossPrice, tpsl.breakEvenPrice)`
+       * SHORT:
+
+         * `newSL = min(tpsl.stopLossPrice, tpsl.breakEvenPrice)`
+       * update `tpsl.stopLossPrice = newSL`
+       * `tpsl.isBreakEvenHit = true`
+       * `positionState.isBreakEvenSet = true`
+       * emit `TPSL_BREAK_EVEN_TRIGGERED`
+
+5. **TP1/TP2/SL detekcija:**
+
+   * LONG:
+
+     * **TP1 hit:** `currentPrice >= tp1Price` AND `!isTp1Hit`.
+     * **TP2 hit:** `currentPrice >= tp2Price` AND `isTp1Hit`.
+     * **SL hit:** `currentPrice <= stopLossPrice`.
+   * SHORT:
+
+     * **TP1 hit:** `currentPrice <= tp1Price` AND `!isTp1Hit`.
+     * **TP2 hit:** `currentPrice <= tp2Price` AND `isTp1Hit`.
+     * **SL hit:** `currentPrice >= stopLossPrice`.
+
+   Dalje:
+
+   * Ako TP1 hit:
+
+     * odluči koliko qty da zatvori (npr. 30–50%).
+     * generiše `TPSL_TP1_HIT` event:
+
+       * payload: `symbol`, `side`, `qtyToClose`, `tp1Price`.
+     * update lokalno `positionState.isTp1Hit = true`, `tpsl.isTp1Hit = true`.
+     * **pomeri SL na najmanje breakEvenPrice**:
+
+       * LONG: `stopLossPrice = max(stopLossPrice, breakEvenPrice)`
+       * SHORT: `stopLossPrice = min(stopLossPrice, breakEvenPrice)`
+     * aktivira trailing:
+
+       * `tpsl.trailingActive = true`, `positionState.trailingActive = true`.
+   * Ako TP2 hit:
+
+     * zatvori preostalu qty (100% remaining).
+     * emit `TPSL_TP2_HIT`, `TPSL_EXIT`.
+     * update `positionState.isActive = false`, `tpsl.isTp2Hit = true`.
+     * u sledećem koraku tpslEngine može obrisati TPSLState ili arhivirati.
+   * Ako SL hit:
+
+     * zatvori celu poziciju (ili preostali deo).
+     * emit `TPSL_SL_HIT`, `TPSL_EXIT`.
+
+   Realni close (u SIM/DRY/LIVE) će kasnije obaviti Execution Engine na osnovu ovih signala.
+
+6. **Trailing logika:**
+
+   * Ako `tpsl.trailingActive == true` ILI `unrealizedPnlPct >= CONFIG.tpsl.trailingActivationPct`:
+
+     * pozovi `trailingEngine.adjustTrailingStop(positionState, tpsl, featureState, regimeState, currentPrice)`.
+     * ako trailing menj a SL → emit `TPSL_TRAILING_ADJUSTED`.
+
+7. Update `tpsl.lastUpdateAt`, zapamti override flagove (pump/spoof/volatility) iz trailingEngine.
+
+8. Upis u `data/system/tpsl_snapshot.json` i `data/positions/<symbol>.json`.
+
+---
+
+## 7. MODUL: `src/execution/trailingEngine.js`
+
+### 7.1 API
+
+```ts
+function adjustTrailingStop(
+  position: PositionState,
+  tpsl: TPSLState,
+  featureState: FeatureState,
+  regimeState: RegimeState,
+  currentPrice: number,
+  config: CONFIG.tpsl
+): { updated: boolean, reason: string | null }
+```
+
+### 7.2 Koraci algoritma
+
+1. **Izračunaj osnovni trailingDistancePct**
+
+   * `let trailingDistPct = config.trailingDistancePct`
+
+2. **Pump override**
+
+   * Ako `regimeState.pumpState === "BLOWOFF"`:
+
+     * `trailingDistPct *= config.pumpTightenFactor` (npr. 0.6 → 40% uži SL).
+     * `tpsl.pumpOverrideApplied = true`.
+
+3. **Spoof override**
+
+   * Ako `featureState.spoofing.spoofingScore > 0.7`:
+
+     * `trailingDistPct *= 1.3`
+     * `tpsl.spoofingOverrideApplied = true`.
+
+4. **Volatility override**
+
+   * Ako `featureState.volatility.volatilityScore > 0.7`:
+
+     * `trailingDistPct *= config.highVolatilityFactor`
+     * npr. 1.4 → širi trailing.
+     * `tpsl.volatilityOverrideApplied = true`.
+
+5. **Minimal tick safety**
+
+   * TrailingDistance u cenovnim jedinicama:
+     `deltaPrice = currentPrice * trailingDistPct / 100`.
+   * Prevedi `deltaPrice` u tick-ove.
+   * Ako deltaPrice < `minimalTickSizeSafety * tickSize` →
+     podesi `deltaPrice` na tu minimalnu vrednost.
+
+6. **Izračunaj novi SL na osnovu smera**
+
+   * LONG:
+
+     ```text
+     candidateSL = currentPrice - deltaPrice
+     newSL = max(tpsl.stopLossPrice, candidateSL)
+     // nikad ispod breakEvenPrice ako je break-even aktiviran
+     if (tpsl.isBreakEvenHit) newSL = max(newSL, tpsl.breakEvenPrice)
+     ```
+
+   * SHORT:
+
+     ```text
+     candidateSL = currentPrice + deltaPrice
+     newSL = min(tpsl.stopLossPrice, candidateSL)
+     if (tpsl.isBreakEvenHit) newSL = min(newSL, tpsl.breakEvenPrice)
+     ```
+
+7. **Promena samo ako ima smisla**
+
+   * LONG:
+
+     * Ako `newSL > tpsl.stopLossPrice + epsilon` → update.
+   * SHORT:
+
+     * Ako `newSL < tpsl.stopLossPrice - epsilon` → update.
+
+8. **Update**
+
+   * `tpsl.stopLossPrice = newSL`
+   * `position.stopLossPrice = newSL`
+   * `tpsl.trailingActive = true`
+   * `position.trailingActive = true`
+   * vrati `{ updated: true, reason: "TRAILING_MOVE" }` ili slično.
+
+---
+
+## 8. INTEGRACIJA SA STATE MACHINE I RISK ENGINE
+
+### 8.1 TPSL → StateMachine (Eventi)
+
+Definišemo nove `StateEvent.type` vrednosti (u `stateEvents.js`):
+
+* `"TPSL_INITIALIZED"`
+* `"TPSL_BREAK_EVEN_TRIGGERED"`
+* `"TPSL_TRAILING_ACTIVATED"`
+* `"TPSL_TRAILING_ADJUSTED"`
+* `"TPSL_TP1_HIT"`
+* `"TPSL_TP2_HIT"`
+* `"TPSL_SL_HIT"`
+* `"TPSL_EXIT"`
+
+**Primer payload-a:**
+
+```ts
+payload = {
+  symbol: "AI16ZUSDT",
+  side: "LONG",
+  tp1Price,
+  tp2Price,
+  stopLossPrice,
+  breakEvenPrice,
+  reason: "TP1_CROSSED_PRICE"
+}
+```
+
+### 8.2 StateMachine prelazi (samo konceptualno)
+
+* `MANAGING_LONG/SHORT`:
+
+  * `TPSL_TP1_HIT`: ostaje MANAGING, ali `PositionContext` dobija `isTp1Hit = true`.
+  * `TPSL_TP2_HIT` ili `TPSL_SL_HIT`: prelaz u `EXITED` → eventualno `COOLDOWN`.
+  * `TPSL_EXIT`: finalna potvrda da je scenario kompletno završen.
+
+### 8.3 TPSL → RiskEngine
+
+Kad Execution (u kasnijoj fazi) **zaista zatvori** deo pozicije (TP1) ili celu (TP2/SL):
+
+* generiše `EXECUTION_POSITION_CLOSED` (ili partial),
+* `riskEngine.onPositionEvent(...)` računa:
+
+  * REALIZED PnL,
+  * update `dailyStats`, `riskFlags`.
+
+Phase 9 u ovom trenutku **samo definiše** da je obavezno:
+
+* posle svakog `TPSL_TP1_HIT` / `TPSL_TP2_HIT` / `TPSL_SL_HIT`
+  → mora uslediti odgovarajući **Execution event** → Risk update.
+
+---
+
+## 9. HEALTH & MONITORING – `src/monitoring/health.js`
+
+Dodaj sekciju:
+
+```js
+services.tpslEngine = {
+  status: "OK" | "INIT" | "DEGRADED" | "DOWN",
+  lastUpdateAt: string,
+  activeTpslCount: number,
+  lastError: string | null
+};
+```
+
+Update:
+
+* pri svakoj `onPositionOpened` ili `onPriceUpdate` akciji.
+
+---
+
+## 10. API ENDPOINTS
+
+### 10.1 `GET /api/tpsl/:symbol`
+
+**Svrha:**
+Dashboard dobija TPSL info za dati simbol.
+
+**Response:**
+
+```json
+{
+  "symbol": "AI16ZUSDT",
+  "states": [
+    {
+      "side": "LONG",
+      "entryPrice": 0.12345,
+      "tp1Price": 0.12410,
+      "tp2Price": 0.12490,
+      "stopLossPrice": 0.12360,
+      "breakEvenPrice": 0.12352,
+      "trailingActive": true,
+      "trailingDistancePct": 0.10,
+      "isBreakEvenHit": true,
+      "isTp1Hit": false,
+      "isTp2Hit": false,
+      "pumpOverrideApplied": false,
+      "spoofingOverrideApplied": true,
+      "volatilityOverrideApplied": false,
+      "createdAt": "2025-11-18T15:30:00.000Z",
+      "lastUpdateAt": "2025-11-18T15:41:00.000Z"
+    }
+  ]
+}
+```
+
+Ako nema pozicije → `states: []` ili 404 sa `error`.
+
+### 10.2 `GET /api/tpsl/overview`
+
+**Response:**
+
+```json
+{
+  "timestamp": "2025-11-18T15:41:00.000Z",
+  "entries": [
+    {
+      "symbol": "AI16ZUSDT",
+      "side": "LONG",
+      "entryPrice": 0.12345,
+      "tp1Price": 0.12410,
+      "tp2Price": 0.12490,
+      "stopLossPrice": 0.12360,
+      "breakEvenPrice": 0.12352,
+      "trailingActive": true,
+      "isBreakEvenHit": true,
+      "isTp1Hit": false,
+      "isTp2Hit": false
+    }
+  ]
+}
+```
+
+### 10.3 Proširenje `/api/positions`
+
+Dodati u svaku poziciju:
+
+* `stopLossPrice`
+* `takeProfit1Price`, `takeProfit2Price`
+* `breakEvenPrice`
+* `trailingActive`, `trailingDistancePct`
+* `isBreakEvenSet`, `isTp1Hit`, `isTp2Hit`
+
+---
+
+## 11. DASHBOARD – ŠTA KORISNIK VIDI POSLE FAZE 9
+
+### 11.1 U tabeli aktivnih pozicija
+
+Kolone:
+
+* Symbol
+* Side
+* Entry
+* Current Price
+* **TP1 (price, %)**
+* **TP2 (price, %)**
+* **SL (price, %)**
+* **Break-even level**
+* **Trailing status:** OFF / ON
+* Unrealized PnL (USDT + %)
+* Realized PnL
+* MFE / MAE
+
+### 11.2 U detalju pozicije (symbol detail view)
+
+Vizualno (npr. mini traka):
+
+`Entry → BreakEven → TP1 → TP2`
+
+* oznake:
+
+  * gde je trenutna cena
+  * gde je SL
+  * boje:
+
+    * BE aktivan ili ne
+    * trailing override (pump/spoof/vola) – male ikonice.
+
+---
+
+## 12. TEST SCENARIJI (ZA IMPLEMENTACIJU I VERIFIKACIJU)
+
+### Test 1 – Fee-first Break-even
+
+* Entry: 100.00
+* `minMoveForProfitPct` (iz fee engine) + `breakEvenBufferPct` → npr. 0.15%
+* LONG:
+
+  * Cena poraste na 100.20
+  * `unrealizedPnlPct ≈ 0.20% > 0.15%`
+  * Očekivanje:
+
+    * `breakEvenPrice = 100 * 1.0015 = 100.15`
+    * SL se pomera na ≥ 100.15
+    * `isBreakEvenHit = true`
+    * event `TPSL_BREAK_EVEN_TRIGGERED`
+
+### Test 2 – TP1 hit
+
+* `tp1Price = 100.30`
+* Kada cena ≥ 100.30:
+
+  * zatvara se npr. 50% qty (simulirano)
+  * `isTp1Hit = true`
+  * SL pomeren na `breakEvenPrice` ili iznad
+  * trailing = `true`
+  * event `TPSL_TP1_HIT`, `TPSL_TRAILING_ACTIVATED`
+
+### Test 3 – TP2 hit
+
+* `tp2Price = 100.60`
+* nakon što je TP1 već hit:
+
+  * cena ≥ 100.60:
+
+    * zatvara preostalu qty
+    * `isTp2Hit = true`, `position.isActive = false`
+    * event `TPSL_TP2_HIT`, `TPSL_EXIT`
+
+### Test 4 – Pump override
+
+* `regimeState.pumpState = "BLOWOFF"`
+* trailingDistancePct = 0.10%, `pumpTightenFactor=0.6`
+
+  * efektivno: 0.06%
+  * SL se brzo približava
+  * `pumpOverrideApplied = true`
+
+### Test 5 – Spoof override
+
+* `spoofingScore = 0.8`
+
+  * trailingDistancePct *= 1.3
+  * SL malo dalje
+  * `spoofingOverrideApplied = true`
+
+### Test 6 – Volatility override
+
+* `volatilityScore = 0.85`
+
+  * trailingDistancePct *= `highVolatilityFactor` (npr. 1.4)
+  * SL značajno širi
+
+### Test 7 – Minimal tick safety
+
+* Ako je razlika entry–SL < `minimalTickSizeSafety * tickSize`,
+
+  * SL se pomera dalje dok ne ispuni uslov.
+  * time se sprečava prebliski SL.
+
+---
+
+## 13. FINALNI REZULTAT FAZE 09
+
+Posle implementacije ove faze:
+
+* **TP1 se nikad ne postavlja ispod fee-first break-even nivoa**.
+* **Break-even se automatski aktivira** kada PnL pokrije sve fee-ove + buffer.
+* **Trailing SL je dinamičan**:
+
+  * pump-aware,
+  * spoof-aware,
+  * volatility-aware,
+  * sa minimalnim tick safety.
+* **TP1/TP2 su dinamični**, prilagođavaju se pump/state-u.
+* TPSL Engine:
+
+  * ima jasan **TPSLState** per symbol+side,
+  * loguje sve u JSON,
+  * šalje jasne evente StateMachine-u,
+  * spreman je da se „nakaci“ na Execution Engine u narednim fazama.
+
+Ako želiš, sledeći korak možemo kasnije da uradimo kao:
+
+* konkretne signale/event payload strukture,
+* ili direktan kod skeleton za `tpslPlanner.js` / `tpslEngine.js` / `trailingEngine.js` (ESM stil, async-safe, sa logovanjem).

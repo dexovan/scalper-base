@@ -1,0 +1,527 @@
+Razumem.
+Sada dobijaš **OPCIJA A — ULTRA DETALJAN, PRODUKCIJSKI, PROGRAMERSKO-TEHNIČKI PLAN ZA FAZU 8**, u identičnom formatu i kvalitetu kao Phase 7 dokument.
+
+Sve je pripremljeno tako da možeš odmah da ga ubaciš u repo kao:
+
+```
+docs/spec/phase08-risk-engine.md
+```
+
+---
+
+# **PHASE 08 – RISK & PORTFOLIO ENGINE**
+
+**(UNREALIZED PNL, PORTFOLIO HEAT, DAILY LOSS LIMIT, RISK SIGNALI)**
+**FINAL DEV SPEC – ULTRA DETALJNO (Opcija A)**
+
+---
+
+# **0. UVOD – Uloga Faze 08 u AI Scalper Arhitekturi**
+
+Do Faze 07 tvoj sistem je naučio da:
+
+* posmatra tržište (Faza 3)
+* izračunava microstructure i feature-e (Faza 4)
+* razume globalne i lokalne režime (Faza 5)
+* ocenjuje simbole i generiše WATCH/ARM signale (Faza 6)
+* prelazi kroz state mašinu (Faza 7)
+
+ALI — još uvek NE zna **da li sme da trejduje**.
+
+To je uloga Faze 08:
+
+### RISK ENGINE JE "GLAVNI SUDIJA".
+
+On određuje:
+
+❌ kada je NOVI ENTRY zabranjen
+❌ kada je LONG zabranjen
+❌ kada je SHORT zabranjen
+❌ kada si blizu daily loss limita
+❌ kada si previše izložen (portfolio heat)
+❌ kada mora da se aktivira "risk-off mode"
+
+I emituje signale:
+
+* `riskAllowNewPositions`
+* `riskAllowNewLong`
+* `riskAllowNewShort`
+* `riskForceCloseAll` (za buduću fazu Execution-a)
+
+Ove vrednosti ulaze direktno u:
+
+### Scoring Engine → penalizuje ili blokira signale
+
+### State Machine → sprečava pristup WATCH/ARM state-u
+
+### Dashboard → prikazuje globalni rizik sistema
+
+---
+
+# **1. FAJLOVI KOJE FAZA 08 KREIRA**
+
+## **1.1 Novi fajlovi**
+
+```
+src/risk/riskEngine.js
+src/risk/accountState.js
+src/risk/positionTracker.js
+src/risk/externalAccountAdapter.js (stub)
+```
+
+## **1.2 Izmene postojećih fajlova**
+
+```
+src/state/stateMachine.js     (dodaje RISK_UPDATE događaje)
+src/scoring/scoringEngine.js  (uzima RiskSnapshot umesto stuba)
+src/monitoring/health.js      (prikazuje risk health)
+web/routes/api.js             (dodaje risk API endpoint-e)
+```
+
+## **1.3 Novi JSON fajlovi**
+
+```
+data/system/risk_snapshot.json
+data/trades_log/day-YYYY-MM-DD.json
+```
+
+---
+
+# **2. KONFIG (CONFIG.risk)**
+
+Dodaje se sekcija:
+
+```js
+CONFIG.risk = {
+  maxRiskPerTradePct: 1.0,
+  maxPortfolioHeatPct: 6.0,
+  maxDailyLossPct: 5.0,
+  maxOpenPositions: 5,
+  maxOpenPositionsPerSymbol: 1,
+  allowNewLongIfHeatBelowPct: 4.0,
+  allowNewShortIfHeatBelowPct: 4.0,
+  dailyResetTimeUtc: "00:00"
+};
+```
+
+### Objašnjenje:
+
+* **portfolioHeatPct** = koliki procenat računa je u aktivnom riziku ako SVI SL-ovi puknu odmah.
+* **dailyLossLimit** = osnovni "kill switch" – nema novih trejdova kad se probije.
+* **per-side risk limit** → sprečava npr. otvaranje novih long pozicija kada si već pretežak na long strani.
+* **dailyResetTimeUtc** → reset čitavog risk sistema u ponuđeno vreme.
+
+---
+
+# **3. STRUKTURA U MEMORIJI: RiskEngineState**
+
+```
+RiskEngineState {
+    account: AccountState,
+    positions: Map<string, PositionState>,
+    dailyStats: DailyRiskStats,
+    riskFlags: RiskFlags,
+    lastUpdateAt: ISOString
+}
+```
+
+---
+
+# **3.1 AccountState**
+
+```
+AccountState {
+  mode: "SIM" | "DRY_RUN" | "LIVE",
+  equityTotal: number,
+  balanceAvailable: number,
+  marginUsed: number,
+  openPnlUnrealized: number,
+  realizedPnlTotal: number,
+  lastSyncAt: string
+}
+```
+
+U SIM modu — Equity se menja samo na osnovu realizovanih + nerealizovanih profita.
+
+U LIVE modu — ovo dolazi iz Bybit API-ja (stub u ovoj fazi).
+
+---
+
+# **3.2 PositionState (per symbol + side)**
+
+Ključ u map-i:
+
+```
+BTCUSDT_LONG
+ETHUSDT_SHORT
+```
+
+Objekat:
+
+```
+PositionState {
+  symbol,
+  side,
+  leverage,
+  entryPrice,
+  qty,
+  notionalValue,
+  stopLossPrice,
+  takeProfit1Price,
+  takeProfit2Price,
+  maxFavorableExcursion,
+  maxAdverseExcursion,
+  unrealizedPnl,
+  unrealizedPnlPct,
+  realizedPnl,
+  openedAt,
+  updatedAt,
+  isActive
+}
+```
+
+---
+
+# **3.3 DailyRiskStats**
+
+Čuva dnevne limit-e i ponašanje:
+
+```
+DailyRiskStats {
+  dateKey: "YYYY-MM-DD",
+  dayRealizedPnl,
+  dayRealizedPnlPct,
+  dayMaxDrawdown,
+  dayMaxDrawdownPct,
+  tradesCount,
+  winningTradesCount,
+  losingTradesCount,
+  synchronizedAt
+}
+```
+
+---
+
+# **3.4 RiskFlags**
+
+```
+RiskFlags {
+  portfolioHeatPct,
+  projectedHeatPctIfNewTrade,
+  nearDailyLossLimit,
+  dailyLossLimitHit,
+  riskAllowNewPositions,
+  riskAllowNewLong,
+  riskAllowNewShort,
+  riskForceCloseAll
+}
+```
+
+---
+
+# **4. PRORAČUNI – MATEMATIKA RIZIKA**
+
+---
+
+# **4.1 Unrealized PnL**
+
+LONG:
+
+```
+(current - entry) * qty
+```
+
+SHORT:
+
+```
+(entry - current) * qty
+```
+
+---
+
+# **4.2 Risk Per Trade ("R")**
+
+```
+riskPerTradeUsd = |entryPrice - stopLossPrice| * qty
+```
+
+Ako SL ne postoji → koristi konzervativni default SL offset, npr. 1.2 × ATR.
+
+---
+
+# **4.3 Portfolio Heat**
+
+```
+portfolioHeatPct = SUM(riskPerTradeUsd) / equityTotal * 100
+```
+
+Ako heat ≥ maxPortfolioHeatPct → zabrani nove pozicije.
+
+---
+
+# **4.4 Daily Loss Limit**
+
+```
+dayRealizedPnlPct = dayRealizedPnl / equityAtDayStart * 100
+```
+
+Ako dayRealizedPnlPct ≤ -maxDailyLossPct:
+
+```
+riskAllowNewPositions = false
+riskForceCloseAll = true
+```
+
+---
+
+# **5. MODUL: src/risk/accountState.js**
+
+### Funkcije:
+
+✔ `initAccountState(mode)`
+✔ `syncWithExternalAccount()`
+✔ `getAccountState()`
+✔ `updateOnPositionChange(positionStates)`
+
+U SIM modu — sve se računa lokalno kroz PositionTracker.
+
+---
+
+# **6. MODUL: src/risk/positionTracker.js**
+
+Praćenje svih pozicija + MFE/MAE + PnL.
+
+### Funkcije:
+
+### **6.1 initPositionTracker()**
+
+Prazna mapa svih pozicija.
+
+### **6.2 onNewPositionOpened(event)**
+
+Kreira novi PositionState ili radi pyramiding.
+
+### **6.3 onPositionPriceUpdate(symbol, side, price)**
+
+Računa:
+
+* unrealized PnL
+* MFE (maximum favorable excursion)
+* MAE (maximum adverse excursion)
+
+### **6.4 onPositionClosed(event)**
+
+* ažurira realized PnL
+* čuva zapis u `data/trades_log/day-YYYY-MM-DD.json`
+* postavlja `isActive=false`
+
+---
+
+# **7. MODUL: src/risk/riskEngine.js**
+
+Glavni orkestrator rizika.
+
+### Funkcije:
+
+---
+
+## **7.1 initRiskEngine(config, mode)**
+
+* kreira AccountState
+* kreira PositionTracker
+* inicijalizuje RiskFlags
+* inicijalizuje DailyStats
+
+---
+
+## **7.2 onPositionEvent(event)**
+
+Na svaki OPEN/CLOSE/MODIFY pozivne:
+
+* updates PositionTracker
+* poziva recalcRiskState
+
+---
+
+## **7.3 onPriceTickForSymbol(symbol, price)**
+
+Ažurira MFE/MAE i unrealized PnL u realnom vremenu.
+
+---
+
+## **7.4 recalcRiskState()**
+
+Računa:
+
+* portfolioHeatPct
+* dailyLossPct
+* maxDrawdown
+* riskAllowNewPositions
+* riskAllowNewLong
+* riskAllowNewShort
+
+I zapisuje sve u:
+
+```
+data/system/risk_snapshot.json
+```
+
+I šalje:
+
+```
+RISK_UPDATE event → stateMachine
+```
+
+---
+
+## **7.5 getRiskSnapshot()**
+
+Vraća sve rizike za Scoring i StateMachine.
+
+---
+
+## **7.6 onDailyReset()**
+
+Resetuje dnevne statistike u određeno vreme.
+
+---
+
+# **8. INTEGRACIJA – KAKO FAZA 08 UTICAJE NA SVE OSTALO**
+
+---
+
+# **8.1 Scoring Engine**
+
+`applyRegimeAndRiskFilters()` sada koristi:
+
+```
+riskSnapshot.riskAllowNewPositions
+riskSnapshot.riskAllowNewLong
+riskSnapshot.riskAllowNewShort
+```
+
+Ako je zabrana:
+
+```
+allowed = false
+finalScore = 0
+blockedReasons.push("RISK_ENGINE_BLOCK")
+```
+
+---
+
+# **8.2 State Machine**
+
+Na `RISK_UPDATE` event:
+
+* ako `riskAllowNewPositions = false` → blokira WATCH/ARM
+* može prekidati aktivne scenarije (politiku ti biraš)
+* ubacuje razlog u state-change log
+
+---
+
+# **8.3 Dashboard**
+
+Dodaje se novi panel:
+
+### **GLOBAL RISK PANEL**
+
+* Equity
+* Unrealized PnL
+* Realized PnL (day + lifetime)
+* Portfolio Heat %
+* Daily Loss %
+* Drawdown
+* Flags:
+
+  * 🟡 nearDailyLossLimit
+  * 🔴 dailyLossLimitHit
+  * 🔧 riskAllowNewPositions=false
+  * 🔥 riskForceCloseAll
+
+## **Active Positions Table**
+
+Prikazuje sve ACTIVE pozicije.
+
+---
+
+# **9. API ENDPOINTI**
+
+---
+
+## **9.1 GET /api/risk/overview**
+
+Vrati kompletan snapshot rizika.
+
+---
+
+## **9.2 GET /api/risk/limits**
+
+Vrati sve limite iz CONFIG.risk.
+
+---
+
+## **9.3 GET /api/positions**
+
+Vrati listu aktivnih pozicija.
+
+---
+
+## **9.4 GET /api/positions/:symbol**
+
+Filter za jedan simbol.
+
+---
+
+## **9.5 GET /api/trades_log/:date**
+
+Vrati dnevni trade log.
+
+---
+
+# **10. TEST SCENARIO PLAN**
+
+### ✔ Test 1 — Unrealized PnL accuracy
+
+### ✔ Test 2 — Portfolio Heat
+
+### ✔ Test 3 — Daily loss limit block
+
+### ✔ Test 4 — Heat block
+
+### ✔ Test 5 — Scoring → risk block
+
+### ✔ Test 6 — StateMachine → risk block
+
+### ✔ Test 7 — Trade log JSON validity
+
+---
+
+# **11. FINALNI REZULTAT FAZE 08**
+
+Kada se Faza 8 završi:
+
+### Sistem PRE svake odluke pita:
+
+* da li imamo dovoljno kapitala?
+* da li je portfolio već previše izložen?
+* da li je daily loss limit probijen?
+* da li smem LONG?
+* da li smem SHORT?
+* da li je bezbedno nastaviti?
+
+### I emituje jasne signale koje svi moduli poštuju.
+
+Posle Faze 08 — tvoj bot prestaje da bude samo precizan, i postaje **profesionalno siguran**.
+
+---
+
+Ako želiš, sada mogu da pripremim:
+
+### **FAZA 09 – TP/SL Planner (tpSlPlanner.v4) + Multi-Target + BE logic + Trailing AI**
+
+ili
+
+### **FAZA 10 – Auto-ReEntry v2.0 – full architecture**
+
+Samo reci **koju fazu da radimo sledeću**.
