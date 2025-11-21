@@ -599,4 +599,4 @@ class FeatureEngine {
     }
 }
 
-module.exports = FeatureEngine;
+export default FeatureEngine;
