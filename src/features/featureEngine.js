@@ -16,18 +16,18 @@
  * - Throttling and performance optimization
  */
 
-const fs = require('fs').promises;
-const path = require('path');
+import { promises as fs } from 'fs';
+import path from 'path';
 
-const OrderbookImbalanceEngine = require('./orderbookImbalance');
-const WallsSpoofingEngine = require('./wallsSpoofing');
-const FlowDeltaEngine = require('./flowDelta');
-const VolatilityEngine = require('./volatilityEngine');
-const FeeLeverageEngine = require('./feeLeverageEngine');
-const PumpPreSignalsEngine = require('./pumpPreSignals');
+import OrderbookImbalanceEngine from './orderbookImbalance.js';
+import WallsSpoofingEngine from './wallsSpoofing.js';
+import FlowDeltaEngine from './flowDelta.js';
+import VolatilityEngine from './volatilityEngine.js';
+import FeeLeverageEngine from './feeLeverageEngine.js';
+import PumpPreSignalsEngine from './pumpPreSignals.js';
 
-const logger = require('../utils/logger');
-const { getUniverseSymbols } = require('../market/universe');
+import logger from '../utils/logger.js';
+import { getUniverseSymbols } from '../market/universe.js';
 
 class FeatureEngine {
     constructor(config = {}) {
@@ -382,7 +382,7 @@ class FeatureEngine {
             // This would integrate with the microstructure engine from Phase 3
             // For now, we'll use a placeholder that would be replaced with actual integration
 
-            const microstructure = require('../market/microstructure');
+            const microstructure = await import('../market/microstructure.js');
 
             const [orderbook, trades, candles] = await Promise.all([
                 microstructure.getOrderbookSummary(symbol),

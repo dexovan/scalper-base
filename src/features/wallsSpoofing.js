@@ -462,4 +462,4 @@ class WallsSpoofingEngine {
     }
 }
 
-module.exports = WallsSpoofingEngine;
+export default WallsSpoofingEngine;

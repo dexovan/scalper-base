@@ -239,4 +239,4 @@ class OrderbookImbalanceEngine {
     }
 }
 
-module.exports = OrderbookImbalanceEngine;
+export default OrderbookImbalanceEngine;

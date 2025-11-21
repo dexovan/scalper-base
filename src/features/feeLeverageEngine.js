@@ -323,4 +323,4 @@ class FeeLeverageEngine {
     }
 }
 
-module.exports = FeeLeverageEngine;
+export default FeeLeverageEngine;

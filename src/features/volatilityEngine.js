@@ -291,4 +291,4 @@ class VolatilityEngine {
     }
 }
 
-module.exports = VolatilityEngine;
+export default VolatilityEngine;

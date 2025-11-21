@@ -410,4 +410,4 @@ class FlowDeltaEngine {
     }
 }
 
-module.exports = FlowDeltaEngine;
+export default FlowDeltaEngine;
