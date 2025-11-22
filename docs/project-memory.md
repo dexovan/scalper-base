@@ -1,7 +1,181 @@
 # SCALPER-BASE PROJECT MEMORY
 
-**Last Updated:** 2025-11-22 14:15 (MAJOR BUG FIX: Feature Engine activeSymbols)
+**Last Updated:** 2025-11-23 00:08 (MAJOR FIX: Wall/Spoofing Detection - orderbook.50)
 **Purpose:** Persistent knowledge base for critical problems, solutions, and best practices
+
+---
+
+## 🔥 CRITICAL FIX: Wall/Spoofing Detection Always 0 (2025-11-23)
+
+### Problem
+
+Spoofing score pokazivao 0.00 na svim simbolima uprkos tome što Feature Engine radi (100+ updates/s). Dashboard prikazivao:
+
+- `spoofingScore: 0.00` na svim simbolima
+- `totalBidWalls: 0, totalAskWalls: 0`
+- Čak i sa EKSTREMNO niskim thresholds (1.1x avg, $10 min) - nema walls
+
+### Root Cause Analysis
+
+**Glavni problem: Insufficient orderbook depth**
+
+- WebSocket bio subscribe-ovan na `orderbook.1.SYMBOL`
+- Bybit `orderbook.1` vraća **samo 1 level** (best bid/ask)
+- Wall detection algoritam traži walls u **top 20 levels**
+- Feature Engine tražio 10 levels, dobijao samo 1
+
+**Verifikacija problema:**
+
+```bash
+curl -s "http://localhost:8090/api/features/symbol/BTCUSDT" | grep bidLevels
+# Output: "bidLevels": 1, "askLevels": 1  ← PROBLEM!
+```
+
+**Sekundarni problemi:**
+
+1. API endpoint koristio `getFeaturesForSymbol()` (ne postoji) umesto `getFeatureState()`
+2. Thresholds bili previsoki za kripto (8x avg, $1000 min)
+3. Instant manipulation scoring bio prenizak (0.15 za single-sided)
+
+### Solution
+
+**Fix #1: WebSocket orderbook subscription depth**
+
+```javascript
+// BEFORE (BROKEN): src/connectors/bybitPublic.js
+topics.push(`orderbook.1.${s}`); // Only 1 level!
+
+// AFTER (FIXED):
+topics.push(`orderbook.50.${s}`); // 50 levels for wall detection
+```
+
+**Commit:** 8c65d97
+
+**Fix #2: API endpoint method name**
+
+```javascript
+// BEFORE (BROKEN): src/http/monitorApi.js
+const features = featureEngine.getFeaturesForSymbol(symbol); // doesn't exist
+
+// AFTER (FIXED):
+const features = featureEngine.getFeatureState(symbol);
+```
+
+**Commit:** e9577f2
+
+**Fix #3: Production thresholds tuning**
+
+```javascript
+// src/features/wallsSpoofing.js
+wallMultiplier: 3.0,     // 3x average (was 8.0, then 2.0, then 1.1)
+minWallSize: 500,        // $500 USD minimum (was $1000, then $100, then $10)
+maxDistanceFromPrice: 0.02  // 2% from current price (was 1%, then 5%)
+```
+
+**Commit:** 1cd7258
+
+**Fix #4: Instant manipulation pattern scoring**
+
+```javascript
+// Single-sided dominance (wall with no opposition)
+if (walls[0].strength > 4) {
+  // Lowered from 5
+  manipulationScore += 0.25; // Increased from 0.15
+}
+
+// Extreme size imbalance
+if (sizeRatio > 5 || sizeRatio < 0.2) {
+  manipulationScore += 0.15; // Increased from 0.1
+}
+```
+
+**Commit:** 9adba55
+
+### Verification
+
+**Before fix:**
+
+```json
+{
+  "symbolsWithWalls": 0,
+  "avgSpoofingScore": 0,
+  "maxSpoofingScore": 0,
+  "sampleSymbolWallData": [
+    {
+      "symbol": "BTCUSDT",
+      "totalBidWalls": 0,
+      "totalAskWalls": 0,
+      "spoofingScore": 0
+    }
+  ]
+}
+```
+
+**After fix:**
+
+```json
+{
+  "symbolsWithWalls": 6,
+  "avgSpoofingScore": 0.003,
+  "maxSpoofingScore": 0.25,
+  "topSpoofingSymbols": [
+    {"symbol": "BTCUSDT", "spoofingScore": 0.25},
+    {"symbol": "AKTUSDT", "spoofingScore": 0.25},
+    {"symbol": "FLOWUSDT", "spoofingScore": 0.25}
+  ],
+  "sampleSymbolWallData": [{
+    "symbol": "BTCUSDT",
+    "totalBidWalls": 0,
+    "totalAskWalls": 1,
+    "askWallStrength": 4.31,
+    "spoofingScore": 0.25  ← WORKING!
+  }]
+}
+```
+
+### Key Lessons
+
+1. **Bybit orderbook depth levels**: `1` (best), `50`, `200`, `500`
+
+   - `orderbook.1` = samo best bid/ask (1 level)
+   - `orderbook.50` = top 50 levels (potrebno za wall detection)
+
+2. **Wall detection requires depth**: Minimum 20 levels za pouzdanu detekciju
+
+   - Sa 1 levelom: Nemoguće detektovati walls
+   - Sa 50 levela: Wall detection radi perfektno
+
+3. **Debugging strategy za "always 0" problems**:
+
+   - Prvo proveri da li data POSTOJE (`bidLevels`, `askLevels`)
+   - Onda proveri thresholds (možda su prestrogi)
+   - Na kraju proveri scoring logic
+
+4. **Instant manipulation patterns** su ključni:
+   - Spoofing detection baziran samo na disappearance daje score retko
+   - Single-sided dominance i layering daju instant signal
+   - Score 0.25 za single-sided je dovoljan za alert
+
+### Production Configuration
+
+```javascript
+// src/features/wallsSpoofing.js - Final production values
+{
+  wallMultiplier: 3.0,           // 3x average order = significant wall
+  minWallSize: 500,              // $500 USD minimum (filters noise)
+  maxDistanceFromPrice: 0.02,    // 2% from price (relevantno za trading)
+
+  // Instant manipulation scoring:
+  singleSidedDominance: 0.25,    // Strong wall without opposition
+  extremeImbalance: 0.15,        // 5x+ size difference
+  layering: 0.10                 // Multiple walls at similar prices
+}
+```
+
+### Related Issues
+
+- Feature Engine activeSymbols (2025-11-22) - WebSocket topic parsing
+- OrderbookManager format conversion (2025-11-22) - Array vs Object
 
 ---
 
