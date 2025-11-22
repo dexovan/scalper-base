@@ -416,8 +416,11 @@ class FeatureEngine {
     getHealthMetrics() {
         const totalSymbols = this.featureStates.size;
         const now = Date.now();
+
+        // Changed from 30s to 60s window to accommodate symbols with 15s intervals
+        // With staggered updates across 300 symbols, 30s was too restrictive
         const recentlyUpdated = Array.from(this.lastUpdateTimes.values())
-            .filter(time => now - time < 30000).length; // Updated in last 30s
+            .filter(time => now - time < 60000).length; // Updated in last 60s
 
         // DEBUG: Log health calculation periodically
         if (!this._lastHealthLog || now - this._lastHealthLog > 10000) {
@@ -425,7 +428,7 @@ class FeatureEngine {
             this.logger.info(`[DEBUG] Health check: lastUpdateTimes.size=${this.lastUpdateTimes.size}, recentlyUpdated=${recentlyUpdated}, totalSymbols=${totalSymbols}`);
             if (this.lastUpdateTimes.size > 0) {
                 const ages = Array.from(this.lastUpdateTimes.values()).map(t => Math.floor((now - t) / 1000));
-                this.logger.info(`[DEBUG] Sample update ages (seconds): ${ages.slice(0, 5).join(', ')}`);
+                this.logger.info(`[DEBUG] Sample update ages (seconds): ${ages.slice(0, 10).join(', ')}`);
             }
         }
 
@@ -436,7 +439,7 @@ class FeatureEngine {
             activeSymbols: recentlyUpdated,
             updateCoverage: totalSymbols > 0 ? (recentlyUpdated / totalSymbols) : 0,
             performance: this.performanceMetrics,
-            lastUpdateAt: Math.max(...Array.from(this.lastUpdateTimes.values()))
+            lastUpdateAt: this.lastUpdateTimes.size > 0 ? Math.max(...Array.from(this.lastUpdateTimes.values())) : 0
         };
     }
 
