@@ -3,7 +3,7 @@ import express from "express";
 import {
   getUniverseSnapshot,
   getSymbolsByCategory
-} from "../../src/market/universe.js";
+} from "../../src/market/universe_v2.js";
 
 const router = express.Router();
 
