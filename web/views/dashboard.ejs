@@ -628,7 +628,7 @@
         }
 
         // Timeout wrapper for fetch calls
-        async fetchWithTimeout(url, options = {}, timeout = 10000) {
+        async fetchWithTimeout(url, options = {}, timeout = 30000) {
             console.log(`🌐 fetchWithTimeout called: ${url}`);
             console.log("⚙️ Options:", options);
             console.log("⏰ Timeout:", timeout + "ms");
