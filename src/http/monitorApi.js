@@ -108,7 +108,8 @@ export function attachRealtimeListeners(bybitPublic) {
         bid1Price: payload.bid1Price,
         ask1Price: payload.ask1Price,
         finalPrice: price
-      });      let change24h = null;
+      });      // Extract 24h data from WebSocket payload (if available)
+      let change24h = null;
       if (payload.price24hPcnt) change24h = parseFloat(payload.price24hPcnt);
       else if (payload.priceChangePercent) change24h = parseFloat(payload.priceChangePercent);
 
@@ -117,12 +118,17 @@ export function attachRealtimeListeners(bybitPublic) {
       else if (payload.turnover24h) volume24h = parseFloat(payload.turnover24h);
       else if (payload.v) volume24h = parseFloat(payload.v);
 
+      // Get existing ticker to preserve 24h data if not in WebSocket payload
+      const existing = latestTickers.get(symbol);
+
       const tickerData = {
         symbol,
-        price,
-        change24h,
-        volume24h,
-        timestamp: new Date().toISOString()
+        price,  // Always update price from WebSocket
+        change24h: change24h !== null ? change24h : (existing?.change24h || null),  // Preserve if not in WebSocket
+        volume24h: volume24h !== null ? volume24h : (existing?.volume24h || null),  // Preserve if not in WebSocket
+        timestamp: new Date().toISOString(),
+        last24hUpdate: change24h !== null || volume24h !== null ? new Date().toISOString() : existing?.last24hUpdate,
+        source: existing?.source  // Preserve source marker
       };
 
       latestTickers.set(symbol, tickerData);
