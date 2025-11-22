@@ -278,11 +278,16 @@ function onTradeEvent(symbol, eventData) {
 // ================================================================
 
 /**
- * Ažurira micro candles na osnovu trade događaja
+ * Ažurira candles na osnovu trade-a
  */
 function updateCandlesFromTrade(symbolState, tradeData) {
-  const timeframes = CONFIG.microstructure?.candleTimeframes || ["1s", "3s", "5s", "15s"];
+  const timeframes = CONFIG.microstructure?.candleTimeframes || ["1s", "5s", "15s"];
   const tradeTs = tradeData.ts || Date.now();
+
+  // DEBUG: Log candle generation (1% sampling)
+  if (Math.random() < 0.001) {
+    console.log(`🕯️ [CANDLE DEBUG] Updating candles for ${symbolState.symbol || 'unknown'}, timeframes: ${timeframes.join(',')}`);
+  }
 
   timeframes.forEach(tf => {
     updateCandleForTimeframe(symbolState, tf, tradeData, tradeTs);

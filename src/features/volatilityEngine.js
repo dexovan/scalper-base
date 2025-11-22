@@ -50,6 +50,17 @@ class VolatilityEngine {
     analyzeVolatility(candleData) {
         try {
             if (!this.isValidCandleData(candleData)) {
+                // DEBUG: Log why candle data is invalid
+                if (!this._invalidCandleLogCount) this._invalidCandleLogCount = 0;
+                if (this._invalidCandleLogCount < 3) {
+                    this._invalidCandleLogCount++;
+                    console.log(`⚠️ [VOLATILITY DEBUG] Invalid candle data:`, {
+                        has1s: candleData?.['1s']?.length || 0,
+                        has5s: candleData?.['5s']?.length || 0,
+                        has15s: candleData?.['15s']?.length || 0,
+                        minRequired: this.config.minCandlesRequired
+                    });
+                }
                 return this.getEmptyVolatility();
             }
 
