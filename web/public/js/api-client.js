@@ -737,7 +737,7 @@ export class DashboardAPI {
             debugLog("📊 Updating microstructure stats...");
 
             // Get health status for preview
-            const healthResponse = await fetch(`${this.microstructureUrl}/health`);
+            const healthResponse = await fetch('/api/microstructure/health');
             if (healthResponse.ok) {
                 const healthData = await healthResponse.json();
 
@@ -1057,7 +1057,7 @@ export class DashboardAPI {
     async updateKeyMetrics() {
         try {
             // Active Symbols from microstructure
-            const microResponse = await this.fetchWithTimeout(`${this.microstructureUrl}/health`);
+            const microResponse = await this.fetchWithTimeout('/api/microstructure/health');
             if (microResponse.ok) {
                 const micro = await microResponse.json();
 
