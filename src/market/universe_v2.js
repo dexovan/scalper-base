@@ -181,10 +181,6 @@ export function getUniverseSymbols() {
   return Object.keys(UniverseState.symbols || {});
 }
 
-export function getUniverseStats() {
-  return UniverseState.stats || { totalSymbols: 0, primeCount: 0, normalCount: 0, wildCount: 0 };
-}
-
 export async function getSymbolsByCategory(category) {
   // Ako je state prazan, pokušaj da učitaš postojeći snapshot
   if (!UniverseState.fetchedAt || Object.keys(UniverseState.symbols || {}).length === 0) {
