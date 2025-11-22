@@ -1075,7 +1075,9 @@ export function startMonitorApiServer(port = 8090) {
             spoofingScore: fullData?.walls?.spoofingScore,
             currentPrice: fullData?.walls?.metadata?.currentPrice,
             totalBidWalls: fullData?.walls?.metadata?.totalBidWalls,
-            totalAskWalls: fullData?.walls?.metadata?.totalAskWalls
+            totalAskWalls: fullData?.walls?.metadata?.totalAskWalls,
+            bidWallStrength: fullData?.walls?.bidWallStrength,
+            askWallStrength: fullData?.walls?.askWallStrength
           };
         })
       };
