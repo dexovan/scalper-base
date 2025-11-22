@@ -1064,7 +1064,20 @@ export function startMonitorApiServer(port = 8090) {
           .filter(s => s.spoofingScore > 0)
           .sort((a, b) => b.spoofingScore - a.spoofingScore)
           .slice(0, 10)
-          .map(s => ({ symbol: s.symbol, spoofingScore: s.spoofingScore, tobImbalance: s.tobImbalance }))
+          .map(s => ({ symbol: s.symbol, spoofingScore: s.spoofingScore, tobImbalance: s.tobImbalance })),
+        // Add sample of wall data to debug
+        sampleSymbolWallData: overview.slice(0, 3).map(s => {
+          const fullData = featureEngine.getFeaturesForSymbol(s.symbol);
+          return {
+            symbol: s.symbol,
+            hasBidWall: fullData?.walls?.hasBidWall,
+            hasAskWall: fullData?.walls?.hasAskWall,
+            spoofingScore: fullData?.walls?.spoofingScore,
+            currentPrice: fullData?.walls?.metadata?.currentPrice,
+            totalBidWalls: fullData?.walls?.metadata?.totalBidWalls,
+            totalAskWalls: fullData?.walls?.metadata?.totalAskWalls
+          };
+        })
       };
       res.json({
         status: "success",
