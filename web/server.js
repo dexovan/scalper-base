@@ -245,6 +245,22 @@ app.use(
   })
 );
 
+// ===========================================
+// PROXY → DIAGNOSTICS API (port 8090)
+// ===========================================
+app.use(
+  "/api/diagnostics",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/diagnostics",
+    changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
+    pathRewrite: {
+      "^/api/diagnostics": ""
+    }
+  })
+);
+
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/");
