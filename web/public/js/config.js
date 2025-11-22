@@ -34,9 +34,10 @@ export const DashboardConfig = {
 
     // UI Settings
     ui: {
-        maxRecentTrades: 25,
+        maxRecentTrades: 10,      // Reduced from 25 to 10 for clean dashboard
+        maxPrimeMarkets: 6,       // Show only top 6 prime markets
         defaultCategory: "Prime",
-        animationDuration: 300,
+        animationDuration: 300
     },
 
     // Debug mode

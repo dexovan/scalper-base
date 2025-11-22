@@ -463,7 +463,7 @@ export class DashboardAPI {
     }
 
     renderTrades(trades) {
-        const container = document.getElementById('trades-container');
+        const container = document.getElementById('recent-trades-body');
         if (!container) return;
 
         if (trades.length === 0) {
@@ -471,7 +471,10 @@ export class DashboardAPI {
             return;
         }
 
-        container.innerHTML = trades.map(trade => {
+        // Limit to max 10 trades for clean display
+        const limitedTrades = trades.slice(0, DashboardConfig.ui.maxRecentTrades);
+
+        container.innerHTML = limitedTrades.map(trade => {
             const time = new Date(trade.timestamp).toLocaleTimeString('en-US', {
                 hour12: false,
                 hour: '2-digit',
@@ -482,13 +485,13 @@ export class DashboardAPI {
             const directionIcon = this.getTickDirectionIcon(trade.tickDirection);
 
             return `
-                <tr class="border-b border-slate-800/50 hover:bg-slate-800/30">
-                    <td class="py-1 px-2 text-slate-400">${time}</td>
-                    <td class="py-1 px-2 text-slate-300 font-medium">${trade.symbol}</td>
-                    <td class="py-1 px-2 ${sideClass} font-medium">${trade.side}</td>
-                    <td class="py-1 px-2 text-right text-slate-200 font-mono">$${trade.price?.toFixed(2) || 'N/A'}</td>
-                    <td class="py-1 px-2 text-right text-slate-300 font-mono">${trade.quantity || 'N/A'}</td>
-                    <td class="py-1 px-2 text-slate-400">${directionIcon}</td>
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                    <td class="py-2 px-3 text-slate-400">${time}</td>
+                    <td class="py-2 px-3 text-slate-200 font-medium">${trade.symbol}</td>
+                    <td class="py-2 px-3 ${sideClass} font-medium">${trade.side}</td>
+                    <td class="py-2 px-3 text-right text-slate-200 font-mono">$${trade.price?.toFixed(2) || 'N/A'}</td>
+                    <td class="py-2 px-3 text-right text-slate-300 font-mono">${trade.quantity || 'N/A'}</td>
+                    <td class="py-2 px-3 text-center text-slate-400">${directionIcon}</td>
                 </tr>
             `;
         }).join('');
@@ -733,45 +736,53 @@ export class DashboardAPI {
         try {
             debugLog("📊 Updating microstructure stats...");
 
-            // Get symbols count
-            const symbolsResponse = await fetch(this.microstructureUrl);
-            const symbolsData = await symbolsResponse.json();
+            // Get health status for preview
+            const healthResponse = await fetch(`${this.microstructureUrl}/health`);
+            if (healthResponse.ok) {
+                const healthData = await healthResponse.json();
 
-            if (symbolsData.ok && symbolsData.symbols) {
-                document.getElementById('micro-symbols-count').textContent = symbolsData.symbols.length;
-                document.getElementById('micro-symbols-status').textContent = `${symbolsData.symbols.filter(s => s.tradesCount > 0).length} active`;
+                // Update preview cards (new dashboard)
+                const symbolsPreview = document.getElementById('micro-symbols-preview');
+                const ratePreview = document.getElementById('micro-rate-preview');
+                const healthPreview = document.getElementById('micro-health-preview');
 
-                // Update top symbols
-                this.renderTopSymbols(symbolsData.symbols.slice(0, 5));
+                if (symbolsPreview && healthData.activeSymbols !== undefined) {
+                    symbolsPreview.textContent = healthData.activeSymbols;
+                }
+                if (ratePreview && healthData.eventsPerSecond !== undefined) {
+                    ratePreview.textContent = healthData.eventsPerSecond;
+                }
+                if (healthPreview) {
+                    const isHealthy = healthData.status === 'healthy';
+                    healthPreview.textContent = isHealthy ? 'OK' : 'Warn';
+                    healthPreview.className = isHealthy ? 'text-lg font-bold text-green-400' : 'text-lg font-bold text-amber-400';
+                }
+
+                // OLD dashboard IDs (keep for compatibility if old dashboard still exists)
+                const oldSymbolsCount = document.getElementById('micro-symbols-count');
+                const oldSymbolsStatus = document.getElementById('micro-symbols-status');
+                const oldDataRate = document.getElementById('micro-data-rate');
+                const oldHealth = document.getElementById('micro-health');
+                const oldHealthDetails = document.getElementById('micro-health-details');
+
+                if (oldSymbolsCount) oldSymbolsCount.textContent = healthData.activeSymbols || '-';
+                if (oldSymbolsStatus) oldSymbolsStatus.textContent = `${healthData.lastProcessed || 0} active`;
+                if (oldDataRate) oldDataRate.textContent = `${healthData.eventsPerSecond || 0} evt/s`;
+                if (oldHealth) {
+                    oldHealth.textContent = healthData.status === 'healthy' ? 'Good' : 'Warning';
+                }
+                if (oldHealthDetails) {
+                    oldHealthDetails.textContent = healthData.status === 'healthy' ? 'All systems operational' : 'Check system logs';
+                }
             }
-
-            // Get health status
-            const healthResponse = await fetch('/api/health');
-            const healthText = await healthResponse.text();
-            const healthData = JSON.parse(healthText);
-
-            if (healthData.status === 'success') {
-                document.getElementById('micro-health').textContent = 'Good';
-                document.getElementById('micro-health-details').textContent = 'All systems operational';
-            } else {
-                document.getElementById('micro-health').textContent = 'Warning';
-                document.getElementById('micro-health-details').textContent = 'Check system logs';
-            }
-
-            // Simulate real-time metrics
-            document.getElementById('micro-data-rate').textContent = Math.floor(Math.random() * 500 + 100) + ' evt/s';
-            document.getElementById('micro-storage').textContent = Math.floor(Math.random() * 50 + 20) + ' MB';
-
-            // Update performance metrics
-            document.getElementById('micro-avg-spread').textContent = (Math.random() * 0.01 + 0.001).toFixed(4);
-            document.getElementById('micro-trade-volume').textContent = Math.floor(Math.random() * 10000 + 5000).toLocaleString();
-            document.getElementById('micro-update-freq').textContent = Math.floor(Math.random() * 100 + 50) + '/min';
 
         } catch (error) {
             console.error("💥 Failed to update microstructure stats:", error);
-            document.getElementById('micro-symbols-count').textContent = 'Error';
-            document.getElementById('micro-health').textContent = 'Error';
-            document.getElementById('micro-health-details').textContent = 'Connection failed';
+            const healthPreview = document.getElementById('micro-health-preview');
+            if (healthPreview) {
+                healthPreview.textContent = 'Error';
+                healthPreview.className = 'text-lg font-bold text-red-400';
+            }
         }
     }
 
@@ -823,73 +834,95 @@ export class DashboardAPI {
         try {
             debugLog("🚀 Updating Feature Engine stats...");
 
-            // Get health status - using simple fetch
+            // Get health status
             const healthResponse = await fetch(this.featuresHealthUrl);
             debugLog("🔍 Health response status:", healthResponse.status);
-            debugLog("🔍 Health response ok:", healthResponse.ok);
 
             if (!healthResponse.ok) {
-                throw new Error(`HTTP ${healthResponse.status}: ${healthResponse.statusText}`);
+                throw new Error(`HTTP ${healthResponse.status}`);
             }
 
-            const responseText = await healthResponse.text();
-            debugLog("🔍 Raw response text:", responseText.substring(0, 200));
-
-            const healthData = JSON.parse(responseText);
+            const healthData = await healthResponse.json();
             debugLog("🔍 Parsed health data:", healthData);
 
             if (healthData.status === 'success' && healthData.data) {
                 const data = healthData.data;
 
-                // Update main stats
-                document.getElementById('features-symbols-count').textContent = data.activeSymbols || 0;
-                document.getElementById('features-symbols-status').textContent = `${data.activeSymbols || 0} symbols analyzed`;
-                document.getElementById('features-update-rate').textContent = data.performanceMetrics?.updatesPerSecond || 0;
-                document.getElementById('features-avg-time').textContent =
-                    data.performanceMetrics?.averageUpdateTime ? `${data.performanceMetrics.averageUpdateTime.toFixed(1)} ms` : '0 ms';
-                document.getElementById('features-health').textContent = data.status === 'healthy' ? 'Healthy' : 'Warning';
-                document.getElementById('features-health-details').textContent =
-                    data.status === 'healthy' ? 'All systems operational' : 'Some issues detected';
+                // Update NEW dashboard preview cards
+                const symbolsPreview = document.getElementById('features-symbols-preview');
+                const ratePreview = document.getElementById('features-rate-preview');
+                const healthPreview = document.getElementById('features-health-preview');
 
-                // Update performance metrics
-                document.getElementById('perf-symbols').textContent = data.performanceMetrics?.symbolsProcessed || 0;
-                document.getElementById('perf-analyses').textContent = data.totalAnalyses || 0;
-                document.getElementById('perf-errors').textContent = data.performanceMetrics?.errorsCount || 0;
-
-                // Update memory stats
-                if (data.memory) {
-                    document.getElementById('mem-rss').textContent = `${(data.memory.rss / 1024 / 1024).toFixed(1)} MB`;
-                    document.getElementById('mem-heap').textContent = `${(data.memory.heapUsed / 1024 / 1024).toFixed(1)} MB`;
-                    document.getElementById('mem-uptime').textContent = `${Math.floor(data.uptime)} sec`;
+                if (symbolsPreview) {
+                    symbolsPreview.textContent = data.activeSymbols || 0;
+                }
+                if (ratePreview) {
+                    ratePreview.textContent = data.performanceMetrics?.updatesPerSecond || 0;
+                }
+                if (healthPreview) {
+                    const isHealthy = data.status === 'healthy';
+                    healthPreview.textContent = isHealthy ? 'OK' : 'Warn';
+                    healthPreview.className = isHealthy ? 'text-lg font-bold text-green-400' : 'text-lg font-bold text-amber-400';
                 }
 
-                // Update engines status
+                // OLD dashboard IDs (keep for compatibility)
+                const oldSymbolsCount = document.getElementById('features-symbols-count');
+                const oldSymbolsStatus = document.getElementById('features-symbols-status');
+                const oldUpdateRate = document.getElementById('features-update-rate');
+                const oldAvgTime = document.getElementById('features-avg-time');
+                const oldHealth = document.getElementById('features-health');
+                const oldHealthDetails = document.getElementById('features-health-details');
+
+                if (oldSymbolsCount) oldSymbolsCount.textContent = data.activeSymbols || 0;
+                if (oldSymbolsStatus) oldSymbolsStatus.textContent = `${data.activeSymbols || 0} symbols analyzed`;
+                if (oldUpdateRate) oldUpdateRate.textContent = data.performanceMetrics?.updatesPerSecond || 0;
+                if (oldAvgTime) {
+                    oldAvgTime.textContent = data.performanceMetrics?.averageUpdateTime ?
+                        `${data.performanceMetrics.averageUpdateTime.toFixed(1)} ms` : '0 ms';
+                }
+                if (oldHealth) {
+                    oldHealth.textContent = data.status === 'healthy' ? 'Healthy' : 'Warning';
+                }
+                if (oldHealthDetails) {
+                    oldHealthDetails.textContent = data.status === 'healthy' ?
+                        'All engines operational' : 'Some issues detected';
+                }
+
+                // Update performance metrics (old dashboard)
+                const perfSymbols = document.getElementById('perf-symbols');
+                const perfAnalyses = document.getElementById('perf-analyses');
+                const perfErrors = document.getElementById('perf-errors');
+
+                if (perfSymbols) perfSymbols.textContent = data.performanceMetrics?.symbolsProcessed || 0;
+                if (perfAnalyses) perfAnalyses.textContent = data.totalAnalyses || 0;
+                if (perfErrors) perfErrors.textContent = data.performanceMetrics?.errorsCount || 0;
+
+                // Update memory stats (old dashboard)
+                if (data.memory) {
+                    const memRss = document.getElementById('mem-rss');
+                    const memHeap = document.getElementById('mem-heap');
+                    const memUptime = document.getElementById('mem-uptime');
+
+                    if (memRss) memRss.textContent = `${(data.memory.rss / 1024 / 1024).toFixed(1)} MB`;
+                    if (memHeap) memHeap.textContent = `${(data.memory.heapUsed / 1024 / 1024).toFixed(1)} MB`;
+                    if (memUptime) memUptime.textContent = `${Math.floor(data.uptime)} sec`;
+                }
+
+                // Update engines status (old dashboard)
                 if (data.engines) {
                     this.updateEnginesStatus(data.engines);
                 }
 
                 debugLog("✅ Feature Engine stats updated successfully");
-            } else {
-                console.error("❌ Failed to get Feature Engine health data");
-            }
-
-            // Get overview data - using simple fetch
-            const overviewResponse = await fetch('/api/features/overview');
-            const overviewText = await overviewResponse.text();
-            const overviewData = JSON.parse(overviewText);
-
-            if (overviewData.status === 'success' && overviewData.data) {
-                this.updateFeatureOverview(overviewData.data);
-            } else {
-                debugLog("ℹ️ No Feature Engine overview data available yet");
             }
 
         } catch (error) {
             console.error("❌ Error updating Feature Engine stats:", error);
-            console.error("❌ Error details:", error.message);
-            console.error("❌ Error stack:", error.stack);
-            document.getElementById('features-health').textContent = 'Error';
-            document.getElementById('features-health-details').textContent = `Error: ${error.message}`;
+            const healthPreview = document.getElementById('features-health-preview');
+            if (healthPreview) {
+                healthPreview.textContent = 'Error';
+                healthPreview.className = 'text-lg font-bold text-red-400';
+            }
         }
     }
 
@@ -957,34 +990,159 @@ export class DashboardAPI {
         }).join('');
     }
 
+    /**
+     * NEW: Render Prime Markets (top 6 only) as cards
+     */
+    async renderPrimeMarkets() {
+        try {
+            const response = await this.fetchWithTimeout(this.universeUrl);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            const universeData = data.ok ? data.universe : data;
+
+            if (!universeData.symbols) return;
+
+            // Get Prime symbols only
+            const primeSymbols = Object.values(universeData.symbols)
+                .filter(s => s.category === 'Prime')
+                .slice(0, DashboardConfig.ui.maxPrimeMarkets);
+
+            // Get ticker data for these symbols
+            const tickerResponse = await this.fetchWithTimeout(this.tickersUrl);
+            if (!tickerResponse.ok) return;
+
+            const tickerData = await tickerResponse.json();
+            const tickers = tickerData.ok ? tickerData.tickers : tickerData.tickers || [];
+
+            // Create ticker map
+            const tickerMap = new Map();
+            tickers.forEach(t => tickerMap.set(t.symbol, t));
+
+            // Render cards
+            const container = document.getElementById('prime-markets-grid');
+            if (!container) return;
+
+            container.innerHTML = primeSymbols.map(symbol => {
+                const ticker = tickerMap.get(symbol.symbol);
+                const price = ticker?.price ? `$${ticker.price.toLocaleString()}` : 'N/A';
+                const change = ticker?.change24h || 0;
+                const changeClass = change >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const changeIcon = change >= 0 ? '▲' : '▼';
+                const volume = ticker?.volume24h ? this.formatVolume(ticker.volume24h) : 'N/A';
+
+                return `
+                    <div class="p-3 rounded-lg border border-slate-700 bg-slate-800/40 hover:border-slate-600 transition-colors">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-bold text-slate-200">${symbol.symbol}</span>
+                            <span class="text-xs text-slate-500">${symbol.leverage}</span>
+                        </div>
+                        <div class="text-xl font-bold text-slate-100">${price}</div>
+                        <div class="flex items-center justify-between mt-2 text-xs">
+                            <span class="${changeClass} font-medium">${changeIcon} ${Math.abs(change).toFixed(2)}%</span>
+                            <span class="text-slate-500">${volume}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+        } catch (error) {
+            console.error('Failed to render prime markets:', error);
+        }
+    }
+
+    /**
+     * NEW: Update Key Metrics (Active Symbols, Data Rate, Uptime)
+     */
+    async updateKeyMetrics() {
+        try {
+            // Active Symbols from microstructure
+            const microResponse = await this.fetchWithTimeout(`${this.microstructureUrl}/health`);
+            if (microResponse.ok) {
+                const micro = await microResponse.json();
+
+                const activeSymbolsEl = document.getElementById('metric-active-symbols');
+                const symbolsDetailEl = document.getElementById('metric-symbols-detail');
+                const dataRateEl = document.getElementById('metric-data-rate');
+
+                if (activeSymbolsEl && micro.activeSymbols !== undefined) {
+                    activeSymbolsEl.textContent = micro.activeSymbols;
+                }
+                if (symbolsDetailEl && micro.lastProcessed !== undefined) {
+                    symbolsDetailEl.textContent = `${micro.lastProcessed} tracking`;
+                }
+                if (dataRateEl && micro.eventsPerSecond !== undefined) {
+                    dataRateEl.textContent = `${micro.eventsPerSecond} evt/s`;
+                }
+            }
+
+            // Uptime from feature engine
+            const featuresResponse = await this.fetchWithTimeout(this.featuresHealthUrl);
+            if (featuresResponse.ok) {
+                const features = await featuresResponse.json();
+
+                const uptimeEl = document.getElementById('metric-uptime');
+                const healthEl = document.getElementById('metric-health');
+
+                if (uptimeEl && features.uptime !== undefined) {
+                    uptimeEl.textContent = this.formatUptime(features.uptime);
+                }
+                if (healthEl) {
+                    const isHealthy = features.status === 'healthy';
+                    healthEl.textContent = isHealthy ? 'All systems operational' : 'Check system logs';
+                    healthEl.className = isHealthy ? 'mt-1 text-xs text-emerald-400' : 'mt-1 text-xs text-amber-400';
+                }
+            }
+
+        } catch (error) {
+            console.error('Failed to update key metrics:', error);
+        }
+    }
+
+    /**
+     * Helper: Format uptime seconds to human readable
+     */
+    formatUptime(seconds) {
+        if (!seconds || seconds < 60) return `${Math.floor(seconds)}s`;
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m`;
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return `${hours}h ${mins}m`;
+    }
+
     start() {
         debugLog("🚀 Starting Dashboard API...");
         debugLog("📊 Initial data load...");
 
-        // Initial load
-        debugLog("📈 Updating tickers...");
-        this.updateTickers();
+        // Initial load - NEW DASHBOARD
+        debugLog("🔑 Updating key metrics...");
+        this.updateKeyMetrics();
 
-        debugLog("💱 Updating trades...");
+        debugLog("⭐ Rendering prime markets...");
+        this.renderPrimeMarkets();
+
+        debugLog("💱 Updating recent trades...");
         this.updateTrades();
 
-        debugLog("💾 Updating storage...");
-        this.updateStorage();
-
-        debugLog("🌌 Updating universe...");
-        this.updateUniverse();
-
-        debugLog("🔬 Updating microstructure stats...");
+        debugLog("🔬 Updating microstructure preview...");
         this.updateMicrostructureStats();
 
-        debugLog("🚀 Updating Feature Engine stats...");
+        debugLog("🚀 Updating Feature Engine preview...");
         this.updateFeatureEngineStats();
 
         debugLog("⏰ Setting up polling intervals...");
         // Set up polling intervals using config values
+
+        // Key metrics every 5s
         setInterval(() => {
-            debugLog("🔄 Interval: updating tickers");
-            this.updateTickers();
+            this.updateKeyMetrics();
+        }, 5000);
+
+        // Prime markets every 2s
+        setInterval(() => {
+            debugLog("🔄 Interval: updating prime markets");
+            this.renderPrimeMarkets();
         }, DashboardConfig.intervals.tickers);
 
         setInterval(() => {
