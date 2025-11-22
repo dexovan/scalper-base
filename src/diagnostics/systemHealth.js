@@ -132,10 +132,10 @@ function checkOrderbookDepth() {
         };
     }
 
-    if (avgDepth < 10) {
+    if (avgDepth < 5) {
         return {
             status: 'WARNING',
-            message: `⚠️ Low orderbook depth (${avgDepth.toFixed(1)} levels). Wall detection may be limited.`,
+            message: `⚠️ Low orderbook depth (${avgDepth.toFixed(1)} levels). Wall detection will be limited. May be starting up - wait 30s and refresh.`,
             avgDepth,
             samples
         };
@@ -143,7 +143,7 @@ function checkOrderbookDepth() {
 
     return {
         status: 'OK',
-        message: `✅ Orderbook depth sufficient (${avgDepth.toFixed(1)} levels)`,
+        message: `✅ Orderbook depth sufficient (${avgDepth.toFixed(1)} levels average)`,
         avgDepth,
         samples: samples.slice(0, 3) // Show just 3 examples
     };
@@ -155,27 +155,31 @@ function checkOrderbookDepth() {
 function checkFeatureEngine(featureEngine) {
     const health = featureEngine.getHealthStatus();
 
-    if (!health.isRunning) {
+    // Check if Feature Engine is actually processing symbols
+    if (!health.activeSymbols || health.activeSymbols === 0) {
         return {
             status: 'ERROR',
-            message: '❌ Feature Engine NOT RUNNING',
-            health
+            message: '❌ Feature Engine NOT RUNNING (no active symbols)',
+            activeSymbols: health.activeSymbols,
+            totalSymbols: health.totalSymbols
         };
     }
 
-    if (health.symbolsProcessed < 100) {
+    if (health.activeSymbols < 50) {
         return {
             status: 'WARNING',
-            message: `⚠️ Feature Engine just started (${health.symbolsProcessed} updates)`,
-            health
+            message: `⚠️ Feature Engine low activity (${health.activeSymbols} active symbols)`,
+            activeSymbols: health.activeSymbols,
+            totalSymbols: health.totalSymbols
         };
     }
 
     return {
         status: 'OK',
-        message: `✅ Feature Engine processing (${health.updatesPerSecond} ups, ${health.symbolsProcessed} total)`,
-        updatesPerSecond: health.updatesPerSecond,
-        symbolsProcessed: health.symbolsProcessed
+        message: `✅ Feature Engine processing (${health.activeSymbols} active symbols, ${health.totalSymbols} total)`,
+        activeSymbols: health.activeSymbols,
+        totalSymbols: health.totalSymbols,
+        engines: health.engines
     };
 }
 
