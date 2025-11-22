@@ -86,6 +86,11 @@ class FeatureEngine {
             errorsCount: 0
         };
 
+        // Debug counters
+        this._nullDataCount = 0;
+        this._successDataCount = 0;
+        this._firstDataLogged = false;
+
         // System state
         this.isInitialized = false;
         this.isRunning = false;
@@ -442,10 +447,22 @@ class FeatureEngine {
             // Check if we have ANY data for this symbol
             const hasData = orderbook || (trades && trades.length > 0);
 
+            // DEBUG: Log first successful data fetch
+            if (hasData && !this._firstDataLogged) {
+                this._firstDataLogged = true;
+                this.logger.info(`[DEBUG] First successful data fetch for ${symbol}: orderbook=${!!orderbook}, trades=${trades?.length || 0}`);
+            }
+
             if (!hasData) {
                 // Symbol has no microstructure data yet - skip silently
+                this._nullDataCount++;
+                if (this._nullDataCount === 100) {
+                    this.logger.warn(`[DEBUG] 100 null data results - last symbol: ${symbol}. Success count: ${this._successDataCount}`);
+                }
                 return null;
             }
+
+            this._successDataCount++;
 
             // Get current price from orderbook or trades
             let currentPrice = 0;
