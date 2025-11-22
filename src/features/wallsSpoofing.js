@@ -61,7 +61,7 @@ class WallsSpoofingEngine {
                 // DEBUG: Log validation failure
                 if (!this._validationFailLogged) {
                     this._validationFailLogged = true;
-                    this.logger.info('[WALLS DEBUG] Validation failed:', {
+                    console.log('[WALLS DEBUG] Validation failed:', {
                         hasOrderbook: !!orderbookData,
                         hasBids: !!orderbookData?.bids,
                         hasAsks: !!orderbookData?.asks,
@@ -80,15 +80,17 @@ class WallsSpoofingEngine {
             const bidWalls = this.detectWalls(bids, 'bid', currentPrice);
             const askWalls = this.detectWalls(asks, 'ask', currentPrice);
 
-            // DEBUG: Log wall detection
-            if (!this._wallDebugLogged && (bidWalls.length > 0 || askWalls.length > 0)) {
+            // DEBUG: Log wall detection (always log first time)
+            if (!this._wallDebugLogged) {
                 this._wallDebugLogged = true;
-                this.logger.info('[WALLS DEBUG] Detected walls:', {
+                console.log('[WALLS DEBUG] First detection attempt:', {
+                    bidsLength: bids.length,
+                    asksLength: asks.length,
                     bidWalls: bidWalls.length,
                     askWalls: askWalls.length,
                     currentPrice,
-                    topBidWall: bidWalls[0],
-                    topAskWall: askWalls[0]
+                    topBidWall: bidWalls[0] || 'none',
+                    topAskWall: askWalls[0] || 'none'
                 });
             }
 
@@ -167,7 +169,7 @@ class WallsSpoofingEngine {
         // DEBUG: Log detection attempt periodically
         if (!this._wallDetectionLogged) {
             this._wallDetectionLogged = true;
-            this.logger.info(`[WALLS DEBUG] Detection attempt on ${side} side:`, {
+            console.log(`[WALLS DEBUG] Detection attempt on ${side} side:`, {
                 levels: entries.length,
                 avgQuantity,
                 currentPrice,
