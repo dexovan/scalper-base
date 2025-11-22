@@ -1,7 +1,108 @@
 # SCALPER-BASE PROJECT MEMORY
 
-**Last Updated:** 2025-11-22 23:45
+**Last Updated:** 2025-11-22 14:15 (MAJOR BUG FIX: Feature Engine activeSymbols)
 **Purpose:** Persistent knowledge base for critical problems, solutions, and best practices
+
+---
+
+## 🔥 CRITICAL BUG FIX: Feature Engine activeSymbols Always 0 (2025-11-22)
+
+### Problem
+
+Dashboard pokazivao `activeSymbols: 0` uprkos tome što je Feature Engine procesuirao 100k+ simbola (120-140 updates/s).
+
+### Root Cause Analysis (3 bug-a u lancu)
+
+**Bug #1: WebSocket orderbook topic parsing**
+
+- Bybit šalje: `orderbook.1.BTCUSDT` (3 dela: tip.depth.simbol)
+- Kod parsirao: `topic.split(".")` → [kind, symbol] (samo 2 dela!)
+- Rezultat: simbol="1" umesto "BTCUSDT"
+- **Commit:** dc8ee53 - "fix: Parse orderbook topic correctly"
+
+```javascript
+// BEFORE (BROKEN):
+const [kind, symbolRaw] = topic.split(".");
+
+// AFTER (FIXED):
+const parts = topic.split(".");
+const kind = parts[0];
+const symbol = kind === "orderbook" ? parts[2] : parts[1];
+```
+
+**Bug #2: OrderbookManager hasData provera**
+
+- `getOrderbookSummary()` vraća objekat UVEK (čak i za prazne bids/asks)
+- Feature Engine: `if (orderbook)` → uvek true
+- Trebalo: Proveriti da li `bids.length > 0 && asks.length > 0`
+- **Commit:** ed9a22d - "fix: Check orderbook bids/asks arrays not just object existence"
+
+```javascript
+// BEFORE (BROKEN):
+const hasData = orderbook || (trades && trades.length > 0);
+
+// AFTER (FIXED):
+const hasOrderbookData =
+  orderbook &&
+  orderbook.bids &&
+  orderbook.bids.length > 0 &&
+  orderbook.asks &&
+  orderbook.asks.length > 0;
+const hasData = hasOrderbookData || (trades && trades.length > 0);
+```
+
+**Bug #3: getHealthStatus() koristio nepostojeći this.symbolData** ⚠️ KRITIČNO
+
+- API endpoint `/api/features/health` poziva `getHealthStatus()`
+- `getHealthStatus()` koristio: `activeSymbols: Object.keys(this.symbolData).length`
+- **PROBLEM:** `this.symbolData` NIKAD NIJE INICIJALIZOVAN - uvek prazan objekat!
+- Pravi kod u `getHealthMetrics()` koristio `this.lastUpdateTimes` - ali ta funkcija se nije pozivala
+- **Commit:** b18aedd - "fix: getHealthStatus() using wrong data source for activeSymbols"
+
+```javascript
+// BEFORE (BROKEN):
+getHealthStatus() {
+    const symbolData = this.symbolData || {}; // NIKAD NE POSTOJI!
+    return {
+        activeSymbols: Object.keys(symbolData).length, // UVEK 0
+        ...
+    };
+}
+
+// AFTER (FIXED):
+getHealthStatus() {
+    const now = Date.now();
+    const activeSymbols = Array.from(this.lastUpdateTimes.values())
+        .filter(time => now - time < 60000).length;
+    return {
+        activeSymbols: activeSymbols, // SADA RADI!
+        totalSymbols: this.featureStates.size,
+        ...
+    };
+}
+```
+
+### Debugging Process
+
+1. Proverio OrderbookManager health: 300 simbola, svi sa podacima ✅
+2. Testirao direktno `node src/index.js`: Videli `SUCCESS - will set lastUpdateTimes` ✅
+3. Proverio PM2 logove: Nema DEBUG logova (PM2 ne prikazuje console.log)
+4. Našao da `getHealthStatus()` koristi nepostojeći `this.symbolData`
+5. Ispravio da koristi `this.lastUpdateTimes` kao u `getHealthMetrics()`
+
+### Rezultat
+
+- **Pre:** activeSymbols: 0 (bug 3 meseci+)
+- **Posle:** activeSymbols: 300 ✅
+- symbolsProcessed: ~120-140 updates/sekundi ✅
+- Dashboard konačno prikazuje pravi status ✅
+
+### Lekcije
+
+1. **Uvek proveri koji endpoint API poziva** - `/health` pozivao pogrešnu funkciju
+2. **Debug sa direktnim pokretanjem** - PM2 sakriva console.log
+3. **Proveri da li varijable postoje pre upotrebe** - `this.symbolData` nikad kreiran
+4. **3-part topic format** - Bybit orderbook: `orderbook.DEPTH.SYMBOL` ne `orderbook.SYMBOL`
 
 ---
 
@@ -1734,11 +1835,12 @@ const universe = await getUniverseSnapshot(); // NE ZABORAVI await!
 **End of Project Memory**
 _Automatski ažurirano tokom development sesija_
 
-##  PHASE 0.6 - DASHBOARD REDESIGN & MARKETS PAGE (Nov 22, 2025)
+## PHASE 0.6 - DASHBOARD REDESIGN & MARKETS PAGE (Nov 22, 2025)
 
 ### Problem: Missing 24h Ticker Data (change24h, volume24h)
 
 **Symptom:**
+
 - Markets page showing '0.00%' for all 24h changes
 - Volume column showing '-' for all symbols
 - Console logs: `change24h: null, volume24h: null`
@@ -1748,6 +1850,7 @@ WebSocket ticker events from Bybit only provide real-time price, NOT 24h statist
 
 **Solution Implemented:**
 Created robust 24h data refresh system in `src/http/monitorApi.js`:
+
 - Hybrid data model: WebSocket (real-time) + REST API (24h stats)
 - Fetch from `https://api.bybit.com/v5/market/tickers?category=linear` every 60s
 - Retry logic: 3 attempts with 5s delay
@@ -1755,17 +1858,20 @@ Created robust 24h data refresh system in `src/http/monitorApi.js`:
 - New endpoint: `GET /api/monitor/24h-status`
 
 **Key Features:**
+
 1. Updates existing tickers (preserves WebSocket prices)
 2. Creates new tickers for symbols not in WebSocket
 3. Tracks `last24hUpdate` timestamp
 4. Graceful degradation (null if unavailable)
 
 **Configuration:**
+
 - Refresh interval: 60 seconds
 - Max retry attempts: 3
 - Retry delay: 5 seconds
 
 **Files Changed:**
+
 - `src/http/monitorApi.js` (+180 lines)
   - `fetch24hData()` - Main fetch with retry
   - `start24hDataRefresh()` - Initialize refresh
@@ -1773,6 +1879,7 @@ Created robust 24h data refresh system in `src/http/monitorApi.js`:
   - `get24hDataStatus()` - Monitoring
 
 **Lessons Learned:**
+
 1. Always check project-memory.md API inventory first
 2. WebSocket != REST API (different data)
 3. Hybrid approach works best
@@ -1780,6 +1887,6 @@ Created robust 24h data refresh system in `src/http/monitorApi.js`:
 5. Monitor everything
 
 **Commits:**
+
 - `1049fa0` - Initial 24h data refresh
 - `[CURRENT]` - Robust version with retry + monitoring
-
