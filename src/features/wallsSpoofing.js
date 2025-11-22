@@ -14,11 +14,11 @@ import logger from '../utils/logger.js';
 class WallsSpoofingEngine {
     constructor(config = {}) {
         this.config = {
-            // Wall detection multiplier (very low for testing - detects any above-average order)
-            wallMultiplier: 2.0,  // Was 4.0 - now just 2x average
+            // Wall detection multiplier - EXTREMELY LOW for testing
+            wallMultiplier: 1.1,  // Just 10% above average - will detect almost anything
 
-            // Minimum wall size (in USDT value) - very low for testing
-            minWallSize: 100,  // Was 500 - now just $100
+            // Minimum wall size (in USDT value) - EXTREMELY LOW
+            minWallSize: 10,  // Just $10 - tiny walls
 
             // Wall tracking duration
             wallHistoryDuration: 30000, // 30 seconds
@@ -27,7 +27,7 @@ class WallsSpoofingEngine {
             spoofing: {
                 minApproachDistance: 0.002,    // 0.2% price approach
                 minWallDuration: 2000,         // 2 seconds minimum wall life
-                maxDistanceFromPrice: 0.01,    // 1% max distance for tracking
+                maxDistanceFromPrice: 0.05,    // 5% max distance for tracking (increased from 1%)
                 disappearanceThreshold: 0.3    // 30% size reduction = disappearance
             },
 
