@@ -459,6 +459,28 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // GET /api/monitor/test-fetch - Manual trigger for 24h data fetch (DEBUG)
+  // ============================================================
+  app.get("/api/monitor/test-fetch", async (req, res) => {
+    try {
+      console.log("🧪 [TEST-FETCH] Manual fetch triggered via API endpoint");
+      await fetch24hData(0);
+      return res.json({
+        ok: true,
+        message: "Fetch triggered successfully",
+        status: get24hDataStatus()
+      });
+    } catch (error) {
+      console.error("❌ [TEST-FETCH] Error:", error);
+      return res.json({
+        ok: false,
+        error: error.message,
+        stack: error.stack
+      });
+    }
+  });
+
+  // ============================================================
   // GET /api/monitor/trades - Recent trade data
   // ============================================================
   app.get("/api/monitor/trades", (req, res) => {
@@ -1074,13 +1096,19 @@ export function startMonitorApiServer(port = 8090) {
   // START SERVER
   // ============================================================
   app.listen(port, "0.0.0.0", () => {
+    console.log("=".repeat(60));
     console.log("🚀 DEBUG: Monitor API successfully started");
     console.log(`🟢 ENGINE-API running on port ${port}`);
     console.log(`➡️  http://localhost:${port}/api/monitor/summary`);
     console.log(`➡️  http://localhost:${port}/api/monitor/24h-status`);
+    console.log(`➡️  http://localhost:${port}/api/monitor/test-fetch`);
+    console.log("=".repeat(60));
 
     // Start 24h data refresh with robust error handling
+    console.log("⏳ About to call start24hDataRefresh()...");
     start24hDataRefresh();
+    console.log("✅ start24hDataRefresh() call completed");
+    console.log("=".repeat(60));
   });
 }
 
