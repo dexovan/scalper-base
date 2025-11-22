@@ -55,7 +55,7 @@ async function startEngine() {
   console.log("🌍 [ENGINE] initUniverse() completed!");
 
   // Verify universe loaded
-  const universeCheck = getUniverseSnapshot();
+  const universeCheck = await getUniverseSnapshot();
   console.log("🌍 [ENGINE] Universe verification:", {
     totalSymbols: universeCheck.stats.totalSymbols,
     fetchedAt: universeCheck.fetchedAt,
