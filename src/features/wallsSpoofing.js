@@ -152,6 +152,19 @@ class WallsSpoofingEngine {
 
         if (avgQuantity === 0) return [];
 
+        // DEBUG: Log detection attempt periodically
+        if (!this._wallDetectionLogged) {
+            this._wallDetectionLogged = true;
+            this.logger.info(`[WALLS DEBUG] Detection attempt on ${side} side:`, {
+                levels: entries.length,
+                avgQuantity,
+                currentPrice,
+                wallMultiplier: this.config.wallMultiplier,
+                minWallSize: this.config.minWallSize,
+                sample: entries.slice(0, 3).map(([p, q]) => ({ price: p, qty: q, usd: p * q }))
+            });
+        }
+
         // Find walls (quantities significantly above average)
         for (let i = 0; i < Math.min(entries.length, 20); i++) { // Check top 20 levels
             const [price, qty] = entries[i];
