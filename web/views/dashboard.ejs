@@ -93,6 +93,115 @@
         </div>
     </section>
 
+    <!-- System Monitors - 3 Cards -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        <!-- Diagnostics -->
+        <div class="rounded-lg border border-slate-800 bg-gradient-to-br from-red-950/20 to-slate-900/60 p-4 hover:border-red-700/50 transition-colors">
+            <div class="flex items-start justify-between mb-3">
+                <div>
+                    <h3 class="text-base font-semibold text-slate-200">System Diagnostics</h3>
+                    <p class="text-xs text-slate-400 mt-1">Instant problem detection</p>
+                </div>
+                <div class="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 12l2 2 4-4"/>
+                        <circle cx="12" cy="12" r="10"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mb-3 text-xs">
+                <div>
+                    <div class="text-slate-500">Status</div>
+                    <div class="text-lg font-bold text-green-400" id="diagnostics-status-preview">HEALTHY</div>
+                </div>
+                <div>
+                    <div class="text-slate-500">Checks</div>
+                    <div class="text-lg font-bold text-slate-200">5/5</div>
+                </div>
+            </div>
+            <a href="/diagnostics" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors">
+                View Diagnostics
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14m-7-7l7 7-7 7"/>
+                </svg>
+            </a>
+        </div>
+
+        <!-- Microstructure Monitor -->
+        <div class="rounded-lg border border-slate-800 bg-gradient-to-br from-blue-950/20 to-slate-900/60 p-4 hover:border-blue-700/50 transition-colors">
+            <div class="flex items-start justify-between mb-3">
+                <div>
+                    <h3 class="text-base font-semibold text-slate-200">Microstructure Monitor</h3>
+                    <p class="text-xs text-slate-400 mt-1">FAZA 3 - Real-time market data</p>
+                </div>
+                <div class="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 3h18v18H3z"/>
+                        <path d="M3 9h18M9 3v18"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-3 text-xs">
+                <div>
+                    <div class="text-slate-500">Symbols</div>
+                    <div class="text-lg font-bold text-slate-200" id="micro-symbols-preview">-</div>
+                </div>
+                <div>
+                    <div class="text-slate-500">Events/s</div>
+                    <div class="text-lg font-bold text-emerald-400" id="micro-rate-preview">-</div>
+                </div>
+                <div>
+                    <div class="text-slate-500">Status</div>
+                    <div class="text-lg font-bold text-green-400" id="micro-health-preview">OK</div>
+                </div>
+            </div>
+            <a href="/monitor-micro" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-colors">
+                Open Monitor
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14m-7-7l7 7-7 7"/>
+                </svg>
+            </a>
+        </div>
+
+        <!-- Feature Engine -->
+        <div class="rounded-lg border border-slate-800 bg-gradient-to-br from-violet-950/20 to-slate-900/60 p-4 hover:border-violet-700/50 transition-colors">
+            <div class="flex items-start justify-between mb-3">
+                <div>
+                    <h3 class="text-base font-semibold text-slate-200">Feature Engine</h3>
+                    <p class="text-xs text-slate-400 mt-1">FAZA 4 - Advanced signal generation</p>
+                </div>
+                <div class="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-violet-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2v6m0 12v2M4.93 4.93l4.24 4.24m5.66 5.66l4.24 4.24M2 12h6m12 0h2M4.93 19.07l4.24-4.24m5.66-5.66l4.24-4.24"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-3 text-xs">
+                <div>
+                    <div class="text-slate-500">Analyzed</div>
+                    <div class="text-lg font-bold text-slate-200" id="features-symbols-preview">-</div>
+                </div>
+                <div>
+                    <div class="text-slate-500">Updates/s</div>
+                    <div class="text-lg font-bold text-emerald-400" id="features-rate-preview">-</div>
+                </div>
+                <div>
+                    <div class="text-slate-500">Status</div>
+                    <div class="text-lg font-bold text-green-400" id="features-health-preview">OK</div>
+                </div>
+            </div>
+            <a href="/features" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 5l7 7-7 7"/>
+                </svg>
+                View Details
+            </a>
+        </div>
+
+    </section>
+
     <!-- Recent Market Activity - Last 10 Trades -->
     <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
         <div class="flex items-center justify-between mb-3">
