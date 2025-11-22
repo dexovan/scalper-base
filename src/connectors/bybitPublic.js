@@ -234,9 +234,13 @@ async function connectWS(symbolsOverride = null) {
     // Primer topic stringova:
     // tickers.BTCUSDT
     // publicTrade.BTCUSDT
+    // orderbook.1.BTCUSDT (depth.symbol)
     const topic = msg.topic;
-    const [kind, symbolRaw] = topic.split(".");
-    const symbol = symbolRaw || null;
+    const parts = topic.split(".");
+    const kind = parts[0];
+
+    // Za orderbook format je "orderbook.depth.SYMBOL", za ostale je "kind.SYMBOL"
+    const symbol = kind === "orderbook" ? parts[2] : parts[1];
 
     if (kind === "tickers" && symbol) {
       // Bybit v5 tickers: msg.data je objekat ili niz; uzimamo prvi ako je niz
