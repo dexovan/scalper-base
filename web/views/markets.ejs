@@ -112,9 +112,6 @@
             const tickerData = await tickerResponse.json();
             const tickers = tickerData.ok ? tickerData.tickers : [];
 
-            console.log('📊 Ticker API response:', tickerData);
-            console.log('📊 First ticker example:', tickers[0]);
-
             allTickers.clear();
             tickers.forEach(t => allTickers.set(t.symbol, t));
 
@@ -147,12 +144,6 @@
 
         tbody.innerHTML = filtered.map(symbol => {
             const ticker = allTickers.get(symbol.symbol);
-
-            // Debug first symbol
-            if (symbol.symbol === 'BTCUSDT') {
-                console.log('🔍 BTCUSDT ticker:', ticker);
-            }
-
             const price = ticker?.price ? `$${ticker.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 6})}` : '-';
             const change = ticker?.change24h || 0;
             const changeClass = change >= 0 ? 'text-emerald-400' : 'text-red-400';

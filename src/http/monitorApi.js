@@ -142,6 +142,79 @@ export function attachRealtimeListeners(bybitPublic) {
 }
 
 // ============================================================
+// FETCH 24H DATA FROM BYBIT REST API
+// ============================================================
+let ticker24hInterval = null;
+
+async function fetch24hData() {
+  try {
+    console.log("📊 Fetching 24h ticker data from Bybit REST API...");
+    const url = "https://api.bybit.com/v5/market/tickers?category=linear";
+    const response = await fetch(url);
+    const json = await response.json();
+
+    if (!json || !json.result || !Array.isArray(json.result.list)) {
+      console.error("❌ Failed to fetch 24h data:", json);
+      return;
+    }
+
+    const tickers = json.result.list;
+    let updatedCount = 0;
+
+    for (const ticker of tickers) {
+      const symbol = ticker.symbol;
+      const existing = latestTickers.get(symbol);
+
+      // Parse 24h data
+      const change24h = ticker.price24hPcnt ? parseFloat(ticker.price24hPcnt) : null;
+      const volume24h = ticker.volume24h ? parseFloat(ticker.volume24h) :
+                        ticker.turnover24h ? parseFloat(ticker.turnover24h) : null;
+
+      if (existing) {
+        // Update existing ticker with 24h data
+        existing.change24h = change24h;
+        existing.volume24h = volume24h;
+        updatedCount++;
+      } else {
+        // Create new ticker entry
+        const price = ticker.lastPrice ? parseFloat(ticker.lastPrice) : null;
+        if (price) {
+          latestTickers.set(symbol, {
+            symbol,
+            price,
+            change24h,
+            volume24h,
+            timestamp: new Date().toISOString()
+          });
+          updatedCount++;
+        }
+      }
+    }
+
+    console.log(`✅ Updated 24h data for ${updatedCount} symbols (total: ${latestTickers.size})`);
+  } catch (error) {
+    console.error("❌ Error fetching 24h data:", error.message);
+  }
+}
+
+// Start periodic 24h data refresh (every 30 seconds)
+function start24hDataRefresh() {
+  if (ticker24hInterval) {
+    clearInterval(ticker24hInterval);
+  }
+
+  // Initial fetch
+  fetch24hData();
+
+  // Refresh every 30 seconds
+  ticker24hInterval = setInterval(() => {
+    fetch24hData();
+  }, 30000);
+
+  console.log("🔄 Started 24h data refresh (every 30s)");
+}
+
+// ============================================================
 // START ENGINE API SERVER
 // ============================================================
 export function startMonitorApiServer(port = 8090) {
@@ -875,5 +948,8 @@ export function startMonitorApiServer(port = 8090) {
     console.log("🚀 DEBUG: Monitor API successfully started");
     console.log(`🟢 ENGINE-API running on port ${port}`);
     console.log(`➡️  http://localhost:${port}/api/monitor/summary`);
+
+    // Start 24h data refresh
+    start24hDataRefresh();
   });
 }
