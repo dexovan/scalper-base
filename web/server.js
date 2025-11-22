@@ -300,6 +300,15 @@ app.get("/monitor-micro", requireAuth, (req, res) => {
   });
 });
 
+// 7️⃣ FEATURE ENGINE PAGE (FAZA 4)
+app.get("/features", requireAuth, (req, res) => {
+  res.render("features", {
+    title: "Feature Engine",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
 // =======================================
 // SERVER START
 // =======================================
