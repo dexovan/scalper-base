@@ -1067,7 +1067,7 @@ export function startMonitorApiServer(port = 8090) {
           .map(s => ({ symbol: s.symbol, spoofingScore: s.spoofingScore, tobImbalance: s.tobImbalance })),
         // Add sample of wall data to debug
         sampleSymbolWallData: overview.slice(0, 3).map(s => {
-          const fullData = featureEngine.getFeaturesForSymbol(s.symbol);
+          const fullData = featureEngine.getFeatureState(s.symbol);
           return {
             symbol: s.symbol,
             hasBidWall: fullData?.walls?.hasBidWall,
