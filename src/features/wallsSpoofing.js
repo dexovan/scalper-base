@@ -58,6 +58,18 @@ class WallsSpoofingEngine {
     analyzeWallsAndSpoofing(orderbookData, recentTrades = [], currentPrice = 0) {
         try {
             if (!this.isValidData(orderbookData, currentPrice)) {
+                // DEBUG: Log validation failure
+                if (!this._validationFailLogged) {
+                    this._validationFailLogged = true;
+                    this.logger.info('[WALLS DEBUG] Validation failed:', {
+                        hasOrderbook: !!orderbookData,
+                        hasBids: !!orderbookData?.bids,
+                        hasAsks: !!orderbookData?.asks,
+                        currentPrice,
+                        bidsLength: orderbookData?.bids?.length || 0,
+                        asksLength: orderbookData?.asks?.length || 0
+                    });
+                }
                 return this.getEmptyAnalysis();
             }
 
