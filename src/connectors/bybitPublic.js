@@ -329,6 +329,15 @@ async function connectWS(symbolsOverride = null) {
       const orderbookData = Array.isArray(msg.data) ? msg.data[0] : msg.data;
 
       if (orderbookData) {
+        // DEBUG: Log raw orderbook data to see what we're getting
+        const bidCount = (orderbookData.b || orderbookData.bids || []).length;
+        const askCount = (orderbookData.a || orderbookData.asks || []).length;
+
+        if (symbol === 'BTCUSDT' && Math.random() < 0.01) { // Log 1% of BTCUSDT updates
+          console.log(`🔍 [ORDERBOOK DEBUG] ${symbol}: bids=${bidCount}, asks=${askCount}`);
+          console.log(`🔍 [ORDERBOOK DEBUG] Sample bids:`, (orderbookData.b || orderbookData.bids || []).slice(0, 3));
+        }
+
         // Normalize orderbook event for OrderbookManager
         const orderbookEvent = {
           bids: (orderbookData.b || orderbookData.bids || []).map(level => ({
