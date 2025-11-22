@@ -176,6 +176,8 @@ app.use(
   createProxyMiddleware({
     target: "http://localhost:8090/api/monitor",
     changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
     pathRewrite: {
       "^/monitor/api": ""
     }
@@ -190,6 +192,8 @@ app.use(
   createProxyMiddleware({
     target: "http://localhost:8090/api/microstructure",
     changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
     pathRewrite: {
       "^/api/microstructure": ""
     }
@@ -201,6 +205,8 @@ app.use(
   createProxyMiddleware({
     target: "http://localhost:8090/api/symbol",
     changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
     pathRewrite: {
       "^/api/symbol": ""
     }
@@ -212,6 +218,8 @@ app.use(
   createProxyMiddleware({
     target: "http://localhost:8090/api/microstructure/health",
     changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
     pathRewrite: {
       "^/api/health": ""
     }
@@ -226,6 +234,8 @@ app.use(
   createProxyMiddleware({
     target: "http://localhost:8090/api/features",
     changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
     pathRewrite: {
       "^/api/features": ""
     }
