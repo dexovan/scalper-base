@@ -140,27 +140,59 @@ class FeatureEngine {
         this.logger.info('Starting Feature Engine processing...');
         this.isRunning = true;
 
-        // Start update loops for all symbols
-        const symbols = Array.from(this.featureStates.keys());
+        // Start update loops ONLY for symbols with OrderbookManager data
+        const allSymbols = Array.from(this.featureStates.keys());
 
-        for (const symbol of symbols) {
-            this.startSymbolUpdates(symbol);
+        // Wait briefly for OrderbookManager to accumulate initial data
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const { getActiveSymbols } = await import('../microstructure/OrderbookManager.js');
+        const activeSymbols = getActiveSymbols();
+
+        this.logger.info(`[DIAGNOSTIC] Symbols in universe: ${allSymbols.length}, Symbols with orderbook data: ${activeSymbols.length}`);
+
+        if (activeSymbols.length === 0) {
+            this.logger.warn('No symbols with orderbook data yet - will retry in 5 seconds');
+            setTimeout(() => this.startActiveSymbolUpdates(), 5000);
+        } else {
+            this.logger.info(`[DIAGNOSTIC] Starting updates for symbols: ${activeSymbols.slice(0, 10).join(', ')}...`);
+
+            for (const symbol of activeSymbols) {
+                // Only start updates for symbols that are in our universe
+                if (this.featureStates.has(symbol)) {
+                    this.startSymbolUpdates(symbol);
+                }
+            }
+
+            this.logger.info(`Feature Engine started - processing ${activeSymbols.length} active symbols (out of ${allSymbols.length} in universe)`);
         }
 
         // Start performance monitoring
         this.startPerformanceMonitoring();
+    }
 
-        // Diagnostic: Check how many symbols have OrderbookManager data
-        setTimeout(async () => {
-            const { getActiveSymbols } = await import('../microstructure/OrderbookManager.js');
-            const activeInOrderbook = getActiveSymbols();
-            this.logger.info(`[DIAGNOSTIC] Symbols in universe: ${symbols.length}, Symbols with orderbook data: ${activeInOrderbook.length}`);
-            if (activeInOrderbook.length > 0) {
-                this.logger.info(`[DIAGNOSTIC] Sample symbols with data: ${activeInOrderbook.slice(0, 5).join(', ')}`);
+    /**
+     * Helper: Start updates for active symbols (used for retry logic)
+     */
+    async startActiveSymbolUpdates() {
+        if (!this.isRunning) return;
+
+        const { getActiveSymbols } = await import('../microstructure/OrderbookManager.js');
+        const activeSymbols = getActiveSymbols();
+
+        if (activeSymbols.length === 0) {
+            this.logger.warn('Still no symbols with orderbook data - will retry in 10 seconds');
+            setTimeout(() => this.startActiveSymbolUpdates(), 10000);
+            return;
+        }
+
+        this.logger.info(`Starting updates for ${activeSymbols.length} symbols with orderbook data`);
+
+        for (const symbol of activeSymbols) {
+            if (this.featureStates.has(symbol) && !this.updateIntervals.has(symbol)) {
+                this.startSymbolUpdates(symbol);
             }
-        }, 5000);
-
-        this.logger.info(`Feature Engine started - processing ${symbols.length} symbols`);
+        }
     }
 
     /**

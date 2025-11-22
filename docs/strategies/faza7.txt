@@ -1,0 +1,459 @@
+Idemo odmah u FAZU 7. 💼⚙️
+(Ovo je čisto **tvoj** Bybit execution layer na serveru u Singapuru – bez Discorda, bez eksternih botova.)
+
+---
+
+# 🧩 FAZA 7 – Bybit API Execution Layer
+
+**Cilj:** stabilan, predvidljiv sloj za:
+
+* slanje naloga (entry, DCA, TP1/TP2/TP3, close)
+* praćenje pozicija i otvorenih naloga
+* povezivanje sa state machine + position engine-om
+
+Sve to **bez** da ostatak sistema zna detalje Bybit API-ja.
+
+---
+
+## 7.1 Arhitektura & fajlovi
+
+Predlog strukture (drži se tvojeg postojeće hijerarhije):
+
+```bash
+src/
+  connectors/
+    bybit/
+      bybitConfig.js
+      bybitHttpClient.js
+      bybitWsPublic.js
+      bybitWsPrivate.js
+      bybitOrderRouter.js
+      bybitPositionService.js
+      bybitAccountService.js
+      bybitSymbolMetaService.js
+      bybitHealthCheck.js
+```
+
+Plus 2 integraciona sloja:
+
+```bash
+src/integration/
+  executionGateway.js      # glavni ulaz za state machine / position engine
+  executionEvents.js       # EventEmitter za fill-ove, pozicije, greške
+```
+
+---
+
+## 7.2 Konfiguracija (bybitConfig.js)
+
+### 7.2.1 Mode & environment
+
+```js
+export const bybitConfig = {
+  env: process.env.BYBIT_ENV || 'testnet', // 'testnet' | 'mainnet'
+  apiKey: process.env.BYBIT_API_KEY,
+  apiSecret: process.env.BYBIT_API_SECRET,
+  recvWindow: 5000,
+  timeoutMs: 5000,
+  baseUrl: {
+    testnet: 'https://api-testnet.bybit.com',
+    mainnet: 'https://api.bybit.com',
+  },
+  wsPublic: {
+    testnet: 'wss://stream-testnet.bybit.com/v5/public/linear',
+    mainnet: 'wss://stream.bybit.com/v5/public/linear',
+  },
+  wsPrivate: {
+    testnet: 'wss://stream-testnet.bybit.com/v5/private',
+    mainnet: 'wss://stream.bybit.com/v5/private',
+  },
+  accountType: 'UNIFIED', // ili 'CONTRACT' u zavisnosti od naloga
+  symbolType: 'LINEAR',   // USDT perpetual
+  dryRun: process.env.EXECUTION_DRY_RUN === 'true', // za paper
+};
+```
+
+### 7.2.2 Trading parametri (vezano za Andre sistem)
+
+Ovde držiš stvari kao:
+
+* default leverage (25x)
+* max slippage za market nalog
+* default orderType (market entry, limit TP)
+* reduceOnly flag za TP
+
+---
+
+## 7.3 HTTP Klijent (bybitHttpClient.js)
+
+**Zadatak:** potpisani REST pozivi (`/v5/order/create`, `/v5/position/list`, itd.)
+
+### 7.3.1 Core klijent
+
+* koristi `fetch` ili `axios`
+* HMAC SHA256 signatura: `timestamp + apiKey + recvWindow + body` (zavisi od v5 spec)
+* automatski dodaje:
+
+  * `X-BAPI-API-KEY`
+  * `X-BAPI-SIGN`
+  * `X-BAPI-TIMESTAMP`
+  * `X-BAPI-RECV-WINDOW`
+
+Funkcije:
+
+```js
+async function get(path, params = {}) {}
+async function post(path, body = {}) {}
+async function delete(path, body = {}) {}
+```
+
+Sa:
+
+* globalnim retry (npr. 3 pokušaja ako je network/5xx error)
+* rate-limit queue (basic: max X req/sec → Promise queue)
+
+---
+
+## 7.4 WebSocket sloj
+
+### 7.4.1 Public WS (bybitWsPublic.js)
+
+Već imaš nešto za Bybit orderbook/klajnove – ovde:
+
+* WS konektor koji radi:
+
+  * auto-reconnect
+  * ping/pong
+  * subscribe/unsubscribe API
+* koristi se za:
+
+  * real-time price (peak detection FAZA 3)
+  * orderbook snapshot (microstructure)
+  * trades feed (flow delta)
+
+Interfejs:
+
+```js
+subscribeTickers(symbols, cb)
+subscribeOrderbook(symbols, depth, cb)
+subscribeTrades(symbols, cb)
+```
+
+Sve evente guraš preko `executionEvents` ili direktno u microstructure modul.
+
+### 7.4.2 Private WS (bybitWsPrivate.js)
+
+Za:
+
+* fills (execution)
+* order status (NEW/PARTIAL/FILLED/CANCELED)
+* pozicije
+* balans
+
+Channels (v5):
+
+* `order`
+* `execution`
+* `position`
+* `wallet`
+
+Interfejs:
+
+```js
+connectPrivateWs()
+subscribePrivateChannels(['order', 'execution', 'position', 'wallet'])
+on('execution', handler)
+on('order', handler)
+on('position', handler)
+```
+
+**Važno:**
+Ako se private WS sruši, execution layer mora fallback-ovati na REST polling (npr. svakih 2-5 sekundi) dok se ne reconnect-uje.
+
+---
+
+## 7.5 Order Router (bybitOrderRouter.js)
+
+Ovo je core FAZE 7 – **jedina tačka** sistema koja zaista “puca” naloge na berzu.
+
+### 7.5.1 Interfejs
+
+```js
+export async function placeMarketEntry({ symbol, side, qty, clientOrderId }) {}
+export async function placeDcaOrder({ symbol, side, qty, clientOrderId }) {}
+export async function placeTpOrder({ symbol, side, qty, price, tpTag }) {}
+export async function closePositionMarket({ symbol, side, qty, reason }) {}
+export async function cancelAllTpDca({ symbol, positionSide }) {}
+export async function syncOpenOrders(symbol) {}
+```
+
+Svi ovi metodi:
+
+* **NE znaju** ništa o Andre logici (TP1=21%, DCA1=5% itd.)
+* dobijaju već spremne vrednosti (qty, price, side) iz **position engine-a** (FAZA 5).
+
+### 7.5.2 Kreiranje naloga /v5/order/create
+
+Za market entry:
+
+```json
+{
+  "category": "linear",
+  "symbol": "RADUSDT",
+  "side": "Sell",
+  "orderType": "Market",
+  "qty": "123",
+  "timeInForce": "IOC",
+  "reduceOnly": false,
+  "positionIdx": 0,
+  "orderLinkId": "andre_ENTRY_RAD_20251122_130601"
+}
+```
+
+Za TP (limit, reduceOnly):
+
+```json
+{
+  "category": "linear",
+  "symbol": "RADUSDT",
+  "side": "Buy",
+  "orderType": "Limit",
+  "qty": "49.2",
+  "price": "0.43657",
+  "timeInForce": "GTC",
+  "reduceOnly": true,
+  "orderLinkId": "andre_TP3_RAD_20251122_130632"
+}
+```
+
+### 7.5.3 Idempotencija (veoma bitno)
+
+* koristi `orderLinkId` (clientOrderId)
+* ako REST vrati error “Order already exists” → tretiraj kao success
+* pri recovery-u (posle restart) možeš naći naloge po `orderLinkId` pattern-u `andre_*`
+
+---
+
+## 7.6 Position Service (bybitPositionService.js)
+
+Zadatak:
+
+* sinhronizacija **stvarnog stanja** sa našim state machine-om
+* čitanje pozicija i otvorenih naloga
+
+Funkcije:
+
+```js
+export async function getPosition(symbol) {}
+export async function getAllPositions() {}
+export async function getOpenOrders(symbol) {}
+export async function getActiveTpOrders(symbol) {}
+export async function getActiveDcaOrders(symbol) {}
+```
+
+Npr. `getPosition(symbol)`:
+
+* zove `/v5/position/list`
+* filtrira po symbol i side (Long/Short)
+* vraća:
+
+```js
+{
+  symbol: 'RADUSDT',
+  side: 'Sell',
+  size: 123,
+  entryPrice: 0.455,
+  leverage: 25,
+  unrealizedPnl: 12.34,
+  createdTime: 1234567890,
+}
+```
+
+---
+
+## 7.7 Account Service (bybitAccountService.js)
+
+Za:
+
+* balans
+* leverage
+* margin mode
+* risk limit
+
+Funkcije:
+
+```js
+export async function getBalance() {}
+export async function setLeverage(symbol, leverage) {}
+export async function setIsolated(symbol) {}  // ako koristiš isolated
+export async function getWalletSummary() {}
+```
+
+Pre prvog live starta:
+
+* proveri da li je nalog na **USDT perpetual**
+* proveri da li je leverage 25x
+* proveri da li imaš minimum margin (npr. ≥ 100 USDT)
+
+---
+
+## 7.8 Symbol Meta Service (bybitSymbolMetaService.js)
+
+Već dijelom postoji u FAZI 2, ovde formalizuješ:
+
+* `tickSize`
+* `lotSize`
+* minQty / maxQty
+* minNotional
+
+Funkcije:
+
+```js
+export async function refreshSymbolMeta() {}
+export function getSymbolMeta(symbol) {}  // vraća tick/lot
+export function roundPrice(symbol, price) {}
+export function roundQty(symbol, qty) {}
+```
+
+Sve cene/qty JEZIVO moraju proći kroz ovaj layer pre slanja naloga.
+Npr.:
+
+```js
+const meta = getSymbolMeta('RADUSDT');
+const roundedPrice = roundPrice('RADUSDT', 0.43657321); // 0.43657
+const roundedQty   = roundQty('RADUSDT', 123.987);      // 123.98
+```
+
+---
+
+## 7.9 Health Check (bybitHealthCheck.js)
+
+Za FAZU 1/monitoring /dashboard:
+
+Funkcije:
+
+```js
+export async function checkRestHealth() {}
+export async function checkWsHealth() {}
+export async function getBybitStatus() {}
+```
+
+* meri latenciju REST poziva (`ping`, `server-time`)
+* proverava da li WS public/private imaju `connected = true`
+* vraća status:
+
+```js
+{
+  rest: { ok: true, latencyMs: 87 },
+  wsPublic: { ok: true, lastMsgAgoSec: 3 },
+  wsPrivate: { ok: false, lastMsgAgoSec: 999, error: 'reconnecting' }
+}
+```
+
+Ovo možeš prikazati na `/monitor` UI-ju.
+
+---
+
+## 7.10 Execution Gateway (integration/executionGateway.js)
+
+Ovo je **API za FAZU 5 + FAZU 6**.
+State machine NE sme direktno da koristi `bybitOrderRouter`.
+
+Interfejs:
+
+```js
+export async function executeEntry(tradePlan) {}
+export async function setupTps(tradePlan, positionState) {}
+export async function setupDcas(tradePlan, positionState) {}
+export async function moveToBreakeven(tradeState) {}
+export async function closeAll(tradeState, reason) {}
+```
+
+Gde je `tradePlan` objekat koji FAZA 5 generiše:
+
+```js
+{
+  symbol: 'RADUSDT',
+  side: 'Sell',
+  baseQty: 100,           // USDT
+  leverage: 25,
+  dcaLevels: [...],
+  tpLevels: [...],
+  clientTag: 'andre_RAD_20251122_1306'
+}
+```
+
+`executeEntry`:
+
+1. izračuna qty (USDT → contract size) preko price/meta
+2. pozove `placeMarketEntry`
+3. vrati `entryPrice`, `filledQty`
+4. state machine prelazi u `IN_POSITION`
+
+`setupTps`:
+
+* za 3 TP-a poziva `placeTpOrder` sa `reduceOnly: true`
+
+`setupDcas`:
+
+* za svaku DCA zonu kreira `placeDcaOrder` u suprotnom smeru (za averaging)
+
+---
+
+## 7.11 Error Handling & Retry politika
+
+### 7.11.1 Tipične greške
+
+* network timeout
+* `10006` – invalid signature
+* `110001` – insufficient balance
+* `110003` – position not found
+* rate limit (`10016` / `10018`)
+
+### 7.11.2 Strategija
+
+* **network / 5xx** → retry sa backoff: 100ms, 300ms, 1000ms
+* **invalid signature** → fatal (pogrešan ključ / clock drift) → log + alert
+* **insufficient balance** → abort trejd, state → CLOSED / ERROR
+* **rate limit** → queue + uspori, ne spamuj
+
+Za svaki fatal error:
+
+* zapisi u `data/logs/execution-error.log`
+* pošalji event: `execution.error` sa detaljima (za dashboard / alert)
+
+---
+
+## 7.12 Test Plan FAZE 7
+
+### 7.12.1 Testnet Only (obavezno)
+
+1. Poveži testnet API key
+2. Ručno startuj engine sa `BYBIT_ENV=testnet` i `EXECUTION_DRY_RUN=false`
+3. Testiraj:
+
+* `executeEntry` → da li se otvori pozicija
+* `setupTps` → da li se pojave 3 reduce-only naloga
+* `setupDcas` → da li se pojave dca market/limit nalozi
+* `moveToBreakeven` → da li se kreira/corriguje SL (ako ga budeš ikad ipak koristio) ili samo cancel DCA + TP ostaje
+
+### 7.12.2 Failure simulacija
+
+* ugasi WS dok je pozicija otvorena → da li REST polling hvata TP hit?
+* namerno daj premali balans → očekivani “insufficient balance” → graceful abort
+* “double click” entry (dvaput pozvan `executeEntry`) → da li `orderLinkId` sprečava dupli entry?
+
+### 7.12.3 Success kriterijumi
+
+* 100% naloga vidljivo na testnet Bybit UI
+* 0 “duplih” naloga po trejdu
+* state machine i execution info se poklapaju sa realnim Bybit pozicijama
+* recovery posle restart radi (pozicija otvorena + TP nalozi → engine nastavlja nadzor)
+
+---
+
+Ako hoćeš, sledeći korak može biti:
+
+* da FAZU 7 “prelomimo” kao skelet fajlova (`bybitOrderRouter.js`, `executionGateway.js`, itd.) sa praznim funkcijama i TODO komentarima – spremno da direktno iskopiraš u `src/connectors/bybit/` i `src/integration/`.
+
+Ako ne, idemo odmah na **FAZU 8 – Paper Trading & Simulation Layer**.

@@ -1,645 +1,667 @@
-DETALJAN PROGRAMERSKI TEHNIČKI PLAN RADA
-PROJEKAT: Andre Strategy - Automated Trading System Implementation
-Cilj: Implementirati kompletnu Andre trading strategiju sa 100% dokumentovanim parametrima
-
-⚠️ BASED ON: 102+ historical trades, Nov 20-21 live validation, 100% confidence documentation
-📊 Andre Stats: 96.6% win rate, +1229% October ROI, 26min avg hold time
-
-Timeframe: 5-7 nedelja (implementation + testing)
-Tech Stack: Node.js, existing microstructure base, Bybit API
-Position Size: $25/trade (scalable to $100 after proving)
-Success Criteria: >65% win rate u paper trading, stabilna implementacija bez bugova
-
-🔑 CRITICAL ANDRE PRINCIPLES:
-- NO TP4/TP5 (only TP1/TP2/TP3) ❌
-- NO initial stop loss (pure DCA reliance until TP1) ❌
-- NO trailing stop loss ❌
-- NO weekend trading (Mon-Fri only) ❌
-- Hard stop @ 18:00 UTC (regardless of profit) ❌
-- 3 concurrent positions max
-- 4-10 trades/day (10 = exceptional like Nov 20)
-- Peak trading: 12:00-14:00 UTC (44% of trades)
-
-🎯 FAZA 1: SIGNAL GENERATOR (Nedelja 1-2)
-Cilj: Implementirati bot alert processing i 2-stage detection
-Komponente:
-
-1.1 Bot Alert Integration
-
-Poveži Discord bot alerts ili kreiraj mock alert generator
-Parse alert messages za coin, price, RSI, volume, funding rate, last_seen
-Store alerts u in-memory buffer sa timestamps
-Kreirati alert history tracking za svaki coin
-1.2 Two-Stage Detection
-
-Detektuj Volatility alerts (Stage 1) i store sa timestamp
-Detektuj Scalp Reversal alerts (Stage 2)
-Match Stage 1 + Stage 2 za isti coin unutar 1-10 min window
-Reject ako Stage 2 dolazi pre Stage 1 ili >10min kasnije
-1.3 RSI Threshold Filter
-
-Proveri RSI > 75 za scalp reversal alerts
-RSI 70-75 = reduced confidence (80% multiplier)
-RSI < 70 = automatic skip
-Bonus: RSI > 80 = +5% confidence boost
-1.4 Volume Analysis
-
-Calculate volume spike multiplier (current / average)
-Minimum 3x threshold enforcement
-5x = strong signal (+5% confidence)
-10x+ = monster signal (+10% confidence)
-< 3x = automatic skip
-1.5 Scarcity Filter
-
-Parse "last seen" field iz bot alerts
-Convert to hours (npr. "47h 30m ago" → 47.5)
-Reject ako < 4 hours (choppy coin)
-Bonus: >24h = quality signal (+10% confidence)
-1.6 Funding Rate Context
-
-Fetch 5-day funding rate history za coin
-Detektuj extreme negative periods (< -0.30%)
-Check current funding rate normalization
-Score based on extreme history + current neutral = best setup
-Testing:
-
-Unit tests za svaki filter
-Integration test sa mock alert stream
-Verify 2-stage matching accuracy
-Confirm skip logic works correctly
-Success Metrics:
-
-100% alert parsing accuracy
-< 100ms processing per alert
-Zero memory leaks over 24h run
-Correct 2-stage pairing >95%
-🎯 FAZA 2: MACRO FILTERS (Nedelja 2)
-Cilj: Implementirati market environment monitoring
-Komponente:
-
-2.1 VIX Integration
-
-Fetch daily VIX data (Yahoo Finance API ili alternatives)
-Cache vrednost, update svakih 15 min
-VIX > 30 = pause all trading (circuit breaker)
-VIX 25-30 = reduce position size 50%
-VIX < 20 = normal operations
-2.2 Altseason Index
-
-Fetch altseason index (blockchain center API)
-Update daily, cache vrednost
-< 50 = skip altcoins (BTC only mode)
-50-75 = selective (normal operation)
-75 = aggressive altcoins (boost mode)
-
-2.3 Fear & Greed Index
-
-Fetch daily F&G index
-Cache i update daily
-< 45 = fear (skip shorts, risky)
-60-80 = Andre's sweet spot (boost +5%)
-85 = extreme greed (reduce confidence -10%)
-
-2.4 24h Liquidations Gauge
-
-Fetch total 24h liquidations (Coinglass API)
-$500M = extreme pause (2-4h cooldown)
-
-$200-500M = high volatility (good for scalping)
-< $100M = low (reduce confidence, choppy expected)
-2.5 BTC Directional Bias
-
-Monitor BTC 1h price change
-+3% = long bias (favor longs on alts)
-
-< -3% = short bias (favor shorts on alts)
-±1% = flat/choppy (reduce confidence)
-2.6 Combined Macro Scoring
-
-Weight system: VIX (kill switch), Altseason 20%, F&G 15%, Liquidations 10%, BTC 5%
-Minimum 50% combined score to proceed
-Dynamic confidence adjustment based on macro
-Testing:
-
-Mock API responses
-Test circuit breaker logic
-Verify caching works properly
-Confirm score calculation accuracy
-Success Metrics:
-
-< 200ms macro evaluation
-100% VIX kill switch reliability
-Correct daily updates
-Zero API rate limit issues
-🎯 FAZA 3: PEAK DETECTION & ENTRY TIMING (Nedelja 2-3)
-Cilj: Implementirati precizni entry timing mehanizam
-Komponente:
-
-3.1 Real-time Price Tracking
-
-WebSocket price feed za aktivan coin nakon alert
-Store tick-by-tick prices u sliding window (5 min)
-Update peak price continuously
-Track 1-minute candles za pattern detection
-3.2 Peak Detection Algorithm
-
-After Stage 2 alert, monitor price za 1-3 min
-Detektuj local maximum (peak)
-Wait for first red candle nakon peak
-Confirm sa consecutive red candles (3/4 minimum)
-3.3 Pullback Calculator
-
-Calculate current price vs detected peak
-Pullback % = (peak - current) / peak * 100
-Target zone: 3-5% pullback
-< 2% = too early (wait)
-5% = too late (skip)
-
-3.4 Microstructure Confirmation
-
-Orderbook imbalance check (bid/ask ratio < 0.40 for shorts)
-Flow delta calculation (buy volume vs sell volume, target negative for shorts)
-Volume exhaustion (current volume < 50% peak volume)
-Red candle momentum (3/4 recent candles red)
-3.5 Entry Scoring System
-
-2-stage alert: 30 points
-RSI > 75: 20 points
-Pullback 3-5%: 20 points
-Microstructure confirm: 15 points
-Flow delta negative: 10 points
-Volume exhaustion: 5 points
-TOTAL: 100 points, minimum 70 to enter
-3.6 Entry Execution
-
-Wait for score >= 70 (MINIMUM THRESHOLD)
-Place market order immediately
-Record exact entry price and timestamp
-Calculate TP levels and DCA levels instantly
-
-Example scoring (RAD Nov 10):
-- 2-stage alert: 30/30 ✅
-- RSI >75: 20/20 ✅
-- Pullback 3.8%: 20/20 ✅
-- Orderbook <0.40: 15/15 ✅
-- Flow delta negative: 10/10 ✅
-- Volume exhaustion: 5/5 ✅
-TOTAL: 100/100 = PERFECT ENTRY
-
-Testing:
-
-Replay historical RAD trade tick-by-tick
-Verify peak detection matches Nov 10 example
-Confirm 3-5% pullback detection works
-Test scoring accuracy
-Test rejection when score <70
-Success Metrics:
-
-Peak detection within 30 seconds
-Entry timing ±1 min od ideal
-Scoring accuracy >90%
-Zero false peaks
-70+ score entries only
-🎯 FAZA 4: SKIP FILTERS (Nedelja 3)
-Cilj: Implementirati rejection logic
-Komponente:
-
-4.1 Time-of-Day Filter
-
-⚠️ CRITICAL: Andre stops @ 18:00 UTC REGARDLESS of profit!
-
-Check current UTC hour:
-- 09:00-18:00 = valid trading window ✅
-- 18:00-09:00 = automatic skip ❌
-- PEAK HOURS: 12:00-14:00 (44% of Andre's trades)
-
-Hard stop @ 18:00 even after +1505% day (Nov 20 proof)
-Watch mode: 18:00-20:00 (monitoring only, no entries)
-Complete stop: 20:00+ (zero activity)
-
-Log reason: "Outside trading hours"
-
-4.2 Weekend Filter
-
-⚠️ CRITICAL: NO weekend trading confirmed!
-
-Check current day of week:
-- Monday-Friday = valid ✅
-- Saturday-Sunday = skip ❌
-
-Reason:
-- Lower liquidity
-- Wider spreads
-- Manipulation risk
-- Personal time off
-
-Log reason: "Weekend - no trading"
-4.3 Daily Trade Counter
-
-Count trades opened today (reset @ 00:00 UTC)
-< 10 = proceed
-= 10 = skip (absolute max)
-
-Log reason: "Daily limit reached"
-4.4 Daily Profit Tracker
-
-Track cumulative ROI today
-Normal target: 250-500%
-Exceptional target: 1000-1500%
-If target met + score < 85 = skip
-Log reason: "Profit target met"
-4.5 Concurrent Position Limiter
-
-Count currently open positions
-< 3 = proceed
-= 3 = skip
-
-Log reason: "Max concurrent positions"
-4.6 Win Rate Protector
-
-Check today's win rate
-If 100% + trades >= 3 = be selective (score >= 80 required)
-Log reason: "Protecting perfect day"
-4.7 Skip Logging System
-
-Log every skipped signal sa reason
-Store skip statistics (count by reason)
-Daily skip report generation
-Use za post-analysis optimization
-
-Example Skip Scenarios:
-- Nov 21 evening: 24 bot alerts 18:00-23:00 → Andre took 0 ✅
-- Weekend: Monitor only, log signals but never enter
-- 10 trades hit: Stop even if perfect 100/100 score signal appears
-- Profit target +1500%: Still evaluate but require 85+ score
-
-Testing:
-
-Test time filter edge cases (17:59 accept, 18:01 reject)
-Verify weekend detection (Saturday 00:01, Sunday 23:59)
-Confirm counter resets properly (00:00 UTC)
-Test all skip conditions (10 filters)
-Verify skip logging complete
-Success Metrics:
-
-100% skip enforcement
-Zero false skips (no missed valid windows)
-Zero false accepts (no weekend/evening trades)
-Complete logging with reasons
-Skip statistics accurate (count by reason type)
-🎯 FAZA 5: POSITION MANAGEMENT (Nedelja 3-4)
-Cilj: Implementirati TP/SL/DCA execution
-Komponente:
-
-5.1 TP Level Calculator
-
-⚠️ CRITICAL: Andre uses ONLY TP1/TP2/TP3 - NO TP4/TP5!
-
-Calculate TP1 @ +21% from entry (25x leverage = 0.84% price move)
-Calculate TP2 @ +41% (1.64% price move)
-Calculate TP3 @ +100% (4% price move)
-TP4: NOT USED ❌
-TP5: NOT USED ❌
-
-Philosophy: "Multiple TP3 > One TP5"
-Fast exits + high frequency > Big exits + low frequency
-Store as absolute price levels
-5.2 DCA Level Calculator
-
-Standard 3-level DCA (most trades):
-- DCA1: Entry +5% ($25 additional)
-- DCA2: Entry +15% ($25 additional)
-- DCA3: Entry +35% ($25 additional)
-
-High-risk 5-level DCA (rare, choppy conditions):
-- Entry +2%, +5%, +10%, +20%, +40%
-
-Calculate absolute price triggers
-Prepare order sizes (equal to initial position)
-
-PIXEL DCA Recovery Example (Nov 20):
-- Entry: $0.4660
-- Price drops to -6.8% ($0.4343)
-- DCA1 hits @ $0.4893 (+5%)
-- Averages down position
-- Recovers to +251% profit ✅
-
-DCA Philosophy:
-"DCA = insurance policy, not failure"
-"Better to average down than stop out"
-5.3 Partial Exit Logic
-
-TP1 hit: Close 40% position
-TP2 hit: Close 30% remaining (21% of original)
-TP3 hit: Close 30% remaining (9% of original)
-Calculate exact quantities before submission
-5.4 Stop Loss Management
-
-⚠️ CRITICAL: NO INITIAL STOP LOSS!
-
-Initial SL: NONE ❌
-- Andre relies 100% on DCA safety net
-- No stop before TP1 hit
-- Allows DCA recovery (PIXEL example: -6.8% → DCA1 → +251%)
-
-After TP1 hit:
-- Move SL to entry price (breakeven)
-- Cancel all remaining DCA orders (no longer needed)
-- Position now risk-free
-- Log transition to "RISK-FREE MODE"
-
-Trailing SL: NO ❌
-- Fixed breakeven only
-- Lets TP2/TP3 run without interference
-5.5 DCA Activation & Recovery
-
-Monitor price vs DCA levels continuously
-If DCA1 hit: Add same position size @ DCA1 price
-Average down entry price
-Recalculate TP levels based on new average
-Continue monitoring for TP hits
-
-DCA Recovery Flow (PIXEL example):
-1. Entry @ $0.4660 with $25 position
-2. Price drops -6.8% to $0.4343 (paper loss: -$1.70)
-3. DCA1 triggers @ $0.4893 (+5% from entry)
-4. Add $25 position @ $0.4893
-5. New average: ($0.4660 + $0.4893) / 2 = $0.4777
-6. Recalculate TPs from $0.4777 base
-7. TP1 @ +21% = $0.5780
-8. TP2 @ +41% = $0.6736
-9. TP3 @ +100% = $0.9554
-10. Price recovers → TP3 hit → +251% total profit ✅
-
-DCA Success Rate (Andre data):
-- ~15% of trades hit DCA1
-- ~5% of trades hit DCA2
-- <1% hit DCA3
-- Recovery rate after DCA: ~90%
-5.6 Position Monitoring Loop
-
-Check every 1 second for TP/DCA hits
-Use limit orders for TPs (exact price)
-Use market orders for DCA (immediate fill)
-Update position state continuously
-Testing:
-
-Simulate TP1 hit → verify 40% closes + SL moves
-Simulate DCA hit → verify averaging works
-Test PIXEL scenario (DCA1 hit but recovers)
-Verify all calculations correct
-Success Metrics:
-
-TP execution within 2 seconds
-Partial exit quantities exact
-Breakeven lock 100% reliable
-DCA triggering accurate
-🎯 FAZA 6: STATE MACHINE (Nedelja 4)
-Cilj: Orchestrate trade lifecycle
-Komponente:
-
-6.1 Trade States
-
-IDLE: Waiting for signals
-SIGNAL_DETECTED: Alert received, evaluating
-WAITING_PEAK: Monitoring for peak formation
-WAITING_PULLBACK: Peak detected, waiting for 3-5% dip
-ENTRY_PENDING: Entry triggered, order placing
-IN_POSITION: Position open, monitoring TPs/DCAs
-PARTIAL_EXIT: TP hit, closing portion
-RISK_FREE: After TP1, breakeven locked
-CLOSING: Final exit executing
-CLOSED: Trade complete
-6.2 State Transitions
-
-Define valid transitions
-IDLE → SIGNAL_DETECTED (on 2-stage alert)
-SIGNAL_DETECTED → WAITING_PEAK (score >= 70)
-WAITING_PEAK → WAITING_PULLBACK (peak detected)
-Itd... za sve states
-6.3 State Persistence
-
-Store current state u database/memory
-Survive restarts (load from disk)
-Track state history za svaki trade
-Enable state inspection (debugging)
-6.4 Error Handling
-
-Timeout logic (npr. WAITING_PEAK > 5 min = abort)
-API failure recovery
-Retry logic za failed orders
-Rollback mehanizam za partial failures
-6.5 Concurrent Trade Management
-
-Track state za max 3 simultaneous positions
-Ensure state isolation (one trade doesn't affect others)
-Handle interleaved events properly
-Priority queue for simultaneous TPs
-Testing:
-
-Test all valid transitions
-Test invalid transitions rejected
-Simulate crashes and recovery
-Verify concurrent trade handling
-Success Metrics:
-
-100% state consistency
-Zero invalid transitions
-Crash recovery < 5 seconds
-Concurrent trades no conflicts
-🎯 FAZA 7: BYBIT API INTEGRATION (Nedelja 4-5)
-Cilj: Connect to live exchange
-Komponente:
-
-7.1 Authentication
-
-API key management (environment variables)
-Signature generation za private endpoints
-Rate limit tracking
-Connection health monitoring
-7.2 Market Data
-
-WebSocket ticker subscriptions
-Orderbook snapshots
-Trade stream
-Kline (candle) data
-7.3 Order Placement
-
-Market orders (entry, DCA)
-Limit orders (TPs)
-Cancel orders (DCA after TP1)
-Modify orders (SL to breakeven)
-7.4 Position Queries
-
-Get current positions
-Get open orders
-Get trade history
-Account balance
-7.5 Error Handling
-
-API error codes interpretation
-Insufficient balance detection
-Order rejection handling
-Connection loss recovery
-Testing:
-
-Test API calls u testnet environment
-Verify order placement works
-Test WebSocket stability
-Simulate network issues
-Success Metrics:
-
-100% API call success rate
-< 100ms order execution
-Zero auth failures
-Graceful error handling
-🎯 FAZA 8: PAPER TRADING (Nedelja 5-6)
-Cilj: Validate system bez real money
-Setup:
-
-8.1 Paper Trading Mode
-
-Simulate order fills (instant @ market price)
-Track virtual balance (start $10,000)
-Record all trades kao da su real
-Generate P&L reports
-8.2 Live Signal Processing
-
-Run system against live market data
-Process real bot alerts
-Execute full logic (entry, TPs, DCAs)
-Track performance metrics
-8.3 Performance Monitoring
-
-Win rate calculation
-Average hold time
-Profit per trade
-Daily ROI
-Weekly ROI
-Skip rate analysis
-8.4 Issue Identification
-
-Log all trades (wins and losses)
-Analyze losses za patterns
-Identify false signals
-Optimize thresholds if needed
-8.5 Statistical Validation
-
-Minimum 50 trades before evaluation
-Target: >65% win rate
-Target: >$30 avg profit/trade
-Target: < 5% loss rate
-Testing Duration:
-
-Week 1: 25-30 signals expected
-Week 2: 25-30 more signals
-Total: 50-60 trades for statistical significance
-Success Metrics:
-
-Win rate >= 65% (Andre has 96%, we aim lower initially)
-Avg profit >= $30/trade
-Zero critical bugs
-System stability 100%
-🎯 FAZA 9: OPTIMIZATION & LIVE PREP (Nedelja 6-7)
-Cilj: Fine-tune and prepare za production
-Komponente:
-
-9.1 Parameter Tuning
-
-Adjust thresholds based on paper results
-If win rate < 65%: tighten filters (increase minimums)
-If win rate > 80%: maybe loosen slightly (more opportunities)
-Optimize pullback range if needed
-9.2 Safety Features
-
-Add pump detector (>10% move + >20x volume = auto-close)
-Add daily loss circuit breaker (-5% stop trading)
-Add position size limiter
-Add emergency stop button
-9.3 Monitoring Dashboard
-
-Real-time position display
-P&L tracking
-Win rate display
-Daily trade count
-Alert feed
-9.4 Logging & Alerts
-
-Trade execution logs
-Error logs
-Performance alerts (email/SMS when important)
-Daily summary reports
-9.5 Documentation
-
-Setup instructions
-Configuration guide
-Troubleshooting guide
-API setup steps
-Testing:
-
-Full end-to-end test
-Simulate all scenarios
-Load testing
-Security audit
-Success Metrics:
-
-All safety features tested
-Documentation complete
-System ready for $100 live test
-Team confident in deployment
-🎯 FAZA 10: LIVE TRADING (Nedelja 7+)
-Cilj: Start sa real money (cautiously)
-Phase 10.1: Micro-Live (Week 7)
-
-Start sa $100-200 capital
-Trade samo 1-2 coins
-Monitor 24/7 first 3 days
-Validate real execution works
-Phase 10.2: Small-Live (Week 8-9)
-
-Increase to $500 capital
-Allow 3-4 coins
-Continue monitoring closely
-Track against paper trading results
-Phase 10.3: Scale-Up (Week 10+)
-
-If first 20 trades profitable: increase to $1,000
-If 50 trades profitable: increase to $5,000
-Conservative compounding
-Never risk more than 1% per trade
-Success Metrics:
-
-First 10 trades: >60% win rate
-First 20 trades: >65% win rate
-First 50 trades: >70% win rate
-Zero major bugs in production
-📊 RISK MANAGEMENT KROZ IMPLEMENTATION
-Faza 1-4: Zero risk (development only)
-Faza 5-7: Zero risk (testnet only)
-Faza 8-9: Zero risk (paper trading)
-Faza 10.1: Minimal risk ($100-200)
-Faza 10.2: Low risk ($500)
-Faza 10.3: Controlled risk (scale based on results)
-
-✅ MILESTONES & CHECKPOINTS
-Week 2: Signal generator working, processing alerts correctly
-Week 3: Macro filters + peak detection functional
-Week 4: Position management + state machine complete
-Week 5: Bybit integration + paper trading started
-Week 6: 50+ paper trades completed, analysis done
-Week 7: System optimized, live testing begins
-Week 8+: Production operation, scaling plan
-
-🎯 FINAL DELIVERABLES
-Fully functional automated trading system
-50+ paper trades proving >65% win rate
-Complete documentation
-Monitoring dashboard
-Safety features implemented
-Live trading-ready codebase
-Total Timeline: 7 nedelja do live trading
-Total Effort: ~200-250 sati programiranja
-Risk Level: Minimalan (extensive testing pre-live)
-Success Probability: Visoka (100% dokumentovan sistem)
-
-Spremni za start? 🚀
+ANDRE STRATEGY – FINALNI TEHNIČKI PLAN RADA
+
+Cilj: Implementirati kompletnu Andre strategiju kao automatski sistem na tvom postojećem AI Scalper/Bybit okviru.
+
+✔ Zasnovano na: 100+ trejdova, RAD/0G/PIXEL/NMR danima, Nov 20–21 live potvrdi
+
+✔ Validirano: win rate 96.6%, +1229% oktobar, ~26 min average hold
+
+🎯 Naš cilj za sistem: 65%+ win rate u paper modu, stabilan kod, bez bugova, bez rušenja
+
+Tehnologije:
+
+Node.js (isti stil kao tvoj engine: ES modules, event-driven)
+
+Postojeći microstructure moduli (orderbook, flow, pump detector)
+
+Bybit API (USDT perp), kasnije MEXC/Webhook ako hoćeš
+
+SQLite / JSON / ili tvoj trading.db za state & trade logove
+
+Start capital (implementation faze):
+
+Paper: virtuelni account $10,000
+
+Live: $25/trade → posle validacije skaliranje ka $100 (André level)
+
+⚙ FAZA 0 – ARHITEKTURA & INTEGRACIJA (pre svega)
+
+Cilj: Da Andre modul nije „čudovište sa strane“, nego čist modul koji se šlepuje na postojeći scalper-base.
+
+0.1 Modul struktura
+
+Predlažem sledeće module (folderi / fajlovi):
+
+src/andre/config/andre-config.js – SVI pragovi, procenti, satnica, limiti (ništa hardkodirano po kodu)
+
+src/andre/macro/macro-engine.js – VIX, Altseason, F&G, Liq, BTC context
+
+src/andre/signals/alert-intake.js – parsing bot alertova / mock generator
+
+src/andre/signals/signal-engine.js – 2-stage, RSI, volume, scarcity, FR scoring
+
+src/andre/entry/peak-detector.js – peak & pullback
+
+src/andre/entry/microstructure-check.js – orderbook + flow + volume exhaustion (hook na tvoje module)
+
+src/andre/entry/entry-decider.js – scoring 0–100 + odluka da li ulazimo
+
+src/andre/risk/skip-filters.js – time-of-day, weekend, daily limit, win-rate, macro veto
+
+src/andre/risk/trade-limits.js – per-trade risk, portfolio heat, concurrent max 3
+
+src/andre/position/position-manager.js – TP1/2/3, partial exits, DCA, SL→BE
+
+src/andre/state/state-machine.js – IDLE → SIGNAL_DETECTED → … → CLOSED
+
+src/andre/exchange/bybit-adapter.js – clean wrapper preko tvog Bybit konektora
+
+src/andre/backtest/paper-engine.js – paper trading simulacija
+
+src/andre/logs/andre-logger.js – svi logovi na jednom mestu (JSONL + human)
+
+0.2 Integracija sa postojećim sistemom
+
+Ne pravimo „novi bot“, nego AndreEngine kao deo tvog main engine-a:
+
+Event: andre:newAlert (kad stigne alert iz Discord/webhooka)
+
+Event: andre:newTradeState (kad se state menja)
+
+Event: andre:positionUpdated (TP/DCA/SL promena)
+
+Korišćenje postojećih modula:
+
+orderbook snapshots iz tvog market huba
+
+trade flow / tick data iz tvog WS layer-a
+
+pump detector kao dodatni kill-switch (kokteli 10%/5min ready)
+
+🎯 FAZA 1 – SIGNAL GENERATOR (Nedelja 1–2)
+
+Cilj: Bot alerts → strukturisani signal kandidati + osnovni scoring.
+
+1.1 Alert intake & parsing
+
+SOURCE:
+
+v1: mock JSON feed (fajl + replayer)
+
+v2: Discord webhook / HTTP endpoint (kasnije)
+
+Zadaci:
+
+Parse: symbol, price, RSI, MFI, BB status, volume, avgVolume, fundingRate, lastSeen, timeframe (60m), type (Volatility/Scalp Reversal/MEXC)
+
+Čuvanje u alertsBuffer[symbol] = [ ...last N alerts ]
+
+Normalizacija lastSeen u sati (float)
+
+1.2 Two-stage detection (Volatility → Scalp Reversal)
+
+Traži:
+
+Stage 1: type = VOLATILITY (NEUTRAL)
+
+Stage 2: type = SCALP_REVERSAL (BEARISH/BULLISH) za isti symbol
+
+Δt između alertova 1–10 minuta
+
+Pravila:
+
+Stage 2 bez Stage 1 → upola manje poena
+
+Stage 2 >10min posle Stage 1 → odbaci (setup se raspao)
+
+Output: candidateSignal objekat
+
+1.3 RSI/MFI/Bollinger filter
+
+RSI (60m):
+
+80 → EXTREME, +max poeni
+
+75–80 → valid, puni poeni
+
+70–75 → pola poena
+
+< 70 → reject za scalp reversal
+
+MFI (60m):
+
+80 → potvrda iscrpljenosti
+
+Bollinger:
+
+status OUTSIDE_UPPER / OUTSIDE_LOWER → +confidence
+
+1.4 Volume anomaly
+
+volumeMultiplier = current / avg24h
+
+Pragovi:
+
+<3x → reject
+
+3–5x → normal anomaly
+
+5–10x → strong
+
+10x → monster spike (AUDIO nivo)
+
+1.5 Scarcity (Last Seen)
+
+<4h → noisy/choppy, skip
+
+4–24h → normal
+
+>24h → rare, +bonus na score
+
+1.6 Funding rate context (lokalno, bez makro istorije)
+
+U ovoj fazi samo:
+
+upiši trenutni FR u signal
+
+taguj da li je u neutral zoni (|FR| <0.1%) ili već sad ekstreman
+
+1.7 Testovi & ciljevi
+
+Unit test za parser, lastSeen parser, 2-stage matcher
+
+Replay FWOG/RAD alert sekvenci → dobiti validan candidateSignal
+
+✅ Cilj Faze 1:
+Imamo siguran, proverljiv candidateSignal objekat sa:
+
+2-stage info
+
+RSI/MFI/BB status
+
+volumeMultiplier
+
+lastSeenHours
+
+fundingRate snapshot
+
+🌍 FAZA 2 – MACRO FILTERS (Nedelja 2)
+
+Cilj: Da ne trejduješ u ludilu: globalni kill-switch + environment score.
+
+2.1 VIX (kill switch)
+
+Fetch 15min/1h: VIX
+
+Pravila:
+
+30 → FULL STOP (ništa se ne trejduje), macro.proceed = false
+
+25–30 → pola size, -confidence
+
+<20 → normal
+
+2.2 Altseason index & BTC dominance
+
+Altseason:
+
+75 → ALTSEASON: boost za alt signale
+
+50–75 → normalno
+
+<50 → BTC dominantno: alt signali traže viši score da prođu
+
+Opcija: kasnije posebna BTC strategija, za sada – alt only.
+
+2.3 Fear & Greed
+
+<45 → FEAR: smanji apetiti, izbegavaj agresivne shortove
+
+60–80 → Healthy Greed (André sweet spot) → +confidence
+
+85 → Extreme Greed: brzo TP1/TP2, izbegavaj nove longove
+
+2.4 24h liquidations
+
+500M → prevelik haos, cooldown 2–4h
+
+200–500M → savršeno za scalping (volatilno ali ne ludilo)
+
+<100M → previše mirno → smanji confidence
+
+2.5 BTC directional context
+
+BTC 24h change:
+
++3% → long bias na altove
+
+<−3% → short bias
+
+|Δ| <1% → chop: pooštri entry score requirements
+
+2.6 Macro scoring & output
+
+Kombinovano:
+
+VIX = hard veto
+
+Ostalo → macroScore 0–1
+
+Minimalno:
+
+macroScore >= 0.5 da bi signal uopšte išao u dalju obradu
+
+Output objekat:
+
+macro = { proceed, macroScore, sizeMultiplier, notes[] }
+
+🎯 FAZA 3 – PEAK DETECTION & ENTRY TIMING (Nedelja 2–3)
+
+Cilj: Kopiramo RAD entry stil: NE ulazimo u peak, nego u 3–5% pullback sa potvrdom mikrostrukture.
+
+3.1 Real-time price & candle stream
+
+Po dobijanju validnog candidateSignal + macro.proceed = true:
+
+attach se na WS price feed 1s tick / 1m candle
+
+vode se:
+
+peakPrice
+
+lista poslednjih 4–5 1m candli
+
+trenutni pullback procent
+
+3.2 Peak detection
+
+Dok ne vidimo pattern:
+
+cena pravila novi high (peak update)
+
+Peak potvrđen kada:
+
+vidimo prvu RED candle posle lokalnog high
+
+zatim cilj: min 2–3 red candli u nizu ZA short
+
+3.3 Pullback zona
+
+pullbackPct = (peak - current) / peak * 100
+
+Pravila:
+
+<2% → prerano, nastavi čekanje
+
+2–3% → acceptable (pola poena)
+
+3–5% → sweet spot (puni poeni)
+
+5% → prekasno → skip
+
+3.4 Microstructure confirmation (hook na tvoje module)
+
+Za short:
+
+Orderbook imbalance:
+
+bidVolume/(bid+ask) < 0.40
+
+Trade flow:
+
+5m delta: buyVol − sellVol < −X (može fixed, npr. −15000, ili relativno)
+
+Candles:
+
+≥3/4 red 1m candli
+
+Volume exhaustion:
+
+lastCandleVolume < 50% peakVolume u prethodnim 5 candli
+
+Output: { safe: boolean, metrics, reason }
+
+3.5 Entry scoring 0–100
+
+Preuzmi tvoj postojeći dizajn, ali formalno:
+
+2-stage alert timing → 30
+
+RSI (60m) → 20
+
+Pullback zona → 20
+
+Orderbook (imbalance) → 15
+
+Flow delta → 10
+
+Volume exhaustion → 5
+
+totalScore >= 70 → kandidat za entry.
+
+3.6 Entry execution
+
+Kad: score >= 70 && microstructure.safe
+
+Order:
+
+Market order (da ne propustimo entry)
+
+Size:
+
+bazno: $25 * macro.sizeMultiplier
+
+proveri i portfolio heat (vidi FAZA 5 risk)
+
+Odmah računamo:
+
+TP1/2/3 price
+
+DCA levele
+
+🚫 FAZA 4 – SKIP FILTERS / RISK GATES (Nedelja 3)
+
+Cilj: Sve što si fenomenalno opisao – formalizovano kao filter pre ENTRY.
+
+4.1 Time-of-day filter
+
+Trading dani: PON–PET
+
+Trading sati:
+
+aktivno: 09:00–18:00 UTC
+
+peak: 12–14 UTC (log samo za analitiku)
+
+nakon 18:00 → nikakvi novi entry-ji, samo management otvorenih
+
+4.2 Weekend filter
+
+Subota, nedelja:
+
+allowNewTrades = false
+
+dopušteno: monitoring, test, paper
+
+4.3 Daily trade & PnL limiti
+
+Broj trejdova danas:
+
+normalno: 2–7
+
+hard max: 10
+
+PnL:
+
+ako daily ROI >= npr. +500% i score < 85 → skip
+
+ako daily ROI >= +1000% → samo 90+ score, ili full stop (može config)
+
+4.4 Concurrent positions & portfolio heat ✅ (DODATO)
+
+Ovde dodajem ono što ti treba za pravo upravljanje rizikom (znaš da voliš „portfolio heat“):
+
+Max otvorenih pozicija: 3 (André confirm)
+
+Svaka pozicija ima:
+
+max planiran margin usage ako svi DCA pogode (najgori slučaj)
+
+Pravilo:
+
+suma max planned margin / accountEquity <= portfolioHeatLimit
+
+npr. portfolioHeatLimit = 0.25 (25% accounta worst-case)
+
+Ako bi novi trejd preko DCA potencijalno prebacio heat → skip ili smanji početni size.
+
+4.5 Win-rate zaštita
+
+Ako danas wins >= 3 && losses == 0:
+
+zahtevaj npr. score ≥ 80 da bi ušao u 4. trejd
+
+posle 5 winstreak → još rigorozniji filter
+
+4.6 Skip logging
+
+Svaki skip pišemo kao:
+
+{
+  "time": "...",
+  "symbol": "RADUSDT",
+  "reason": "TIME_WINDOW",
+  "details": "...",
+  "candidateScore": 78
+}
+
+
+Kasnije će ti ovo biti zlato za tuning.
+
+💰 FAZA 5 – POSITION MANAGEMENT: TP/DCA/SL (Nedelja 3–4)
+
+Cilj: Formalizujemo Andre TP/SL/DCA logiku 1:1.
+
+5.1 TP kalkulator
+
+Leverage 25x, ROI vs price:
+
+~0.84% move = ~21% ROI (TP1)
+
+~1.64% move = ~41% ROI (TP2)
+
+~4% move = ~100% ROI (TP3)
+
+Čisto u kodu:
+
+tp1Price = entry * (side === 'SHORT' ? (1 - 0.0084) : (1 + 0.0084))
+
+analogno za tp2/tp3
+
+TP4/TP5: NIJE IMPLEMENTIRANO (flag u configu enableTp4 = false)
+
+5.2 DCA kalkulator
+
+Standard:
+
++5%, +15%, +35% od entry
+
+High-risk:
+
++2, 5, 10, 20, 40% (kao specijalni mod)
+
+Svaki DCA:
+
+size = jednako početnom (ili config-abilno)
+
+Iz ovoga izračunavamo:
+
+worst-case margin usage per trade
+
+5.3 Partial exits
+
+TP1: zatvori 40% pozicije
+
+TP2: zatvori 30% (od originalnog)
+
+TP3: zatvori preostalih 30%
+
+5.4 Stop loss & breakeven
+
+Pre TP1: nema SL (pure DCA)
+
+Kad TP1 hit:
+
+prebacujemo SL na entry (breakeven)
+
+cancel svi preostali DCA orderi
+
+Nema trailing SL.
+
+5.5 Position monitoring loop
+
+1s tick (ili 2–3s ako želiš rasterećenje)
+
+Event-driven:
+
+price cross TP/ DCA level → emituje event → obrada
+
+🔄 FAZA 6 – STATE MACHINE (Nedelja 4)
+
+Cilj: Da nema haosa u logici – sve kroz states.
+
+Stanja (kako si već lepo definisao):
+
+IDLE
+
+SIGNAL_DETECTED
+
+WAITING_PEAK
+
+WAITING_PULLBACK
+
+ENTRY_PENDING
+
+IN_POSITION
+
+PARTIAL_EXIT
+
+RISK_FREE
+
+CLOSING
+
+CLOSED
+
+Dodatno:
+
+ABORTED (npr. macro kill switch, timeout, prekasno za entry)
+
+Svako stanje:
+
+ima dozvoljene from → to prelaze
+
+ima handler funkciju
+
+upisuje se u DB (da možeš da se oporaviš posle crash-a)
+
+🌐 FAZA 7 – BYBIT API / EXCHANGE ADAPTER (Nedelja 4–5)
+
+Cilj: Čist adapter sloj – da možeš jednog dana da staviš MEXC ili neku treću burzu bez menjanja logike.
+
+bybitAdapter.placeMarketOrder(symbol, side, qty)
+
+bybitAdapter.placeLimitOrder(...)
+
+bybitAdapter.cancelOrder(id)
+
+bybitAdapter.getOpenPositions()
+
+bybitAdapter.getBalance()
+
+WS subscribe/emit već imaš – samo ih uveži.
+
+📋 FAZA 8 – PAPER TRADING (Nedelja 5–6)
+
+Cilj: FULL povezani sistem, ali bez realnih para.
+
+Paper engine:
+
+snapshotuje price sa realnog feed-a
+
+simulira order fills (realistic, ne idealno)
+
+prati equity, PnL, drawdown, heat
+
+Ciljevi:
+
+min 50–60 trejdova
+
+win rate ≥ 65%
+
+proveri da nema memory leak, crash, deadlock
+
+🛠 FAZA 9 – TUNING & HARDENING (Nedelja 6–7)
+
+Cilj: Po papir rezultatima malo doteramo pragove, ali bez masakra baze.
+
+Tuning:
+
+možda prebaciti minimum score 70 → 75, ili nešto slično ako ima previše „graničnih“ trejdova
+
+pooštriti volumeMin sa 3x → 4x ako je previše šuma
+
+Dodati:
+
+pump detector >10%/5min auto exit
+
+dnevni loss limit (npr. −5%)
+
+Dashboard:
+
+prikaži macro stanje, otvorene pozicije, trade log, win rate, ROI per day
+
+💸 FAZA 10 – LIVE ROLLOUT (Week 7+)
+
+Faza 10.1 – mikro live:
+
+$100–200 total, $25/trade
+
+1–2 trade-a dnevno, ruka na pulsu
+
+Faza 10.2 – small live:
+
+$500 total, do 3 pozicije
+
+Faza 10.3 – scale:
+
+$1k → $5k → ... ako:
+
+20+ trejdova sa profitom
+
+50+ trejdova, win rate ≥ 70%, nema „katastrofalnih“ dana
+
+✅ Checkpointi (sumirano)
+
+Kraj 2. nedelje:
+Signal generator + macro engine rade, 2-stage, RSI, volume, scarcity → OK
+
+Kraj 3. nedelje:
+Peak + pullback + microstructure + scoring → može da odluči entry
+
+Kraj 4. nedelje:
+TP/DCA/SL + state machine + skip filters → komplet trade lifecycle
+
+Kraj 5. nedelje:
+Bybit adapter + paper mode live na realnom marketu
+
+Kraj 6. nedelje:
+50+ paper trejdova, analiza, tuning
+
+Week 7+:
+mikro live, posle toga scaling
+
+Šta sam JA dodao / ispeglao u odnosu na tvoj draft
+
+✅ Uveo FAZU 0 – integracija sa postojećim engine-om (da ne pravimo Frankenštajna)
+
+✅ Uveo eksplicitno portfolio heat i worst-case DCA margin (to ti je ogroman plus)
+
+✅ Jasno odvojio:
+
+Signal generator (F1)
+
+Macro (F2)
+
+Entry timing + microstructure (F3)
+
+Skip/risk gates (F4)
+
+Execution (F5)
+
+State machine (F6)
+
+✅ Smanjio dupliranje (npr. funding rate: jednom kao local signal info, jednom u macro istoriji)
+
+✅ Naglasio striktne kill switches (VIX, weekend, time window)
+
+✅ Ostao 100% veran tvojoj logici (NO TP4/5, NO initial SL, NO trailing, 3 positions max, Mon–Fri only, cutoff 18:00)

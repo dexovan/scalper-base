@@ -1,0 +1,380 @@
+Razumem — nastavljamo istim stilom kao FAZA 1–8: **ultra-detaljna, profesionalna, programersko–tehnička specifikacija**, spremna da se pretvori u konkretan kod.
+
+Idemo.
+
+---
+
+# 🚀 **FAZA 9 — OPTIMIZATION & LIVE PREP (nedelje 6–7)**
+
+**Cilj:** posle FAZE 8 (paper trading), optimizujemo kompletan sistem, dodamo sigurnosne mehanizme, pripremimo monitoring i uradimo sve što je potrebno da sistem bude potpuno spreman za **LIVE real money trading**.
+
+Ovo NIJE coding faza — ovo je **fine-tuning + calibration + security + hardening** + final LIVE-ready priprema.
+
+---
+
+# 📂 **Struktura FAZE 9**
+
+```
+FAZA 9
+│
+├── 9.1 Parameter Tuning (AI + empirical)
+├── 9.2 Safety Features (critical!)
+├── 9.3 Monitoring Dashboard Extensions
+├── 9.4 Logging & Telemetry Layer
+├── 9.5 Documentation & Config System
+└── 9.6 End-to-End Validation Suite
+```
+
+---
+
+# 🎯 **9.1 PARAMETER TUNING**
+
+Cilj: optimizovati svaki parametar sistema na osnovu *stvarnih* paper trading rezultata iz FAZE 8 (50+ trejdova).
+
+## 9.1.1 Inputi za kalibraciju
+
+Koristimo:
+
+* `paper-trades.jsonl`
+* `paper-daily-stats.json`
+* skip logovi
+* entryScore, macroScore, pullback %, DCA ratios
+* Win/loss patterns
+* Drift analiza (razlika ideal vs real fill)
+
+## 9.1.2 Parametri koji se optimizuju
+
+### **Signal generator**
+
+* `RSI overbought: 75–80`
+* `Volume spike 3x–5x`
+* `Funding rate thresholds`
+* `Scarcity threshold (hours)`
+
+### **Entry timing**
+
+* Pullback optimal range: `3% – 5%` (`radical: 2.5–6%`)
+* minimumScore: `0.7 – 0.85`
+* peak detection window: `2–4 min`
+* microstructure imbalance thresholds
+
+### **DCA**
+
+* spacing: `(5%, 15%, 35%)`
+* high-risk mode activation
+* max DCA count allowed
+
+### **TP**
+
+* keep: `21% / 41% / 100%`
+* test: TP1 lock speed
+* test: faster breakeven lock
+
+### **Macro scoring**
+
+* VIX weight: `0–1.0`
+* F&G multiplier
+* altseason impact
+
+## 9.1.3 Automatska optimizacija (optional)
+
+Napraviti skriptu:
+
+`src/optimizer/runParamSweep.js`
+
+koja radi grid-search:
+
+* 100 kombinacija parametara
+* izvršava *instant replay* paper-trade logike (bez čekanja)
+
+Ovo daje:
+
+* TOP 5 skupova parametara
+* najbolji za win rate
+* najbolji za ROI
+* najbolji za minimal drawdown
+
+---
+
+# 🛡 **9.2 SAFETY FEATURES (Critical!)**
+
+Ovo je najvažniji deo FAZE 9 — uvodimo zaštite koje STIŽU PRE LIVE tradinga.
+
+Sve ide u:
+
+`src/safety/`
+
+```
+safety/
+  pumpDetector.js
+  priceAnomalyGuard.js
+  dailyLossProtector.js
+  stalledMarketGuard.js
+  orderRejectRecovery.js
+  killSwitch.js
+```
+
+---
+
+## 9.2.1 **Pump Detector**
+
+### Trigger:
+
+* > **10% move in 5min**
+* OR > **20x volume spike**
+* OR candle body > **5σ volatility**
+
+### Akcije:
+
+* ako si u poziciji → **momentalan market exit**
+* ako nisi u poziciji → **skip da ne uđeš**
+
+```js
+if (isPumpDetected(sym)) {
+  executionRouter.closePositionMarket({ reason: 'pump_detector' });
+  skipEngine.blockSymbol(sym, 30 * 60 * 1000); // blok 30 min
+}
+```
+
+---
+
+## 9.2.2 **Daily Loss Protector**
+
+### Pragovi:
+
+* -5% dnevno: PAUSE
+* -10% dnevno: HARD STOP (kill switch)
+
+### Akcije:
+
+* blokiraj sve nove pozicije
+* dozvoli samo izlazne pozicije
+
+---
+
+## 9.2.3 **Stuck Market Guard**
+
+Ako coin “stoji”:
+
+* 30+ min bez 0.2% pomaka
+* volume < 20% baseline
+* RSI flat (±2)
+
+→ **zatvori poziciju market exitom**
+
+To su "dead coins".
+
+---
+
+## 9.2.4 **OrderReject Recovery**
+
+Ako Bybit (ili paper sim) vrati error:
+
+* rate limit
+* insufficient margin
+* invalid size
+* "frozen symbol"
+* maintenance mode
+
+→ retry × 3
+→ fallback na market order
+→ ako failuje → killSwitch.autoExit("order_reject")
+
+---
+
+## 9.2.5 **Kill Switch**
+
+Najbitnija zaštita.
+
+Razlozi za aktivaciju:
+
+* VIX > 30
+* dailyLoss > 10%
+* event bus error flood
+* WS disconnect > 10 sec
+* API failure > 5sec
+* balance mismatch
+* position count != router count
+* crazy wick detection (+30% wick)
+
+### KillSwitch akcija:
+
+* zatvara sve pozicije (`market`)
+* otkazuje sve TP/DCA
+* blokira trading na 2h
+* šalje alert
+* upisuje `killswitch.log`
+
+---
+
+# 📊 **9.3 MONITORING DASHBOARD EXTENSIONS**
+
+Dodaj sledeće module u dashboardu:
+
+```
+/monitor
+  — system health
+  — paper/live mode indicator
+  — VIX, F&G, BTC trend tile
+  — daily ROI gauge
+  — open positions table (risk, dd, age)
+  — skip events log
+  — kill switch log
+  — trade timeline (TP1/2/3, DCA events)
+```
+
+### 9.3.1 Real-time metrics
+
+* decision rate
+* signals detected
+* signals skipped + reason
+* max DD per trade
+* profit curve
+* win streak / loss streak
+
+### 9.3.2 Charts
+
+* ROI line chart
+* per-symbol win rate
+* heatmap day-of-week
+* TP1/TP2/TP3 distribution
+
+---
+
+# 📋 **9.4 LOGGING & TELEMETRY LAYER**
+
+Dodaj:
+
+```
+logs/
+  trade.log
+  execution.log
+  skip.log
+  safety.log
+  killswitch.log
+  performance.log
+```
+
+## 9.4.1 Enhanced logs
+
+Svaki trade dobija:
+
+* entry metadata
+* macro score
+* microstructure snapshot
+* TP sequence timeline
+* DCA sequence
+* peak detection snapshot
+* final stats
+
+## 9.4.2 Telemetry API
+
+Endpointi:
+
+`/api/metrics`
+`/api/trades/today`
+`/api/safety/killswitch-status`
+`/api/skip/reasons`
+
+---
+
+# 📑 **9.5 DOCUMENTATION & CONFIG SYSTEM**
+
+### 9.5.1 Konfiguracija
+
+dodaj:
+
+```
+config/
+  trading.json
+  safety.json
+  thresholds.json
+```
+
+Sve parametre (thresholds, multipliers, percentages) prebaci u JSON fajlove – BEZ hardcoding-a.
+
+### 9.5.2 Dokumentacija
+
+* README.md (setup, run, env setup)
+* SYSTEM_ARCHITECTURE.md
+* SAFETY_RULES.md
+* EXECUTION_LOGIC.md
+* API_REFERENCE.md
+
+---
+
+# 🧪 **9.6 End-to-End Validation Suite**
+
+Kreiramo skriptu:
+
+`npm run validate-system`
+
+### Testovi koje mora proći:
+
+### 1. **Connection & WS stability test**
+
+* 5 min test
+* 0 izgubljenih WS poruka
+* reconnect < 3 sek
+
+### 2. **Signal generator test**
+
+* uneti 20 mock signala
+* validirani output signali
+
+### 3. **Peak detection test**
+
+* RAD trade replay
+* očekujemo entry 3–5% ispod vrha
+
+### 4. **TP/DCA test**
+
+* 3 TP test
+* 3 DCA test
+* PIXEL test scenario
+
+### 5. **skip filter test**
+
+* 18:01 → skip
+* weekend → skip
+* > 3 otvorene → skip
+* > 10 dnevno → skip
+
+### 6. **Safety test**
+
+Simulacija:
+
+* pump
+* black swan drop
+* API error flood
+* WS disconnect
+
+Očekujemo:
+
+* kill switch: ACTIVE
+* sve pozicije zatvorene
+* sve DCA/TP obrisane
+
+---
+
+# ✔️ **FAZA 9 — SUCCESS CRITERIA**
+
+Da bi FAZA 9 bila uspešno završena, moraš imati:
+
+* 50+ paper trade **analizu**
+* optimizovane parametre
+* kill switch koji 100% radi
+* price anomaly guard
+* pump detector
+* dnevne limite
+* full dashboard sa rizikom i statistikama
+* validacioni test prošao
+* dokumentaciju završenu
+
+*Tek tada prelazimo na FAZA 10 — LIVE trading.*
+
+---
+
+# ❓ Spreman si da pređemo na **FAZA 10 — LIVE trading (final)?**
+
+Ako želiš mogu odmah sada da ti napišem FAZA 10 specifikaciju u istom stilu.

@@ -1,0 +1,572 @@
+Idemo FAZA 5 🔥
+(*TP1/TP2/TP3, DCA, breakeven, recovery – sve po Andre pravilima, bez SL pre TP1, bez trailing-a.*)
+
+---
+
+# **FAZA 5 – POSITION MANAGEMENT**
+
+**(TP1 / TP2 / TP3, DCA, Breakeven, Recovery)**
+Verzija: 1.0 – čisto tehnička specifikacija za implementaciju
+
+---
+
+## 🎯 5.0. CILJ FAZE
+
+Kad FAZA 3 kaže: **“ENTER SHORT/LONG @ price X, size Y, score Z”**
+FAZA 5 preuzima sve dalje:
+
+1. Otvara poziciju na berzi
+2. Postavlja TP1 / TP2 / TP3
+3. Postavlja DCA levele
+4. Prati cenu u realnom vremenu
+5. Izvršava TP-ove i DCA kada se pogode
+6. Nakon TP1 pomera SL na breakeven (entry)
+7. Zatvara poziciju i pravi čist trade record
+
+Sve po Andre pravilima:
+
+* ❌ NEMA inicijalnog SL-a (pre TP1)
+* ❌ NEMA trailing SL-a
+* ✅ DCA kao osiguranje
+* ✅ TP1/TP2/TP3 samo
+* ✅ Breakeven tek POSLE TP1
+
+---
+
+## 📁 5.1. Struktura fajlova / modula
+
+```text
+src/
+  position/
+    positionManager.js       # glavni API, orkestracija
+    positionStore.js         # storage (in-memory + file/db)
+    tpEngine.js              # logika TP1/TP2/TP3
+    dcaEngine.js             # logika DCA nivoa
+    slEngine.js              # breakeven posle TP1
+    priceWatcher.js          # stream cena za aktivne pozicije
+    pnlCalculator.js         # proračun PnL-a, ROI, avg entry
+    events.js                # event emitter (position_entered, tp_hit, dca_hit...)
+```
+
+> FAZA 7 će koristiti ove module za stvarno slanje naloga na Bybit.
+> FAZA 5 je 90% exchange-agnostic – radi sa apstraktnim “orders”.
+
+---
+
+## 📐 5.2. Osnovne konstante & konfiguracija (Andre parametri)
+
+```ts
+// config/tradingConfig.js
+
+export const POSITION_CONFIG = {
+  leverage: 25,
+  basePositionSize: 25,      // USDT po trejdu u startu
+  maxDcaLevels: 3,
+
+  tp: {
+    // izraženo u ROI % na marginu
+    tp1Roi: 21,              // +21% ROI → ≈ +0.84% price move @ 25x
+    tp2Roi: 41,              // +41% ROI → ≈ +1.64%
+    tp3Roi: 100,             // +100% ROI → ≈ +4%
+    exitFractions: [0.4, 0.3, 0.3] // 40% / 30% / 30%
+  },
+
+  dca: {
+    // izraženo u % PRICE AGAINST direction
+    levels: [5, 15, 35],     // Entry +5%, +15%, +35% protiv pozicije
+    mode: 'standard'         // 'standard' ili 'high_risk' opcija kasnije
+  },
+
+  risk: {
+    useInitialStopLoss: false,
+    moveToBreakevenAfterTp1: true,
+    cancelDcaAfterTp1: true
+  }
+};
+```
+
+---
+
+## 🧱 5.3. Data strukture
+
+### 5.3.1. `Position`
+
+```ts
+type Side = 'LONG' | 'SHORT';
+
+type PositionState =
+  | 'PENDING_OPEN'
+  | 'OPEN'
+  | 'RISK_FREE'
+  | 'CLOSING'
+  | 'CLOSED'
+  | 'CANCELLED'
+  | 'ERROR';
+
+type Position = {
+  id: string;                   // internal UUID
+  symbol: string;               // "RADUSDT"
+  side: Side;
+  leverage: number;
+
+  // sizing
+  baseMargin: number;           // npr 25 USDT
+  addedMargin: number;          // posle DCA-ova
+  totalMargin: number;          // base + added
+
+  // entry
+  avgEntryPrice: number;        // dinamički (posle DCA se menja)
+  entryTime: number;            // timestamp
+  entryOrders: OrderRef[];      // referenca na stvarne naloge
+
+  // tp
+  tpLevels: TpLevel[];          // TP1/2/3
+  dcaLevels: DcaLevel[];        // za ovu poziciju
+
+  // runtime
+  filledSize: number;           // total qty
+  closedSize: number;           // do sada zatvoreno
+  realizedPnl: number;          // u USDT
+  state: PositionState;
+
+  // flags
+  tp1Hit: boolean;
+  tp2Hit: boolean;
+  tp3Hit: boolean;
+  slAtBreakevenActive: boolean; // SL pomeren
+  dcaActiveLevels: number;      // koliko DCA ispaljeno
+
+  // meta
+  score: number;                // FAZA 3 scoring
+  context: any;                 // bilo koji dodatni context
+};
+```
+
+### 5.3.2. `TpLevel`
+
+```ts
+type TpLevel = {
+  index: 1 | 2 | 3;
+  roiTarget: number;            // 21, 41, 100
+  priceTarget: number;          // calculated from avgEntryPrice
+  fraction: number;             // 0.4, 0.3, 0.3
+  orderId?: string;             // exchange ID
+  filled: boolean;
+  filledSize: number;
+  filledValue: number;          // u USDT
+  hitTime?: number;
+};
+```
+
+### 5.3.3. `DcaLevel`
+
+```ts
+type DcaLevel = {
+  index: 1 | 2 | 3;
+  adverseMovePct: number;       // 5, 15, 35
+  triggerPrice: number;         // cena na kojoj pucamo DCA
+  orderId?: string;
+  executed: boolean;
+  executedSize: number;
+  executedPrice?: number;
+  execTime?: number;
+};
+```
+
+---
+
+## 🧮 5.4. Formula za TP / DCA cene
+
+### 5.4.1. TP price iz ROI targeta
+
+Target ROI (na marginu) → koliko % treba da se pomeri cena.
+
+```ts
+priceMovePct = roiTarget / leverage
+```
+
+Za LONG:
+
+```ts
+tpPrice = entryPrice * (1 + priceMovePct / 100)
+```
+
+Za SHORT:
+
+```ts
+tpPrice = entryPrice * (1 - priceMovePct / 100)
+```
+
+Primer: ROI 21%, 25x, SHORT @ 0.4550
+
+* priceMovePct = 21 / 25 = 0.84%
+* tpPrice = 0.4550 * (1 - 0.0084) ≈ 0.4512
+
+### 5.4.2. DCA price iz adverse move %
+
+Adverse move = koliko je cena otišla PROTIV nas.
+
+Za SHORT (cene idu gore):
+
+```ts
+dcaPrice = entryPrice * (1 + adverseMovePct / 100)
+```
+
+Za LONG (cene idu dole):
+
+```ts
+dcaPrice = entryPrice * (1 - adverseMovePct / 100)
+```
+
+---
+
+## 🔄 5.5. FLOW FAZE 5 – život jednog trade-a
+
+### 5.5.1. Ulaz (iz FAZA 3 / decision engine)
+
+```ts
+type EntryDecision = {
+  symbol: string;
+  side: Side;
+  confidenceScore: number;      // 70-100
+  entryPrice: number;           // trenutni market
+  margin: number;               // baseMargin (npr 25 USDT)
+  leverage: number;             // 25x
+  context: any;                 // log info
+};
+```
+
+`positionManager.openPosition(decision)`:
+
+1. Validira da nema blokade iz FAZA 4 (još jednom ako hoćeš).
+
+2. Kreira `Position` objekat u stanju `PENDING_OPEN`.
+
+3. Izračuna početni `qty` (količinu):
+
+   ```ts
+   notional = margin * leverage;
+   qty = notional / entryPrice;
+   ```
+
+4. Napravi MARKET order (preko FAZA 7 adaptera).
+
+5. Kad order fillovan → postavi:
+
+   * `avgEntryPrice`
+   * `filledSize`
+   * `state = 'OPEN'`
+   * generiše TP i DCA nivoe
+   * startuje `priceWatcher` za tu poziciju
+
+---
+
+## 🎯 5.6. TP Engine (tpEngine.js)
+
+### 5.6.1. Setup TP nivoa
+
+```js
+export function setupTpLevels(position) {
+  const { tp1Roi, tp2Roi, tp3Roi, exitFractions } = POSITION_CONFIG.tp;
+  const entry = position.avgEntryPrice;
+  const side = position.side;
+
+  const roiTargets = [tp1Roi, tp2Roi, tp3Roi];
+
+  position.tpLevels = roiTargets.map((roi, idx) => {
+    const movePct = roi / position.leverage;
+    let priceTarget;
+
+    if (side === 'LONG') {
+      priceTarget = entry * (1 + movePct / 100);
+    } else {
+      priceTarget = entry * (1 - movePct / 100);
+    }
+
+    return {
+      index: (idx + 1),
+      roiTarget: roi,
+      priceTarget,
+      fraction: exitFractions[idx],
+      filled: false,
+      filledSize: 0,
+      filledValue: 0
+    };
+  });
+}
+```
+
+> U FAZI 7, za svaki TP će se napraviti Limit order na toj ceni
+> (ili ćemo u FAZI 5 raditi “virtual TPs” i market naloge na delu pozicije).
+
+### 5.6.2. Monitoring TP hitova
+
+`priceWatcher` šalje event svaki put kada se promeni last price.
+
+```js
+function onPriceUpdate(position, lastPrice) {
+  checkTpHits(position, lastPrice);
+  checkDcaHits(position, lastPrice);
+}
+```
+
+`checkTpHits`:
+
+* Za svaku TP koja nije `filled`:
+
+  * SHORT:
+
+    * Ako `lastPrice <= tp.priceTarget` → TP hit
+  * LONG:
+
+    * Ako `lastPrice >= tp.priceTarget` → TP hit
+
+* Kad se TP hit:
+
+  1. Izračunaj quantity za zatvaranje:
+
+     ```ts
+     qtyToClose = position.filledSize * tp.fraction
+     ```
+
+  2. Pošalji MARKET close order (FAZA 7).
+
+  3. Ažuriraj:
+
+     ```ts
+     position.closedSize += qtyToClose
+     position.realizedPnl += calcPnl(...)
+     tp.filled = true
+     tp.filledSize = qtyToClose
+     tp.hitTime = now()
+     ```
+
+  4. Emituj event: `tp_hit` (index 1/2/3).
+
+### 5.6.3. Breakeven trigger (posle TP1)
+
+* Kad `tp1` prvi put postane `filled`:
+
+  * `slAtBreakevenActive = true`
+  * FAZA 7: postavi SL order na `avgEntryPrice`
+  * FAZA 5: otkaži sve DCA levele (`cancelDcaForPosition`)
+
+> Od tog trenutka trade je “RISK FREE” → samo može da izađe na 0 ili u plus.
+
+---
+
+## 🧯 5.7. DCA Engine (dcaEngine.js)
+
+### 5.7.1. Inicijalno generisanje DCA nivoa
+
+```js
+export function setupDcaLevels(position) {
+  const { levels } = POSITION_CONFIG.dca;
+  const entry = position.avgEntryPrice;
+  const side = position.side;
+
+  position.dcaLevels = levels.map((pct, idx) => {
+    let triggerPrice;
+    if (side === 'LONG') {
+      // cena pada protiv nas
+      triggerPrice = entry * (1 - pct / 100);
+    } else {
+      // SHORT – cena raste protiv nas
+      triggerPrice = entry * (1 + pct / 100);
+    }
+
+    return {
+      index: (idx + 1),
+      adverseMovePct: pct,
+      triggerPrice,
+      executed: false,
+      executedSize: 0
+    };
+  });
+}
+```
+
+### 5.7.2. Monitoring DCA okidača
+
+`checkDcaHits(position, lastPrice)`:
+
+Za svaki DCA level koji nije executed:
+
+* Za LONG:
+
+  * Ako `lastPrice <= triggerPrice` → aktiviraj DCA
+
+* Za SHORT:
+
+  * Ako `lastPrice >= triggerPrice` → aktiviraj DCA
+
+### 5.7.3. Kada se DCA okine:
+
+1. Proveri da li `slAtBreakevenActive`:
+
+   * ako **DA** → **NE RADIMO VIŠE DCA** (posle TP1 nema DCA)
+
+2. Izračunaj dodatnu marginu: u osnovi ista kao start (`baseMargin`), npr. 25 USDT
+
+3. Izračunaj qty:
+
+   ```ts
+   extraNotional = dcaMargin * leverage;
+   extraQty = extraNotional / lastPrice;
+   ```
+
+4. Pošalji MARKET order u smeru pozicije (dodaj size).
+
+5. Ažuriraj:
+
+   ```ts
+   position.addedMargin += dcaMargin;
+   position.totalMargin = position.baseMargin + position.addedMargin;
+   position.filledSize += extraQty;
+   position.avgEntryPrice = recalcAvgEntry(position, extraQty, lastPrice);
+   dca.executed = true;
+   dca.executedSize = extraQty;
+   dca.executedPrice = lastPrice;
+   dca.execTime = now();
+   position.dcaActiveLevels++;
+   ```
+
+6. **Rekalkuliši TP levele** iz nove `avgEntryPrice`:
+
+   * Override svih `tpLevels.priceTarget` (dok ne pogodi TP1, posle TP1 više ne diraš).
+
+---
+
+## 🧮 5.8. PnL & avgEntry kalkulacije (pnlCalculator.js)
+
+### 5.8.1. Novi avgEntry posle DCA
+
+```js
+export function recalcAvgEntry(position, extraQty, extraPrice) {
+  const oldNotional = position.avgEntryPrice * position.filledSize;
+  const newNotional = extraPrice * extraQty;
+  const totalQty = position.filledSize + extraQty;
+
+  return (oldNotional + newNotional) / totalQty;
+}
+```
+
+### 5.8.2. PnL za zatvaranje dela pozicije
+
+Za LONG:
+
+```ts
+pnl = (closePrice - avgEntryPrice) * qty
+```
+
+Za SHORT:
+
+```ts
+pnl = (avgEntryPrice - closePrice) * qty
+```
+
+ROI na marginu:
+
+```ts
+roiPct = (pnl / position.totalMargin) * 100
+```
+
+---
+
+## 🧠 5.9. State Machine unutar FAZE 5
+
+Pozicija menja state:
+
+1. `PENDING_OPEN` → poslat entry order
+2. `OPEN` → entry fillovan, TP i DCA aktivni
+3. `RISK_FREE` → TP1 hit, SL na breakeven, DCA otkazani
+4. `CLOSING` → zadnji TP/SL se izvršava
+5. `CLOSED` → sve zatvoreno, PnL finalizovan
+6. `CANCELLED` / `ERROR` → ako nešto pođe po zlu
+
+---
+
+## 🔔 5.10. Event sistem (events.js)
+
+Standardizuj event-e da možeš lako da loguješ i prikažeš na dashboard-u:
+
+* `position_opened`
+* `tp_hit` (index 1/2/3)
+* `dca_executed` (index 1/2/3)
+* `breakeven_activated`
+* `position_closed`
+* `position_error`
+
+Svaki event ima payload:
+
+```ts
+{
+  positionId,
+  symbol,
+  side,
+  index?,       // za TP/DCA
+  price,
+  qty,
+  pnl?,
+  roi?,
+  timestamp
+}
+```
+
+---
+
+## 🧪 5.11. Test scenariji FAZE 5
+
+**Moraš pripremiti simulacione testove** (fake price feed + fake order executor):
+
+1. **Idealni trade bez DCA**
+
+   * Entry @ 1.0000, SHORT
+   * Cena padne 0.84% → TP1 hit → 40% zatvoreno, SL na BE
+   * Cena padne 1.64% → TP2
+   * Cena padne 4% → TP3
+   * Proveri PnL, levels, state = CLOSED
+
+2. **Trade sa DCA1, pa FULL recovery** (PIXEL scenario)
+
+   * Cena prvo ide protiv 5–7% → DCA1
+   * Nema SL, avgEntry se pomera
+   * Onda cena ide u naš smer → TP1/2/3
+   * Potvrdi da trade završava u debelom plusu
+
+3. **Trade gde TP1 hit, ali se vrati na breakeven**
+
+   * TP1 se pogodi → breakeven aktiviran, DCA otkazani
+   * Cena se okrene i pogodi SL na BE
+   * Finalni PnL ~ 0 (mali plus ili minus od fee)
+
+4. **Trade gde DCA2 ili DCA3 aktivni**
+
+   * Testiraj rekalkulaciju avgEntry i TPs više puta
+
+5. **Simulacija bug situacija**
+
+   * Partial fill, half TP triggered, WS drop
+   * Restart sistema – da li učitava state i nastavlja?
+
+---
+
+## ✅ 5.12. FAZA 5 – checklist
+
+* [ ] `Position` model definisan
+* [ ] `positionManager` sa `openPosition()` i interfejsima
+* [ ] `tpEngine` implementiran (setup + check)
+* [ ] `dcaEngine` implementiran (setup + check + avgEntry)
+* [ ] `slEngine` (breakeven) – SL posle TP1 + cancel DCA
+* [ ] `priceWatcher` – hook na market feed
+* [ ] `pnlCalculator` – ROI i PnL tačni
+* [ ] Event sistem i logging
+* [ ] Sim testovi za 4–5 scenarija iznad
+
+---
+
+Ako želiš, sledeći korak može biti:
+
+* da FAZU 5 dodatno “prelomimo” u **konkretan kod skeleton** (fajlovi sa export funkcijama i TODO blokovima), spremno da iskopiraš u `src/position/`
+  **ili**
+* da krenemo FAZA 6 – **State Machine & Orkestracija** (kako sve faze 1–5 rade zajedno za jedan trade).

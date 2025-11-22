@@ -1,0 +1,407 @@
+Razumem — **sada ide FAZA 4**, u istom ultra-detaljnom programerskom formatu kao FAZA 1–3.
+
+Ovo je jedna od najkritičnijih faza cele strategije, jer ona *čuva bot od gluposti* i sprečava katastofalne pogrešne ulaze.
+
+---
+
+# **FAZA 4 – SKIP FILTERS & DAILY LIMITS (Hard Risk Filters)**
+
+### **Programersko-tehnička specifikacija (verzija 1.0)**
+
+Sistem: *Andre-style high-frequency scalp automation*
+Komponenta: *Pre-entry risk guard layer*
+
+---
+
+# ✔ 4.0. CILJ FAZE
+
+Pre nego što FAZA 3 uopšte dobije pravo da radi mikro-detektovanje (peak, pullback, micro-structure), FAZA 4 mora da odgovori na pitanje:
+
+> **"Da li uopšte smemo da razmatramo ovaj signal? YES/NO"**
+
+FAZA 4 radi *pre* FAZA 3 i može **momentom** da prekine ceo proces.
+
+---
+
+# 📁 4.1. FAZA 4 – Arhitektura i fajlovi
+
+```text
+src/
+  filters/
+    skipEngine.js            # Glavni orchestrator svih filtera
+    timeFilter.js            # Vreme dana
+    weekendFilter.js         # Vikend blokada
+    dailyTradeFilter.js      # Limit trejdova
+    dailyProfitFilter.js     # Limit profita
+    concurrentFilter.js      # Max paralelnih pozicija
+    winrateProtection.js     # Zaštita savršenog dana
+    regimeFilter.js          # (opciono) Macro FAZA 2 režim
+    skipLogger.js            # Logovanje svih skip razloga
+```
+
+---
+
+# ✔ 4.2. JAVNI API FAZA 4
+
+FAZA 4 dobija kompletni kandidat trejda:
+
+```ts
+type SkipRequest = {
+  symbol: string,
+  timestamp: number,      // signal time
+  macro: MacroContext,    // preuzeto iz FAZA 2
+  stats: DailyStats       // stanje dana
+};
+```
+
+`DailyStats` je obavezna struktura:
+
+```ts
+type DailyStats = {
+  day: string,               // "2025-11-22"
+  tradesOpened: number,      // broj otvorenih danas
+  tradesWon: number,
+  tradesLost: number,
+  roiToday: number,          // u %
+  openPositions: number      // koliko je trenutno aktivno
+};
+```
+
+### 4.2.1. Glavna funkcija:
+
+```ts
+// skipEngine.js
+export function shouldSkip(skipRequest) {
+  return {
+    skip: boolean,
+    reason?: string,
+    filter?: string  // koji filter je odlučio
+  };
+}
+```
+
+Ako `skip === true`, FAZA 3 **se ne poziva**.
+
+---
+
+# ✔ 4.3. DETALJNE SPECIFIKACIJE ZA SVAKI FILTER
+
+---
+
+# 4.3.1. **Time-of-Day Filter** (Andre najstroži filter)
+
+### LOGIKA:
+
+* Andre **nikada** ne ulazi posle **18:00 UTC**
+* Posle 18:00 samo *gleda*, ne ulazi
+
+### Programski API
+
+```js
+// timeFilter.js
+export function timeFilter(timestampUtc) {
+  const hour = new Date(timestampUtc).getUTCHours();
+
+  if (hour >= 18 || hour < 9) {
+    return {
+      skip: true,
+      reason: `Outside trading hours (09:00–18:00 UTC)`,
+      filter: 'time'
+    };
+  }
+
+  return { skip: false };
+}
+```
+
+### EDGE CASE:
+
+* 17:59 → OK
+* 18:00 → SKIP
+* 08:59 → SKIP
+* 09:00 → OK
+
+---
+
+# 4.3.2. **Weekend Filter**
+
+### LOGIKA:
+
+* Andre **ne trguje vikendom**
+* Vikend = subota i nedelja
+
+### API:
+
+```js
+// weekendFilter.js
+export function weekendFilter(timestampUtc) {
+  const day = new Date(timestampUtc).getUTCDay();
+  if (day === 0 || day === 6) {
+    return {
+      skip: true,
+      reason: 'Weekend – trading disabled',
+      filter: 'weekend'
+    };
+  }
+  return { skip: false };
+}
+```
+
+---
+
+# 4.3.3. **Daily Trade Limit Filter (MAX 10)**
+
+### LOGIKA:
+
+* Andre najčešće radi 4–8
+* Max hard cap = **10 trejdova dnevno**
+* Preko toga → mozak se kvari, greške rastu
+
+### API:
+
+```js
+// dailyTradeFilter.js
+export function dailyTradeFilter(stats) {
+  if (stats.tradesOpened >= 10) {
+    return {
+      skip: true,
+      reason: 'Daily trade cap reached (10)',
+      filter: 'daily_trades'
+    };
+  }
+  return { skip: false };
+}
+```
+
+---
+
+# 4.3.4. **Daily Profit Filter**
+
+### LOGIKA:
+
+Ako je dan već predobar → NE ULAZI VIŠE
+Jer najčešće *posle velikog dana počnu glupe greške*.
+
+* Normalan cilj: +250% do +500%
+* Izuzetan dan: +1000% do +1500%
+
+### Pravilo:
+
+* Ako `roiToday >= 1500%` → SKIP SVAKI SIGNAL
+* Ako `roiToday >= 500%` → Može samo score >= 85 iz FAZA 3
+* Inače normalno
+
+### API:
+
+```js
+// dailyProfitFilter.js
+export function dailyProfitFilter(stats) {
+  if (stats.roiToday >= 1500) {
+    return {
+      skip: true,
+      reason: 'Profit cap hit (1500%) – locking day',
+      filter: 'profit'
+    };
+  }
+
+  // skipEngine će proslediti info FAZA 3 ako score <85
+  if (stats.roiToday >= 500) {
+    return {
+      skip: false,
+      profitMode: 'selective'
+    };
+  }
+
+  return { skip: false };
+}
+```
+
+> Ako smo u *selective* modu, FAZA 3 mora da zahteva score ≥ 85.
+
+---
+
+# 4.3.5. **Max Concurrent Positions (3 max)**
+
+Andre nikada nema 5–10 aktivnih pozicija.
+Maximum = **tri**.
+
+### API:
+
+```js
+// concurrentFilter.js
+export function concurrentFilter(stats) {
+  if (stats.openPositions >= 3) {
+    return {
+      skip: true,
+      reason: 'Max concurrent positions reached (3)',
+      filter: 'concurrent'
+    };
+  }
+  return { skip: false };
+}
+```
+
+---
+
+# 4.3.6. **Win-Rate Protection (Perfect Day Guard)**
+
+Ako imaš:
+
+* 3 ili više trejdova danas
+* **0 gubitaka**
+* savršen dan → onda ulazimo samo ako score ≥ 80
+
+> Jer sledeći trejd najčešće pokvari savršen dan.
+
+### API:
+
+```js
+// winrateProtection.js
+export function winrateProtection(stats) {
+  if (stats.tradesOpened >= 3 && stats.tradesLost === 0) {
+    return {
+      guarded: true,
+      note: 'Perfect day – score requirement raised (80+)'
+    };
+  }
+
+  return { guarded: false };
+}
+```
+
+FAZA 3 će ovo čitati i podići threshold sa 70 na 80.
+
+---
+
+# 4.3.7. **Macro Regime Filter (FAZA 2)**
+
+Ako FAZA 2 kaže:
+
+* `regime = BLOCKED` → SKIP SVE
+* `regime = DEFENSIVE` → možda score +5 min ili obavezni mikro uslovi
+* `regime = AGGRESSIVE` → score threshold može pasti na 65
+
+### API:
+
+```js
+export function regimeFilter(macro) {
+  if (macro.regime === 'BLOCKED') {
+    return {
+      skip: true,
+      reason: 'Macro regime blocked',
+      filter: 'macro'
+    };
+  }
+  return { skip: false };
+}
+```
+
+---
+
+# ✔ 4.4. GLAVNA FUNKCIJA – orchestrator
+
+```js
+// skipEngine.js
+import { timeFilter } from './timeFilter.js';
+import { weekendFilter } from './weekendFilter.js';
+import { dailyTradeFilter } from './dailyTradeFilter.js';
+import { dailyProfitFilter } from './dailyProfitFilter.js';
+import { concurrentFilter } from './concurrentFilter.js';
+import { winrateProtection } from './winrateProtection.js';
+import { regimeFilter } from './regimeFilter.js';
+
+export function shouldSkip(req) {
+  // 1) time of day
+  let r = timeFilter(req.timestamp);
+  if (r.skip) return r;
+
+  // 2) weekend
+  r = weekendFilter(req.timestamp);
+  if (r.skip) return r;
+
+  // 3) macro regime
+  r = regimeFilter(req.macro);
+  if (r.skip) return r;
+
+  // 4) daily trade cap
+  r = dailyTradeFilter(req.stats);
+  if (r.skip) return r;
+
+  // 5) concurrent
+  r = concurrentFilter(req.stats);
+  if (r.skip) return r;
+
+  // 6) daily profit
+  r = dailyProfitFilter(req.stats);
+  if (r.skip) return r;
+
+  // 7) perfect day guard
+  const p = winrateProtection(req.stats);
+
+  return {
+    skip: false,
+    guarded: p.guarded,
+    profitMode: r.profitMode || null
+  };
+}
+```
+
+---
+
+# ✔ 4.5. Log Sistem FAZA 4
+
+Za svaki skip:
+
+```json
+{
+  "timestamp": 1732416734000,
+  "symbol": "RADUSDT",
+  "filter": "time",
+  "reason": "Outside trading hours (09–18 UTC)",
+  "day": "2025-11-23"
+}
+```
+
+Sprema se u:
+
+```
+data/system/skips/YYYY-MM-DD.log
+```
+
+I jedno dnevno sažeto:
+
+```
+data/system/reports/skip-summary-YYYY-MM-DD.json
+```
+
+---
+
+# ✔ 4.6. Test scenariji FAZA 4 (obavezno)
+
+1. 17:59 UTC → OK
+2. 18:00 UTC → SKIP
+3. Subota → SKIP
+4. 10 trejdova → SKIP
+5. ROI 1600% → SKIP
+6. 3 otvorene pozicije → SKIP
+7. Perfect day (3 trejda, 0 loss) → threshold bump na 80
+8. Macro regime BLOCKED → SKIP
+
+---
+
+# ✔ 4.7. FAZA 4 završni checklist
+
+* [ ] Sve filter funkcije završene
+* [ ] Main orchestrator radi
+* [ ] Integracija sa FAZA 3 – `guarded` i `profitMode` preneseni
+* [ ] Log sistem aktivan
+* [ ] Testovi za svaki filter
+* [ ] Testovi za kombinacije filtera
+* [ ] Skip summary radi
+
+---
+
+# Spremno.
+
+Želiš li sada FAZA 5 – **Position Management (TP1/TP2/TP3, DCA, breakeven, recovery)**?
+U istom ultra-detaljnom programerskom stilu?

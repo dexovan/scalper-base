@@ -1,0 +1,464 @@
+Idemo FAZA 8, ali kao ozbiljna “mini-platforma” za simulaciju, ne samo dummy mode. 🚀
+
+---
+
+# FAZA 8 – Paper Trading & Simulation Layer
+
+**Cilj:** Omogućiti da ceo Andre sistem radi **kao da je live**, ali:
+
+* sve naloge izvršava **simulator**, ne Bybit
+* koristiš **prave live podatke** (cena, volume, orderbook)
+* meriš win rate, ROI, drawdown, itd. pre pravog novca
+
+Sve to uz **isti API** kao FAZA 7 (executionGateway), da kasnije samo prebacimo prekidač `LIVE <→ PAPER`.
+
+---
+
+## 8.1 Arhitektura & fajlovi
+
+Predlog:
+
+```bash
+src/
+  simulation/
+    paperConfig.js
+    paperEngine.js
+    paperOrderBook.js
+    paperExecutionAdapter.js
+    paperAccount.js
+    paperReporter.js
+    paperStorage.js
+
+src/integration/
+  executionGateway.js        # već definisan u FAZA 7
+  executionModeSwitcher.js   # bira PAPER vs LIVE
+
+data/
+  simulation/
+    paper-trades.jsonl
+    paper-positions.json
+    paper-daily-stats.json
+```
+
+**Ključna ideja:**
+`executionGateway` uopšte ne zna da li si na Bybit-u ili u simulatoru – samo šalje `executeEntry`, `setupTps`, `setupDcas`…
+`executionModeSwitcher` odlučuje da li te pozive prosleđuje **Bybit adapteru** (FAZA 7) ili **paperExecutionAdapter** (FAZA 8).
+
+---
+
+## 8.2 Konfiguracija (paperConfig.js)
+
+```js
+export const paperConfig = {
+  enabled: process.env.EXECUTION_MODE === 'PAPER', // 'PAPER' | 'LIVE'
+  startingBalance: 10000,      // USDT
+  feeRateTaker: 0.0006,        // 0.06% (prilagodljivo)
+  feeRateMaker: 0.0002,        // ako ikad koristimo limit ulaze
+  maxSlippageBps: 10,          // 10 bps = 0.10% max fill skid
+  fillLatencyMs: 100,          // simulacija kašnjenja fill-a
+  storageDir: 'data/simulation',
+  useLiveFeed: true,           // koristi real-time cene sa WS
+  // backtest hooks (kasnije)
+  backtestMode: false,
+};
+```
+
+---
+
+## 8.3 Core koncepti u simulatoru
+
+### 8.3.1 Virtualni nalog (paperAccount.js)
+
+Drži stanje:
+
+```js
+{
+  balance: 10000,
+  equity: 10000,
+  unrealizedPnl: 0,
+  realizedPnl: 0,
+  positions: {
+    'RADUSDT': {
+      side: 'Sell',
+      qty: 123,
+      entryPrice: 0.455,
+      leverage: 25,
+      notional: 223.65,
+      unrealizedPnl: 12.34,
+      marginUsed: 8.95,
+    },
+    ...
+  },
+  openOrders: {
+    'andre_TP1_RAD_...': { ... },
+    'andre_DCA1_RAD_...': { ... },
+  },
+  stats: {
+    today: {
+      date: '2025-11-22',
+      trades: 0,
+      wins: 0,
+      losses: 0,
+      roiPercent: 0,
+      maxDdPercent: 0,
+    },
+    lifetime: { ... }
+  }
+}
+```
+
+Funkcije:
+
+```js
+export function initPaperAccount()
+export function getPaperAccountState()
+export function applyFill(fillEvent)   // ažurira pozicije i balans
+export function applyFee(symbol, fee)  // skida fee sa balansa
+export function closePosition(symbol)  // full close (ako treba)
+export function markToMarket(symbol, price) // update unrealizedPnL
+```
+
+---
+
+### 8.3.2 Order model (paperEngine.js)
+
+Simuliramo sve naloge koje FAZA 5/7 očekuje:
+
+* **Market entry / DCA**
+* **Limit TP** (reduceOnly)
+
+Struktura naloga:
+
+```js
+{
+  id: 'paper_123456',
+  clientOrderId: 'andre_TP1_RAD_...',
+  symbol: 'RADUSDT',
+  side: 'Buy',            // Buy za TP short pozicije
+  type: 'Limit' | 'Market',
+  qty: 49.2,
+  price: 0.45113,         // za Limit
+  timeInForce: 'GTC' | 'IOC',
+  reduceOnly: true,
+  status: 'NEW' | 'PARTIALLY_FILLED' | 'FILLED' | 'CANCELED',
+  createdAt: 1234567890,
+  updatedAt: 1234567890,
+  filledQty: 0,
+}
+```
+
+---
+
+## 8.4 Paper Execution Adapter (paperExecutionAdapter.js)
+
+Ovo je **PAPER verzija** Bybit order routera.
+Ima **isti interfejs** kao FAZA 7:
+
+```js
+export async function placeMarketEntry({ symbol, side, qty, clientOrderId }) {}
+export async function placeDcaOrder({ symbol, side, qty, clientOrderId }) {}
+export async function placeTpOrder({ symbol, side, qty, price, tpTag }) {}
+export async function closePositionMarket({ symbol, side, qty, reason }) {}
+export async function cancelAllTpDca({ symbol, positionSide }) {}
+export async function syncOpenOrders(symbol) {} // ovde vraća paper stanje
+```
+
+### Šta radi:
+
+* umesto REST poziva, kreira entry order u `paperEngine`
+* odmah ga filla po **aktuelnoj tržišnoj ceni** (uz malu slippage simulaciju)
+* update-uje `paperAccount` (pozicija, balans, fee)
+* kreira event u `paperReporter` (log trejda)
+
+Primjer za market entry:
+
+1. dobiješ `symbol, side, qty`
+2. uzmeš trenutnu cenu iz `paperOrderBook.getLastPrice(symbol)`
+3. izračunaš **entryPrice ± slippage**
+4. kreiraš poziciju / uvećaš postojeću (DCA)
+5. smanjiš balans za margin + fee
+6. vratiš:
+
+```js
+return {
+  filled: true,
+  avgPrice: 0.4550,
+  filledQty: 123,
+  feePaid: 0.0123,
+};
+```
+
+---
+
+## 8.5 Paper OrderBook (paperOrderBook.js)
+
+Ovo je most sa tvojim **pravim WS feedom** (FAZA 2/3).
+
+### Zadatak:
+
+* držati najnoviju cenu / bid / ask za svaki symbol
+* iz toga raditi fill logiku
+
+Struktura:
+
+```js
+const state = {
+  RADUSDT: {
+    last: 0.455,
+    bid: 0.4549,
+    ask: 0.4551,
+    timestamp: 1234567890,
+  },
+  ...
+};
+```
+
+Funkcije:
+
+```js
+export function updateFromTicker(tickerEvent) {}
+export function updateFromOrderbook(orderbookEvent) {}
+export function getLastPrice(symbol) {}
+export function getBidAsk(symbol) {}
+```
+
+Simulator fill logika:
+
+* **Market**:
+
+  * za LONG → fill po `ask` + random slippage do `maxSlippageBps`
+  * za SHORT → fill po `bid` - slippage
+
+* **Limit TP**:
+
+  * za TP BUY (zatvara SHORT) → ako `last <= price` → fill
+  * za TP SELL (zatvara LONG) → ako `last >= price` → fill
+
+---
+
+## 8.6 Event Loop & Fills (paperEngine.js)
+
+### 8.6.1 Periodični loop
+
+Pokreneš interval npr. svake **500ms**:
+
+```js
+setInterval(() => {
+  processOpenOrders();     // proverava da li neki TP/DCA treba da se filluje
+  markToMarketAll();       // update unrealizedPnL
+  flushBuffersIfNeeded();  // piše u JSONL/DB
+}, 500);
+```
+
+### 8.6.2 processOpenOrders()
+
+Za svaki `openOrder`:
+
+* uzmi `lastPrice` iz `paperOrderBook`
+* ako su limiti pogođeni (kao gore) → kreiraj fill:
+
+```js
+const fill = {
+  symbol,
+  side,
+  qty: remainingQty,
+  price: fillPrice,
+  orderId,
+  clientOrderId,
+  timestamp: Date.now(),
+  type: 'TP' | 'DCA' | 'ENTRY',
+};
+```
+
+Prosledi:
+
+* `applyFill(fill)` u `paperAccount`
+* `paperReporter.logFill(fill)` za statistiku
+* ažuriraj order status `FILLED`
+
+Za partial fill (ako želiš realističnije, opcija kasnije) možeš da deliš qty na manje komade.
+
+---
+
+## 8.7 Paper Reporter & Storage (paperReporter.js, paperStorage.js)
+
+### 8.7.1 Log formati
+
+**trade log** (`paper-trades.jsonl`, jedan red = jedan kompletan trade, ne 1 fill):
+
+```json
+{
+  "id": "andre_RAD_20251122_1306",
+  "symbol": "RADUSDT",
+  "direction": "SHORT",
+  "entryPrice": 0.455,
+  "exitPriceAvg": 0.444,
+  "tpHit": "TP3",
+  "dcaUsed": ["DCA1"],
+  "openedAt": 1700000000000,
+  "closedAt": 1700000015600,
+  "durationSec": 1560,
+  "realizedPnl": 12.34,
+  "roiPercent": 107.14,
+  "feesPaid": 0.22,
+  "macroScore": 0.95,
+  "entryScore": 100,
+  "skippedSignalsBefore": 3
+}
+```
+
+**fill log** (ako želiš granularnije):
+
+```json
+{
+  "tradeId": "andre_RAD_...",
+  "orderType": "ENTRY" | "TP1" | "TP2" | "TP3" | "DCA1" | "DCA2" | "DCA3",
+  "symbol": "RADUSDT",
+  "side": "Buy",
+  "qty": 49.2,
+  "price": 0.45113,
+  "timestamp": 1700000001234
+}
+```
+
+**daily stats** (`paper-daily-stats.json`):
+
+```json
+{
+  "2025-11-22": {
+    "trades": 9,
+    "wins": 9,
+    "losses": 0,
+    "roiPercent": 1505,
+    "avgHoldMin": 26,
+    "maxDdPercent": -4.2,
+    "bestTrade": { "symbol": "MAVUSDT", "roi": 341.41 },
+    "worstTrade": { "symbol": "CTSIUSDT", "roi": 25.76 }
+  }
+}
+```
+
+### 8.7.2 Funkcije
+
+```js
+export function logNewTrade(tradeMeta) {}
+export function logTradeUpdate(tradeId, patch) {}
+export function logFill(fill) {}
+export function updateDailyStats(tradeResult) {}
+export function getDailyStats(date) {}
+export function getGlobalStats() {}
+```
+
+---
+
+## 8.8 Execution Mode Switcher (executionModeSwitcher.js)
+
+**Glavni prekidač** između FAZA 7 (Bybit) i FAZA 8 (Paper).
+
+```js
+import * as bybitRouter from '../connectors/bybit/bybitOrderRouter.js';
+import * as paperRouter from '../simulation/paperExecutionAdapter.js';
+import { paperConfig } from '../simulation/paperConfig.js';
+
+function getRouter() {
+  if (paperConfig.enabled) return paperRouter;
+  return bybitRouter;
+}
+
+export const executionRouter = {
+  placeMarketEntry: (params) => getRouter().placeMarketEntry(params),
+  placeDcaOrder:    (params) => getRouter().placeDcaOrder(params),
+  placeTpOrder:     (params) => getRouter().placeTpOrder(params),
+  closePositionMarket: (params) => getRouter().closePositionMarket(params),
+  cancelAllTpDca:   (params) => getRouter().cancelAllTpDca(params),
+  syncOpenOrders:   (symbol) => getRouter().syncOpenOrders(symbol),
+};
+```
+
+`executionGateway` iz FAZE 7 umesto Bybit routera koristi **ovaj** switcher – i time automatski radi i u PAPER i u LIVE modu.
+
+---
+
+## 8.9 Integracija sa FAZA 4/6 (skip filteri + state machine)
+
+Važno:
+
+* **Skip filteri** (FAZA 4) rade **isto** u paper modu
+* Daily limits, vikend, time-of-day, max 3 pozicije → sve se primenjuje i u simulaciji
+* State machine (FAZA 6) isto ne zna da li je PAPER ili LIVE – dobija evente `ENTRY_FILLED`, `TP1_HIT`, `DCA1_HIT` iz `paperEngine` umesto iz WS Bybit-a.
+
+Event bus (`executionEvents.js`):
+
+* `on('tradeOpened', ...)`
+* `on('tpHit', ...)`
+* `on('dcaHit', ...)`
+* `on('tradeClosed', ...)`
+* `on('paper.dailyStatsUpdated', ...)`
+
+---
+
+## 8.10 Test Plan FAZE 8
+
+### 8.10.1 Unit testovi
+
+* `paperOrderBook`
+
+  * update iz mock WS eventa → `getLastPrice` vrati ispravno
+* `paperEngine`
+
+  * kada `lastPrice` pređe preko TP → nalog `FILLED` + `applyFill` pozvano
+* `paperAccount`
+
+  * entry + DCA + TP → PnL i ROI izračunati isto kao naši ručni primeri (npr. RAD trade)
+
+### 8.10.2 Scenario test – “RAD” stil
+
+1. Ručno nahrani `paperOrderBook` sekvencom cena (skripta):
+
+   * pump do vrha, pullback 4%, pad do TP1/TP2/TP3
+2. Pusti FAZU 3 + FAZU 5 + FAZU 8 zajedno
+3. Proveri:
+
+   * entry oko 4% ispod vrha
+   * TP1/TP2/TP3 sve pogođeno
+   * ROI ≈ +107% kao u dokumentaciji
+
+### 8.10.3 Live-feed paper test
+
+* `EXECUTION_MODE=PAPER`
+* spoji na realni Bybit WS
+* pusti da radi 3–5 dana:
+
+  * sistem normalno skenira signale, ulazi/izlazi
+  * sve ide u `paper-trades.jsonl`
+* posle npr. 50 paper trejdova:
+
+  * izračunaj win rate
+  * proveri average ROI
+  * vidi da li daily pattern liči na Andre (2–10 trejdova/dan, 12–14 UTC peak)
+
+### 8.10.4 Success kriterijumi FAZE 8
+
+* **Stabilnost:** 0 crash-eva u 72h continuous run
+* **Tačnost:** PnL računanje se poklapa sa ručnim izračunima (± mali rounding)
+* **Performanse:** paper loop (500ms) radi ispod 50ms CPU vremena
+* **Metrika:** u test periodu (50+ paper trejdova) imaš:
+
+  * win rate **≥ 65%**
+  * nema “spike” gubitaka preko planiranog DCA max drawdown-a
+  * dnevni broj trejdova i vreme trejdova liči na definisani pattern
+
+---
+
+## 8.11 Šta dobijamo FAZOM 8
+
+* Siguran sandbox da **cela logika mikro + makro** radi tačno
+* Identican tok kao LIVE, samo bez rizika
+* Statistiku koja ti kaže da li vredi ići na pravi novac
+* Mogućnost da kasnije dodamo **backtest** (ćitaš istorijske candle / ticks umesto WS) bez razbijanja sistema
+
+---
+
+Ako hoćeš, sledeći korak može da bude:
+
+* da FAZU 8 pretvorim u **konkretan skeleton koda** (fajlovi sa `export function ... {/* TODO */}`) koje možeš odmah da ubaciš u `src/simulation/`, kao što smo pričali za FAZU 5 – ili da nastavimo na FAZU 9 (Optimization & Live Prep) specifikaciju.

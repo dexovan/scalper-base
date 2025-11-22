@@ -1,0 +1,1046 @@
+Razumem te 100% – **nema Discorda, nema spoljnog bota**.
+Pravimo **tvoj sopstveni Andre sistem**, koji živi na tvom VPS-u u Singapuru, koristi **Bybit WS/REST** i naš postojeći microstructure engine.
+
+Kreiram ti sada **FAZU 1 kao poseban, ultra-tehnički dokument**, već prilagođen za *self-hosted* varijantu (nema više “alert parsing sa Discorda”, nego sami generišemo “Volatility” i “Scalp Reversal” evente direktno iz market data).
+
+---
+
+# FAZA 1 – ANDRE SIGNAL CORE (SELF-HOSTED)
+
+**Cilj faze:**
+Napraviti osnovni “Andre Signal Engine” koji na tvom serveru:
+
+* konektuje se na Bybit (USDT perp),
+* prikuplja sve što je potrebno (candle 60m, 5m/1m, volume, funding rate),
+* računa **RSI, MFI, Bollinger, volume multipliers**,
+* detektuje **Stage 1: Volatility Spike** i **Stage 2: Scalp Reversal**,
+* generiše *naše* interne signale u obliku objekta (npr. `AndreSignalEvent`) koje kasnije Phase 2+ koriste (macro filteri, entry timing, DCA, itd).
+
+> U ovoj fazi **ne ulazimo u trade**, samo **tačno i brzo detektujemo signale**.
+
+---
+
+## 1. Ulazi i izlazi FAZE 1
+
+### 1.1. Ulazi (input data)
+
+Svi ulazi dolaze direktno sa berze / naših konektora:
+
+1. **Bybit WS / public feed**
+
+   * `ticker` stream (price, 24h volume, change %)
+   * `kline` stream (60m primarno, 5m/1m sekundarno)
+   * po potrebi `trade` stream (za finiji volume / delta kasnije)
+
+2. **Bybit REST**
+
+   * funding rate history po simbolu (bar poslednjih 5 dana)
+   * istorijski candles (za inicijalni bootstrap pri startu)
+
+### 1.2. Izlazi (output event)
+
+Centralni izlaz ove faze je **Andre signal event**, npr.:
+
+```ts
+// TypeScript tip, u JS kao JSDoc
+type AndreSignalEvent = {
+  id: string;                 // unique ID (symbol + ts + type)
+  symbol: string;             // npr. "RADUSDT"
+  stage: "VOLATILITY" | "SCALP_REVERSAL";
+  direction: "LONG" | "SHORT" | "NEUTRAL";
+  timeframe: "60m";
+  generatedAt: number;        // Date.now()
+  price: number;              // trenutna cena
+  rsi60m: number;
+  mfi60m: number;
+  bb: {
+    upper: number;
+    lower: number;
+    middle: number;
+    status: "INSIDE" | "OUTSIDE_UPPER" | "OUTSIDE_LOWER";
+  };
+  volume: {
+    current: number;
+    baseline24h: number;
+    multiplier: number;       // current / baseline
+  };
+  funding: {
+    current: number;          // npr. -0.003571
+    history5d: number[];      // poslednjih X vrednosti
+  };
+  scarcity: {
+    lastSeenHours: number;    // koliko sati od zadnjeg SCALP_REVERSAL za taj symbol
+  };
+  scores: {
+    rsi: number;              // 0–1
+    mfi: number;              // 0–1
+    volume: number;           // 0–1
+    funding: number;          // 0–1
+    bb: number;               // 0–1
+  };
+  confidence: number;         // 0–1, Stage 1 obično niži, Stage 2 viši
+  meta: {
+    reason: string[];         // niz tekstualnih razloga (debug)
+    debug?: any;
+  };
+};
+```
+
+Ovaj event će kasnije Phase 2+ koristiti kao osnovu za **entry scoring, macro filtere, skip logiku, itd.**
+
+---
+
+## 2. Arhitektura i fajlovi (FAZA 1)
+
+Predlog u okviru tvog postojećeg projekta (`scalper-base` stil):
+
+```text
+src/
+  connectors/
+    bybitPublic.js          // već postoji / ili ćemo ga doraditi
+  market/
+    candlesStore.js         // store za 1m/5m/60m candles po simbolu
+    volumeBaseline.js       // 24h baselines
+    fundingStore.js         // funding history po simbolu
+  andre/
+    config.andre.js         // parametri (thresholds)
+    indicators.js           // RSI / MFI / Bollinger kalkulacije
+    signalEngine.js         // GLAVNA logika: Stage1/Stage2
+    signalBus.js            // EventEmitter za AndreSignalEvent
+  utils/
+    time.js                 // helperi za vreme / period
+    logger.js               // log wrapper
+```
+
+---
+
+## 3. `config.andre.js` – parametri (self-hosted)
+
+```js
+export const ANDRE_CONFIG = {
+  timeframes: {
+    primary: "60m",
+    secondary: "5m",
+    micro: "1m",
+  },
+
+  rsi: {
+    period: 14,
+    overbought: 75,
+    extreme: 80,
+    oversold: 25,
+  },
+
+  mfi: {
+    period: 14,
+    overbought: 80,
+    extreme: 90,
+    oversold: 20,
+  },
+
+  volume: {
+    baselineWindowHours: 24,
+    minMultiplier: 3.0,   // ispod ovoga nema signala
+    highMultiplier: 5.0,
+    monsterMultiplier: 10.0,
+  },
+
+  bollinger: {
+    period: 20,
+    stdDev: 2,
+  },
+
+  funding: {
+    extremeNegative: -0.003, // -0.3%
+    extremePositive:  0.003, // +0.3%
+    neutralRange: [-0.0005, 0.0005],
+    historyDays: 5,
+  },
+
+  scarcity: {
+    minHours: 4,    // <4h = noisy, skip u kasnijim fazama
+    rareHours: 24,  // >24h = bonus
+  },
+
+  signals: {
+    volatilityWindowMinutes: 10, // prozor u kom tražimo Stage 2 posle Stage 1
+    minVolatilityMovePct: 5,     // npr. 5-10% za Stage 1
+  },
+};
+```
+
+---
+
+## 4. Market sloj (candles, volume, funding)
+
+### 4.1. `candlesStore.js`
+
+Zadatak: kešira candles (1m / 5m / 60m) za svaki symbol, da bi indikator modul mogao da računa RSI/MFI/BB bez REST poziva.
+
+API (grubo):
+
+```js
+// candlesStore.js
+import EventEmitter from "events";
+
+class CandlesStore extends EventEmitter {
+  constructor() {
+    super();
+    this.candles = new Map(); // key: symbol|tf -> array of candles
+  }
+
+  upsertCandle(symbol, timeframe, candle) {
+    const key = `${symbol}|${timeframe}`;
+    if (!this.candles.has(key)) this.candles.set(key, []);
+    const arr = this.candles.get(key);
+    // append or replace last, max n (npr. 500)
+    // ...
+    this.emit("updated", { symbol, timeframe });
+  }
+
+  getSeries(symbol, timeframe) {
+    const key = `${symbol}|${timeframe}`;
+    return this.candles.get(key) || [];
+  }
+}
+
+export const candlesStore = new CandlesStore();
+```
+
+* Punimo ga iz `bybitPublic.js` WS kline feed-a.
+* Na `updated` event-u Andre signal engine može da recompute indikatore za taj symbol/timeframe.
+
+### 4.2. `volumeBaseline.js`
+
+Čuva **24h baseline volume** po simbolu:
+
+```js
+// volumeBaseline.js
+class VolumeBaseline {
+  constructor() {
+    this.baseline = new Map(); // symbol -> { avg24h, lastUpdate }
+  }
+
+  update(symbol, last24hVolume) {
+    this.baseline.set(symbol, {
+      avg24h: last24hVolume,
+      lastUpdate: Date.now(),
+    });
+  }
+
+  get(symbol) {
+    return this.baseline.get(symbol) || { avg24h: null, lastUpdate: null };
+  }
+}
+
+export const volumeBaseline = new VolumeBaseline();
+```
+
+Punjenje:
+
+* ili iz `ticker` stream-a (Bybit daje 24h volume),
+* ili periodično iz REST-a (fallback).
+
+### 4.3. `fundingStore.js`
+
+Čuva **funding history 5 dana + current**:
+
+```js
+// fundingStore.js
+class FundingStore {
+  constructor() {
+    this.store = new Map(); // symbol -> { history: number[], lastUpdate }
+  }
+
+  setHistory(symbol, arr) {
+    this.store.set(symbol, {
+      history: arr,
+      lastUpdate: Date.now(),
+    });
+  }
+
+  pushCurrent(symbol, value) {
+    const data = this.store.get(symbol) || { history: [], lastUpdate: null };
+    data.history.push(value);
+    // trim na max N
+    this.store.set(symbol, {
+      history: data.history.slice(-50),
+      lastUpdate: Date.now(),
+    });
+  }
+
+  get(symbol) {
+    return this.store.get(symbol) || { history: [], lastUpdate: null };
+  }
+}
+
+export const fundingStore = new FundingStore();
+```
+
+Punjenje:
+
+* pri startu: REST poziv za zadnjih X funding vrednosti,
+* zatim periodično (svakih 8h / ili koliko Bybit updateuje).
+
+---
+
+## 5. `indicators.js` – RSI, MFI, Bollinger
+
+Ovaj modul radi čist math, **bez IO**.
+
+```js
+// indicators.js
+import { ANDRE_CONFIG } from "./config.andre.js";
+
+export function calcRSI(closes, period = ANDRE_CONFIG.rsi.period) {
+  // ulaz: niz close cena (najnoviji na kraju)
+  // izlaz: number ili null ako nema dovoljno podataka
+}
+
+export function calcMFI(candles, period = ANDRE_CONFIG.mfi.period) {
+  // candles: { high, low, close, volume }[]
+  // računa typicalPrice * volume itd.
+}
+
+export function calcBollinger(closes, period = ANDRE_CONFIG.bollinger.period, stdDev = ANDRE_CONFIG.bollinger.stdDev) {
+  // vraća { upper, lower, middle }
+}
+
+export function classifyBollinger(price, bb) {
+  if (price > bb.upper) return "OUTSIDE_UPPER";
+  if (price < bb.lower) return "OUTSIDE_LOWER";
+  return "INSIDE";
+}
+```
+
+---
+
+## 6. `signalBus.js` – Event layer
+
+Jednostavan EventEmitter koji koristi ostatak sistema:
+
+```js
+// signalBus.js
+import EventEmitter from "events";
+
+class AndreSignalBus extends EventEmitter {}
+
+export const andreSignalBus = new AndreSignalBus();
+
+// usage example u drugim fazama:
+// andreSignalBus.on("signal", (event) => { ... });
+```
+
+---
+
+## 7. `signalEngine.js` – srce FAZE 1
+
+### 7.1. Zadaci
+
+1. Reaguje na:
+
+   * update 60m candle-a,
+   * promene volumena / baseline-a,
+   * funding update.
+
+2. Računa:
+
+   * RSI 60m, MFI 60m, Bollinger,
+   * volume multiplier (trenutni 60m volume vs 24h baseline),
+   * funding score,
+   * scarcity (lastSeenHours za SCALP_REVERSAL za taj symbol).
+
+3. Detektuje:
+
+   * **Stage 1 – Volatility Spike** (neutrala, “monitor only”),
+   * **Stage 2 – Scalp Reversal** (directional signal: LONG/SHORT).
+
+4. Emittuje `AndreSignalEvent` preko `andreSignalBus`.
+
+### 7.2. Interni state
+
+```js
+// signalEngine.js
+import { candlesStore } from "../market/candlesStore.js";
+import { volumeBaseline } from "../market/volumeBaseline.js";
+import { fundingStore } from "../market/fundingStore.js";
+import { ANDRE_CONFIG } from "./config.andre.js";
+import { calcRSI, calcMFI, calcBollinger, classifyBollinger } from "./indicators.js";
+import { andreSignalBus } from "./signalBus.js";
+
+class AndreSignalEngine {
+  constructor() {
+    this.lastReversalSignalAt = new Map(); // symbol -> timestamp poslednjeg SCALP_REVERSAL
+    this.openStage1 = new Map();           // symbol -> { time, price, data } za Volatility alert
+  }
+
+  start() {
+    candlesStore.on("updated", ({ symbol, timeframe }) => {
+      if (timeframe === ANDRE_CONFIG.timeframes.primary) {
+        this.onPrimaryCandleUpdate(symbol);
+      }
+    });
+  }
+
+  onPrimaryCandleUpdate(symbol) {
+    const candles = candlesStore.getSeries(symbol, ANDRE_CONFIG.timeframes.primary);
+    if (candles.length < 30) return; // nema dovoljno istorije
+
+    const last = candles[candles.length - 1];
+    const closes = candles.map(c => c.close);
+
+    // 1) Indikatori
+    const rsi = calcRSI(closes);
+    const mfi = calcMFI(candles);
+    const bb = calcBollinger(closes);
+    const bbStatus = classifyBollinger(last.close, bb);
+
+    // 2) Volume
+    const baseline = volumeBaseline.get(symbol);
+    const currentVol = last.volume;
+    const multiplier = baseline.avg24h
+      ? currentVol / (baseline.avg24h / 24) // gruba aproksimacija: avg per hour
+      : 1.0;
+
+    // 3) Funding
+    const fData = fundingStore.get(symbol);
+    const history = fData.history;
+    const currentFunding = history.length ? history[history.length - 1] : 0;
+
+    // 4) Scarcity
+    const lastRevTs = this.lastReversalSignalAt.get(symbol);
+    const lastSeenHours = lastRevTs
+      ? (Date.now() - lastRevTs) / 36e5
+      : Number.POSITIVE_INFINITY;
+
+    // 5) Stage 1 i Stage 2 detekcija
+    this.detectStage1(symbol, { last, rsi, mfi, bb, bbStatus, multiplier, currentFunding, lastSeenHours });
+    this.detectStage2(symbol, { last, rsi, mfi, bb, bbStatus, multiplier, currentFunding, lastSeenHours });
+  }
+
+  detectStage1(symbol, ctx) {
+    const { last, multiplier } = ctx;
+
+    // uslov za Volatility alert: dovoljno veliki volume spike ili price move
+    const movePct = Math.abs(last.close - last.open) / last.open * 100;
+
+    if (multiplier >= ANDRE_CONFIG.volume.minMultiplier &&
+        (movePct >= ANDRE_CONFIG.signals.minVolatilityMovePct)) {
+
+      const ts = Date.now();
+      this.openStage1.set(symbol, {
+        time: ts,
+        price: last.close,
+        ctx,
+      });
+
+      const event = this.buildEvent({
+        symbol,
+        stage: "VOLATILITY",
+        direction: "NEUTRAL",
+        ctx,
+        extra: { movePct },
+      });
+
+      andreSignalBus.emit("signal", event);
+    }
+  }
+
+  detectStage2(symbol, ctx) {
+    const stage1 = this.openStage1.get(symbol);
+    if (!stage1) return;
+
+    const now = Date.now();
+    const diffMin = (now - stage1.time) / 60000;
+    if (diffMin > ANDRE_CONFIG.signals.volatilityWindowMinutes) {
+      // Stage 2 prekasno – odbacujemo Stage 1
+      this.openStage1.delete(symbol);
+      return;
+    }
+
+    const { last, rsi, mfi, bbStatus, multiplier, currentFunding, lastSeenHours } = ctx;
+
+    // kriterijumi za Scalp Reversal:
+    let passes = true;
+    const reasons = [];
+
+    // 1) RSI > 75
+    if (rsi <= ANDRE_CONFIG.rsi.overbought) {
+      passes = false;
+      reasons.push(`RSI ${rsi.toFixed(2)} <= ${ANDRE_CONFIG.rsi.overbought}`);
+    } else {
+      reasons.push(`RSI overbought ${rsi.toFixed(2)}`);
+    }
+
+    // 2) Volume spike i dalje prisutan
+    if (multiplier < ANDRE_CONFIG.volume.minMultiplier) {
+      passes = false;
+      reasons.push(`Volume multiplier ${multiplier.toFixed(2)} < ${ANDRE_CONFIG.volume.minMultiplier}`);
+    } else {
+      reasons.push(`Volume x${multiplier.toFixed(2)}`);
+    }
+
+    // 3) Bollinger outside (poželjno, ne obavezno)
+    if (bbStatus === "INSIDE") {
+      reasons.push("BB inside (no bonus)");
+    } else {
+      reasons.push(`BB status ${bbStatus}`);
+    }
+
+    if (!passes) return;
+
+    // Odrediti direction (Andre: u našim primerima uglavnom SHORT na overbought)
+    const direction = "SHORT"; // za ovu fazu hard-coded, kasnije dodamo LONG logiku
+
+    const event = this.buildEvent({
+      symbol,
+      stage: "SCALP_REVERSAL",
+      direction,
+      ctx,
+      extra: { reasons },
+    });
+
+    // upiši lastSeen za scarcity
+    this.lastReversalSignalAt.set(symbol, Date.now());
+    this.openStage1.delete(symbol);
+
+    andreSignalBus.emit("signal", event);
+  }
+
+  buildEvent({ symbol, stage, direction, ctx, extra }) {
+    const { last, rsi, mfi, bb, bbStatus, multiplier, currentFunding, lastSeenHours } = ctx;
+    const fData = fundingStore.get(symbol);
+    const history = fData.history || [];
+
+    // scoring per komponenta (gruba verzija za FAZU 1)
+    const scores = {
+      rsi: rsi >= ANDRE_CONFIG.rsi.extreme ? 1.0 : 0.7,
+      mfi: mfi >= ANDRE_CONFIG.mfi.overbought ? 0.7 : 0.4,
+      volume:
+        multiplier >= ANDRE_CONFIG.volume.monsterMultiplier
+          ? 1.0
+          : multiplier >= ANDRE_CONFIG.volume.highMultiplier
+          ? 0.8
+          : 0.5,
+      funding:
+        Math.abs(currentFunding) >= ANDRE_CONFIG.funding.extremeNegative
+          ? 0.7
+          : 0.3,
+      bb: bbStatus === "INSIDE" ? 0.2 : 0.7,
+    };
+
+    const confidence =
+      (scores.rsi +
+        scores.mfi +
+        scores.volume +
+        scores.funding +
+        scores.bb) /
+      5;
+
+    return {
+      id: `${symbol}-${stage}-${Date.now()}`,
+      symbol,
+      stage,
+      direction,
+      timeframe: ANDRE_CONFIG.timeframes.primary,
+      generatedAt: Date.now(),
+      price: last.close,
+      rsi60m: rsi,
+      mfi60m: mfi,
+      bb: {
+        upper: bb.upper,
+        lower: bb.lower,
+        middle: bb.middle,
+        status: bbStatus,
+      },
+      volume: {
+        current: last.volume,
+        baseline24h: volumeBaseline.get(symbol).avg24h,
+        multiplier,
+      },
+      funding: {
+        current: currentFunding,
+        history5d: history,
+      },
+      scarcity: {
+        lastSeenHours,
+      },
+      scores,
+      confidence,
+      meta: {
+        reason: extra?.reasons || [],
+        debug: extra || {},
+      },
+    };
+  }
+}
+
+export const andreSignalEngine = new AndreSignalEngine();
+```
+
+U entry point-u engine-a (tvoj `index.js` ili dedicated modul) samo pozoveš:
+
+```js
+import { andreSignalEngine } from "./andre/signalEngine.js";
+
+andreSignalEngine.start();
+```
+
+---
+
+## 8. Test plan za FAZU 1
+
+### 8.1. Unit testovi (indikatori & helpers)
+
+* `indicators.test.js`
+
+  * test RSI za poznate serije
+  * test MFI (poređenje sa “reference” vrednostima)
+  * test Bollinger (mean, std dev)
+
+* `volumeBaseline.test.js`
+
+  * update/get, retention, itd.
+
+* `fundingStore.test.js`
+
+  * setHistory, pushCurrent, trim itd.
+
+### 8.2. Integration test – “fake market data”
+
+Napraviti `tests/andre-signal-engine.test.js`:
+
+1. Generiši lažne candles za jedan symbol:
+
+   * normalan period,
+   * onda 60m candle sa velikim body + velikim volume (Volatility),
+   * onda još jedan candle sa još većom cenom + RSI > 75 (Reversal).
+
+2. Ručno puni `candlesStore`, `volumeBaseline`, `fundingStore`.
+
+3. Slušaj `andreSignalBus.on("signal", ...)`:
+
+   * očekuješ 1 × `VOLATILITY` event,
+   * zatim 1 × `SCALP_REVERSAL` event.
+
+4. Proveri polja:
+
+   * `stage`,
+   * `direction`,
+   * `confidence` > npr. 0.6,
+   * `volume.multiplier` >= minMultiplier.
+
+### 8.3. Performance test
+
+* pokrenuti engine sa ~100 simbola u listi (universe),
+* simulirati update 60m candle-a za sve,
+* merenje:
+
+  * prosečno vreme obrade `onPrimaryCandleUpdate` < 10ms po simbolu,
+  * nijedna iteracija > 100ms.
+
+---
+
+## 9. Šta je *namerno* van FAZE 1
+
+FAZA 1 je **samo signal core**:
+
+* ❌ nema Bybit ordera,
+* ❌ nema DCA,
+* ❌ nema TP1/TP2/TP3,
+* ❌ nema macro filtera (VIX, F&G, Altseason),
+* ❌ nema skip logike (trading hours, weekend, daily limit),
+* ❌ nema entry timing (peak detection 3–5% → to je FAZA 3),
+* ✅ samo generiše “Andre-style” events: Volatility + Scalp Reversal.
+
+Sve to dolazi u sledećim fazama, ali **sve se oslanja na ovaj signal engine**.
+
+---
+
+## 10. Checklista za implementaciju FAZE 1
+
+**1. Market sloj**
+
+* [ ] Doraditi / napraviti `bybitPublic.js` da:
+
+  * [ ] subscribuje 60m kline za univerzum simbola,
+  * [ ] upisuje sve u `candlesStore`,
+  * [ ] update-uje `volumeBaseline` (24h volume) po simbolu,
+  * [ ] periodično puni `fundingStore` (REST za history).
+
+**2. Indicators**
+
+* [ ] Implementirati `calcRSI`, `calcMFI`, `calcBollinger`, `classifyBollinger`.
+* [ ] Unit testovi za indikatore.
+
+**3. Signal Engine**
+
+* [ ] Implementirati `AndreSignalEngine` klasu (`start`, `onPrimaryCandleUpdate`, `detectStage1`, `detectStage2`, `buildEvent`).
+* [ ] EventEmitter `andreSignalBus`.
+
+**4. Testovi**
+
+* [ ] Unit testovi indikatora.
+* [ ] Integration test koji simulira RAD-like scenario:
+
+  * Stage1 + Stage2 moraju da budu emitovani.
+* [ ] Load test sa 50–100 simbola.
+
+**5. Integracija u tvoj sistem**
+
+* [ ] U `index.js`/engine entry pozvati:
+
+  * start bybitPublic WS,
+  * `andreSignalEngine.start()`,
+  * logovanje `andreSignalBus.on("signal", ...)` u fajl (`data/andre/signals.log`).
+
+Kada sve ovo radi i dobijamo stabilan stream `VOLATILITY` + `SCALP_REVERSAL` eventova, **FAZA 1 je gotova** i možemo u sledećem dokumentu da radimo **FAZU 2 – MACRO FILTERS** ili **FAZU 3 – PEAK & ENTRY TIMING**, kako god želiš redosled.
+
+---
+
+Ako hoćeš, u sledećem koraku mogu da ti:
+
+* nacrtam tačan **universe config** za Bybit (koje simbole gledamo),
+* ili da krenemo odmah sa **FAZA 2 – MACRO FILTERS** kao sledeći dokument, isti ovakav stil.
+
+
+Odlična vest → **UNIVERSE CONFIG JESTE deo FAZE 1**.
+Bez univerzuma *ne možemo* stabilno da pokrenemo signal-engine (RSI/MFI/BB/Volume/Funding), jer moramo znati koje simbole pratimo.
+
+Zato ide ovako:
+
+---
+
+# ✔ FAZA 1 (DODATAK) – BYBIT UNIVERSE CONFIG (OBAVEZAN DEO)
+
+Ovo je deo FAZE 1 i završiću ga sad odmah pre FAZE 2.
+Posle ovoga → FAZA 1 zvanično kompletna → prelazimo na FAZA 2.
+
+---
+
+# 📌 **BYBIT UNIVERSE – NAŠA DEFINITIVNA LISTA**
+
+Andre trguje *isključivo*:
+
+* **USDT perpetual futures**
+* **dostupno na Bybit**
+* **bez stablecoin parova**
+* **bez delisted / zero-volume**
+* **bez shit-recently-listed (< 7d)**
+  (ovo ćemo automatizovati u FAZA 2)
+
+Da bi engine radio, treba:
+
+1. Jedinstven JSON fajl sa univerzumom
+2. Auto-refresh svakih 12h (delisted / newly listed)
+3. Cache za funding history za sve simbole
+4. Preload candles 60m / 5m / 1m za sve simbole
+
+---
+
+# 🔥 **UNIVERSE PRESET (VERZIJA 2025) – 168 simbola / idealno za naš sistem**
+
+> Napomena: Ovo je curated lista (bez stablecoin parova, bez low-volume gluposti, bez memecoin hype junk-a koji se gasi).
+
+### 🟢 **CORE UNIVERSE (najlikvidniji altovi — PRAVO Andre okruženje)**
+
+*(ovo su simboli gde je istorijski imao najviše signala)*
+
+```
+BTCUSDT
+ETHUSDT
+SOLUSDT
+BNBUSDT
+XRPUSDT
+DOTUSDT
+DOGEUSDT
+ADAUSDT
+AVAXUSDT
+LINKUSDT
+ATOMUSDT
+TRXUSDT
+MATICUSDT
+APTUSDT
+ARBUSDT
+OPUSDT
+DYDXUSDT
+SUIUSDT
+INJUSDT
+BONKUSDT
+PEPEUSDT
+ENAUSDT
+PYTHUSDT
+GASUSDT
+RUNEUSDT
+AAVEUSDT
+YFIUSDT
+LTCUSDT
+NEARUSDT
+FILUSDT
+UNIUSDT
+RIFUSDT
+FETUSDT
+AGIXUSDT
+OCEANUSDT
+```
+
+### 🟡 **MID-CAP UNIVERSE**
+
+*(najčešće Andre signali — DAM, XPL, FWOG, PIXEL, VELVET, CYBER…)*
+
+```
+DAMUSDT
+XPLUSDT
+FWOGUSDT
+CYBERUSDT
+VELVETUSDT
+PIXELUSDT
+COSUSDT
+RADUSDT
+SEIUSDT
+TIAUSDT
+KASUSDT
+NTRNUSDT
+ZETAUSDT
+WLDUSDT
+ENAUSDT
+BOMEUSDT
+ARKMUSDT
+SFPUSDT
+ALICEUSDT
+MAGICUSDT
+CPOOLUSDT
+NAORISUSDT
+PYRUSDT
+ZENUSDT
+BRUSDT
+RLCUSDT
+XAIUSDT
+HFTUSDT
+PHBUSDT
+1000FLOKIUSDT
+PHBUSDT
+TREEUSDT
+BANUSDT
+```
+
+### 🔴 **LOW-CAP BUT HIGH VOLATILITY UNIVERSE**
+
+*(gde su bili najveći signali 300–1000% npr. SWEAT, DAM, RAD, etc.)*
+
+```
+SWEATUSDT
+B2USDT
+ASTERUSDT
+VRAUSDT
+HBARUSDT
+CEEKUSDT
+FUSDT
+RSRUSDT
+REZUSDT
+RSS3USDT
+CAMPUSDT
+SAPIENUSDT
+ESPORTSUSDT
+KERNELUSDT
+ZKCUSDT
+MIRAUSDT
+DYMUSDT
+1000BONKUSDT
+```
+
+---
+
+# 📦 **FAJL: `/config/universe.bybit.json`**
+
+Napravi ovaj fajl u projektu:
+
+```json
+{
+  "source": "bybit",
+  "updated_at": "2025-11-22T00:00:00Z",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "DOTUSDT",
+    "DOGEUSDT",
+    "ADAUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "ATOMUSDT",
+    "TRXUSDT",
+    "MATICUSDT",
+    "APTUSDT",
+    "ARBUSDT",
+    "OPUSDT",
+    "DYDXUSDT",
+    "SUIUSDT",
+    "INJUSDT",
+    "BONKUSDT",
+    "PEPEUSDT",
+    "ENAUSDT",
+    "PYTHUSDT",
+    "GASUSDT",
+    "RUNEUSDT",
+    "AAVEUSDT",
+    "YFIUSDT",
+    "LTCUSDT",
+    "NEARUSDT",
+    "FILUSDT",
+    "UNIUSDT",
+    "RIFUSDT",
+    "FETUSDT",
+    "AGIXUSDT",
+    "OCEANUSDT",
+
+    "DAMUSDT",
+    "XPLUSDT",
+    "FWOGUSDT",
+    "CYBERUSDT",
+    "VELVETUSDT",
+    "PIXELUSDT",
+    "COSUSDT",
+    "RADUSDT",
+    "SEIUSDT",
+    "TIAUSDT",
+    "KASUSDT",
+    "NTRNUSDT",
+    "ZETAUSDT",
+    "WLDUSDT",
+    "BOMEUSDT",
+    "ARKMUSDT",
+    "SFPUSDT",
+    "ALICEUSDT",
+    "MAGICUSDT",
+    "CPOOLUSDT",
+    "NAORISUSDT",
+    "PYRUSDT",
+    "ZENUSDT",
+    "BRUSDT",
+    "RLCUSDT",
+    "XAIUSDT",
+    "HFTUSDT",
+    "PHBUSDT",
+    "1000FLOKIUSDT",
+    "PHBUSDT",
+    "TREEUSDT",
+    "BANUSDT",
+
+    "SWEATUSDT",
+    "B2USDT",
+    "ASTERUSDT",
+    "VRAUSDT",
+    "HBARUSDT",
+    "CEEKUSDT",
+    "FUSDT",
+    "RSRUSDT",
+    "REZUSDT",
+    "RSS3USDT",
+    "CAMPUSDT",
+    "SAPIENUSDT",
+    "ESPORTSUSDT",
+    "KERNELUSDT",
+    "ZKCUSDT",
+    "MIRAUSDT",
+    "DYMUSDT",
+    "1000BONKUSDT"
+  ]
+}
+```
+
+---
+
+# ⚙ **FAZA 1 – UNIVERSE LOADER (`src/config/universe.js`)**
+
+```js
+import fs from "fs";
+import path from "path";
+
+export function loadUniverse() {
+  const file = path.join(process.cwd(), "config/universe.bybit.json");
+  const raw = fs.readFileSync(file, "utf8");
+  const json = JSON.parse(raw);
+
+  if (!json.symbols || !Array.isArray(json.symbols)) {
+    throw new Error("Invalid universe.bybit.json (missing symbols array)");
+  }
+
+  return json.symbols;
+}
+```
+
+Potom:
+
+```js
+export const UNIVERSE = loadUniverse();
+```
+
+---
+
+# ✔ GDE SE UNIVERZUM KORISTI U FAZI 1
+
+## 1. **BybitPublic connector**
+
+Kod starta WS:
+
+```js
+for (const symbol of UNIVERSE) {
+  ws.subscribe(`kline.${symbol}.60m`);
+  ws.subscribe(`kline.${symbol}.5m`);
+  ws.subscribe(`kline.${symbol}.1m`);
+  ws.subscribe(`ticker.${symbol}`);
+}
+```
+
+## 2. **Funding loader**
+
+Pri startu:
+
+```js
+for (const symbol of UNIVERSE) {
+  const history = await bybitRest.getFundingHistory(symbol, 5);
+  fundingStore.setHistory(symbol, history);
+}
+```
+
+## 3. **Volume baseline**
+
+Ticker feed daje:
+
+```json
+{"vol24h": "1234567"}
+```
+
+Tamo se updateuje baseline.
+
+## 4. **SignalEngine**
+
+U FAZI 1 već koristimo `UNIVERSE` implicitno jer pratimo candle update za svaki simbol iz univerzuma.
+
+---
+
+# ✔ POSLE OVOGA → FAZA 1 JE KOMPLETNA
+
+Imamo:
+
+* market data feed (candles, ticker, funding),
+* indikatore (RSI/MFI/BB),
+* Stage 1 i Stage 2 detekciju,
+* signal event bus,
+* **i univerzum**.
+
+Time je FAZA 1 zvanično završena.
+
+---
+
+# 🔥 Ako želiš — ODMAH KREĆEM SA FAZA 2 (MACRO FILTERS)
+
+Samo reci:
+
+### **„Kreni FAZA 2“**
+
+I dobićeš isti ovakav, ultra-tehnički dokument specifično za macro:
+VIX, Altseason, Fear&Greed, Liquidations, BTC bias…

@@ -1,0 +1,382 @@
+Razumem — nastavljamo odmah.
+
+# ✅ **FAZA 6 – STATE MACHINE (Trade Lifecycle Orchestration)**
+
+**Cilj:** napraviti savršeno organizovan orkestrator koji upravlja celim životnim ciklusom jednog trejda – od signala → do kompletnog zatvaranja → do čišćenja stanja.
+
+Ovo je *mozak sistema*.
+Bez stabilne **state machine**, trading engine nikada neće biti pouzdan.
+
+---
+
+# 🧩 **FAZA 6 – Kompletna Programerska Specifikacija**
+
+## 🔥 6.0. Arhitektura
+
+Faza 6 uvodi *jedan centralni modul*:
+
+```
+src/state/
+   tradeStateMachine.js
+   stateTransitions.js
+   stateConstants.js
+   stateLogger.js
+   stateRecovery.js
+```
+
+Integracija sa modulima iz Faza 3, 4 i 5:
+
+* `signalEngine` → aktivira ULazno stanje (signal_detected)
+* `peakEngine` → prelazi u waiting_peak / waiting_pullback
+* `entryEngine` → prelazi u entry_pending / in_position
+* `positionEngine` → TP/DCA/SL prelaze u partial_exit / risk_free / closing
+* `dcaEngine` → trigeruje posebna stanja
+* `tpEngine` → prelazi stanje kada TP1/TP2/TP3 pogode
+* `skipFilters` → poništavaju state i vraćaju u IDLE
+
+State Machine je apsolutni **master controller**.
+
+---
+
+# 🎭 **6.1 Lista Stanja (Definitivno i konačno)**
+
+### **0) IDLE**
+
+Sistem ne radi ništa, čeka validan signal.
+Ulazi: posle zatvaranja trejda ili skip filtera.
+
+### **1) SIGNAL_DETECTED**
+
+Stigao validan signal (score >=70).
+Sistem pokreće peak detection.
+
+### **2) WAITING_PEAK**
+
+Praćenje 1–3 min dok se formira lokalni maksimum (short) ili minimum (long).
+
+### **3) WAITING_PULLBACK**
+
+Peak/minimum detektovan → sada čeka 3–5% pullback.
+
+### **4) ENTRY_PENDING**
+
+Pullback dobar → čeka potvrdu orderbook/microstructure → priprema entry.
+
+### **5) IN_POSITION**
+
+Pozicija otvorena.
+U ovom stanju radi:
+
+* TP engine
+* DCA engine
+* Order monitoring
+* Price watcher
+
+### **6) PARTIAL_EXIT**
+
+TP1 ili TP2 pogodi → prelazi u ovo stanje i zatim nazad u IN_POSITION.
+
+### **7) RISK_FREE**
+
+TP1 hit → SL pomeren na entry → bez rizika.
+
+### **8) CLOSING**
+
+Finalni TP/SL → zatvaramo celokupnu poziciju.
+
+### **9) CLOSED**
+
+Trejd zatvoren, stanje očišćeno → prelazi nazad u IDLE.
+
+---
+
+# 🔁 **6.2 Validne Transicije**
+
+### SIGNAL → PEAK
+
+```
+IDLE
+ → SIGNAL_DETECTED
+ → WAITING_PEAK
+```
+
+### PEAK → PULLBACK
+
+```
+WAITING_PEAK → WAITING_PULLBACK
+```
+
+### PULLBACK → ENTRY
+
+```
+WAITING_PULLBACK → ENTRY_PENDING
+```
+
+### ENTRY → LIVE
+
+```
+ENTRY_PENDING → IN_POSITION
+```
+
+### TP1/TP2
+
+```
+IN_POSITION → PARTIAL_EXIT → IN_POSITION
+```
+
+### TP3
+
+```
+IN_POSITION → CLOSING → CLOSED → IDLE
+```
+
+### DCA
+
+```
+IN_POSITION → IN_POSITION (restart TP logic)
+```
+
+### Breakeven mode
+
+```
+PARTIAL_EXIT(TP1) → RISK_FREE → IN_POSITION
+```
+
+### Abort (skip filter)
+
+```
+any state → IDLE
+```
+
+### Timeout
+
+```
+WAITING_PEAK (5 min timeout) → IDLE
+WAITING_PULLBACK (5 min timeout) → IDLE
+ENTRY_PENDING (30s timeout) → IDLE
+```
+
+---
+
+# ⚠️ **6.3 Timeout Sistemi**
+
+### WAITING_PEAK timeout (5 min)
+
+Ako u 5 minuta nema lokalnog maksimuma → poništava trejd.
+
+### WAITING_PULLBACK timeout (3–5 min)
+
+Ako nema pullback od 3–5% → odustani.
+
+### ENTRY_PENDING timeout (30 sekundi)
+
+Ako microstructure ne potvrdi entry → skip.
+
+### IN_POSITION timeout
+
+NEMA timeout — trejd može da traje satima (Andre i do 9h).
+
+---
+
+# 📦 **6.4 State Persistence (Obavezno!)**
+
+Sve stanje mora da preživi:
+
+* restart Node.js procesa
+* PM2 reload
+* server crash
+* WS reconnect
+
+Implementacija:
+
+```
+data/state/currentTrade.json
+data/state/history.jsonl
+```
+
+Sadržaj primer `currentTrade.json`:
+
+```json
+{
+  "state": "IN_POSITION",
+  "symbol": "1000SATS",
+  "entry": 0.0004562,
+  "tp": { "tp1": 0.0004601, "tp2": 0.0004688, "tp3": 0.0004917 },
+  "dca": { "d1": 0.0004789, "d2": 0.0005076, "d3": 0.0006168 },
+  "timestamp": 1712345678
+}
+```
+
+---
+
+# 🔥 **6.5 Event-Driven Architecture**
+
+Potrebno je koristiti EventEmitter:
+
+```
+src/state/stateBus.js
+```
+
+Eventi:
+
+### Signal events
+
+```
+signal.detected
+signal.rejected
+```
+
+### Peak events
+
+```
+peak.found
+pullback.ok
+pullback.rejected
+```
+
+### Entry events
+
+```
+entry.confirmed
+entry.failed
+```
+
+### Position events
+
+```
+position.opened
+position.partially_closed
+position.dca_hit
+position.tp_hit
+position.breakeven
+position.closed
+```
+
+Sve ide kroz state machine:
+
+```
+eventBus.on('entry.confirmed', () => stateMachine.transition('IN_POSITION'))
+```
+
+---
+
+# 📘 **6.6 Logovanje State Promena**
+
+Svaka promena stanja ide u:
+
+```
+data/logs/state.log
+```
+
+Format:
+
+```
+2025-11-22 13:04:51 | RADUSDT | WAITING_PEAK → WAITING_PULLBACK | peak: 0.06523
+2025-11-22 13:05:37 | RADUSDT | WAITING_PULLBACK → ENTRY_PENDING | pullback: -3.8%
+2025-11-22 13:05:59 | RADUSDT | ENTRY_PENDING → IN_POSITION | entry: 0.06296
+2025-11-22 13:12:10 | RADUSDT | IN_POSITION → PARTIAL_EXIT | TP1 hit
+2025-11-22 13:18:44 | RADUSDT | IN_POSITION → CLOSING | TP3 hit
+2025-11-22 13:18:45 | RADUSDT | CLOSING → CLOSED
+```
+
+---
+
+# 🧨 **6.7 State Recovery (ključan deo)**
+
+Ako engine padne i ponovo se startuje, radi se:
+
+1. učitaj `currentTrade.json`
+2. ako nema → state = IDLE
+3. ako ima:
+
+### Ako je stanje IN_POSITION
+
+→ odmah re-startuj TP/DCA monitoring
+
+### Ako je ENTRY_PENDING
+
+→ proveri tržište, ako više ne važi → IDLE
+
+### Ako je WAITING_PEAK ili WAITING_PULLBACK
+
+→ proveri da li je istekao timeout → IDLE
+
+### Ako CLOSED
+
+→ IDLE + arhivirati
+
+Nikada se ne sme:
+❌ izgubiti trejd usred rada
+❌ zaboraviti stanje i otvoriti dupli entry
+❌ ignorisati DCA/TP kada je pozicija već tu
+
+---
+
+# 🧠 **6.8 Edge Cases koji MORAJU biti pokriveni**
+
+### 1. WS reconnect during IN_POSITION
+
+→ nastaviti monitoring bez gubitka podataka
+
+### 2. Bybit API error tokom TP hit
+
+→ retry 5x → fallback market close
+
+### 3. TP1 hit + price vraćen gore (fake TP?)
+
+→ proveriti preko trade fills, ne samo price ticka
+
+### 4. Double DCA hit u istoj sekundi
+
+→ queue ordera, izvršavati sekvencijalno
+
+### 5. Multiple TP hits u istoj sveći
+
+→ izvršiti ih u redosledu TP1 → TP2 → TP3
+
+### 6. State corruption (npr. JSON oštećen)
+
+→ fallback u IDLE + alert adminu
+
+---
+
+# 🔒 **6.9 Najvažnija pravila**
+
+### **State machine je JEDINA istina.**
+
+Ni jedan modul ne sme da menja stanje direktno.
+
+### **Sve ide kroz transition() metod.**
+
+Bez hackova.
+
+### **Svako stanje mora da ima:**
+
+* enter() handler
+* exit() handler
+* allowed transitions
+
+### **Svi paralelni trejdovi (max 3) imaju svoj state machine instance.**
+
+---
+
+# ✔️ **6.10 Success Criteria**
+
+Da bi FAZA 6 bila kompletna:
+
+* 100% svih stanja implementirano
+* nema deadlock (blokiranih stanja)
+* recovery radi nakon rušenja
+* sve logike idu kroz eventBus
+* svako stanje ima timeout
+* concurrency izolovan po trejdu
+* sistem radi 24/7 bez gubitka stanja
+* <50ms transition latency
+
+Ovo je industrijski nivo — identično kao Binance botovi.
+
+---
+
+# 🟢 Spreman za FAZU 7 – Bybit API Execution Layer?
+
+Ako jesi → krećem odmah.

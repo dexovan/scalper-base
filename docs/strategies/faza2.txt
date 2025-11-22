@@ -1,0 +1,699 @@
+Razumem, idemo čisto *tvoj sopstveni sistem*, bez Discorda, samo naš engine na tvom serveru u Singapuru. 💪
+Sada radim **FAZA 2 – MACRO FILTERS** kao **poseban, ultra-detaljan programersko-tehnički dokument**, u istom stilu kao FAZA 1.
+
+---
+
+# FAZA 2 – MACRO FILTERS (Market Environment Engine)
+
+**Cilj faze:**
+Napraviti **samostalan modul** koji periodično povlači makro-podatke sa interneta (VIX, Fear & Greed, Altseason Index, BTC dominacija, ukupne likvidacije, BTC 24h promenu…) i pretvara ih u **jedan normalizovan “macro_score”** i set flagova koje naš signal engine koristi:
+
+* da li **uopšte sme da trguje danas** (kill switch),
+* da li da bude **agresivan / normalan / defanzivan**,
+* da li da **ograniči broj trejdova, leverage, size…**
+
+Ova faza **ne donosi odluke o entry-ju za pojedinačni coin**, već određuje **“vremensku prognozu” tržišta** za ceo dan.
+
+---
+
+## 2.0. Arhitektura & Integracija
+
+### 2.0.1. Fajlovi / Modul
+
+Predlog strukture (ESM, kao što već koristiš):
+
+```text
+src/
+  macro/
+    macroEngine.js          # Glavni modul - orchestration
+    providers/
+      vixProvider.js        # VIX index
+      altseasonProvider.js  # Altseason index + BTC dominance
+      fearGreedProvider.js  # Fear & Greed index
+      liquidationsProvider.js # 24h liquidations (crypto)
+      btcContextProvider.js # BTC price & direction info
+    cache/
+      macroCache.json       # Disk cache (za fallback)
+```
+
+### 2.0.2. Public API (prema ostatku sistema)
+
+`macroEngine.js` izlaže:
+
+```js
+// async, jer zove HTTP providere
+export async function getMacroContext() {
+  return {
+    timestamp,           // ISO string
+    score,               // 0–100 macro_score
+    regime,              // 'BLOCKED' | 'DEFENSIVE' | 'NORMAL' | 'AGGRESSIVE'
+    positionMultiplier,  // npr. 0.0, 0.5, 1.0, 1.5
+    maxDailyTrades,      // npr. 4, 7, 10
+    reasonFlags: {       // flagovi koji objašnjavaju ZAŠTO
+      vix: {...},
+      altseason: {...},
+      fearGreed: {...},
+      liquidations: {...},
+      btcContext: {...}
+    }
+  };
+}
+```
+
+U FAZA 3 / FAZA 4, tvoj **signal engine** će zvati:
+
+```js
+const macro = await getMacroContext();
+
+if (macro.regime === 'BLOCKED') {
+  // skip sve signale, log reason
+}
+
+if (macro.regime === 'DEFENSIVE') {
+  // smanji position size, pooštri entry threshold itd.
+}
+```
+
+---
+
+## 2.1. Konfiguracija (config/macro.json)
+
+Napravimo jedan **centralni config fajl** (ili deo u `config.js`) za pragove:
+
+```js
+export const MACRO_CONFIG = {
+  refreshIntervalSec: 300, // 5 min
+
+  vix: {
+    panic: 30,
+    elevated: 25,
+    calm: 20
+  },
+
+  altseason: {
+    altSeasonActive: 75,
+    btcSeason: 50
+  },
+
+  fearGreed: {
+    extremeGreed: 85,
+    healthyGreedMin: 60,
+    healthyGreedMax: 80,
+    fear: 45
+  },
+
+  liquidations: {
+    extreme: 500, // M$
+    high: 200,
+    low: 100
+  },
+
+  btc: {
+    strongMove: 3,  // ±3% 24h
+    flat: 1         // <1%
+  },
+
+  scoringWeights: {
+    // ukupno neka budu ~100
+    vix: 30,
+    altseason: 20,
+    fearGreed: 15,
+    liquidations: 10,
+    btc: 5,
+    base: 20 // start baseline 20/100
+  }
+};
+```
+
+---
+
+## 2.2. VIX Provider (vixProvider.js)
+
+### 2.2.1. Zadatak
+
+* Povuci vrednost **VIX indeksa** jednom na npr. 15 minuta.
+* Mapiraj u:
+
+  * `status`: `"CALM" | "NORMAL" | "ELEVATED" | "PANIC"`
+  * `killSwitch`: `true/false`
+  * `positionMultiplier`: npr. 1.0, 0.5, 0.0
+  * `scoreContribution`: broj poena za macro_score.
+
+### 2.2.2. Interface
+
+```js
+export async function getVixContext() {
+  return {
+    raw: {
+      value: 18.34,  // broj
+      source: 'someApiName'
+    },
+    status: 'NORMAL',
+    killSwitch: false,
+    positionMultiplier: 1.0,
+    scoreContribution: 25, // 0–30 u skladu sa weight
+    note: 'VIX normal, full size allowed'
+  };
+}
+```
+
+### 2.2.3. Logika mapiranja
+
+* Ako `vix >= panic` (30):
+
+  ```txt
+  status = 'PANIC'
+  killSwitch = true
+  positionMultiplier = 0.0
+  scoreContribution = 0
+  note = 'Market panic, trading disabled'
+  ```
+
+* Ako `25 <= vix < 30`:
+
+  ```txt
+  status = 'ELEVATED'
+  killSwitch = false
+  positionMultiplier = 0.5
+  scoreContribution = ~10
+  note = 'Elevated fear, use half size'
+  ```
+
+* Ako `vix < calm` (20):
+
+  ```txt
+  status = 'CALM'
+  killSwitch = false
+  positionMultiplier = 1.0
+  scoreContribution = maxWeight (npr. 30)
+  note = 'Calm volatility, ideal environment'
+  ```
+
+* Ostalo (20–25):
+
+  ```txt
+  status = 'NORMAL'
+  killSwitch = false
+  positionMultiplier = 1.0
+  scoreContribution = ~20
+  ```
+
+### 2.2.4. Tehnički detalji
+
+* Unutar providera:
+
+  * `fetchVix()` → HTTP GET ka nekom public API-ju (u implementaciji ćemo precizirati endpoint).
+  * Cache u memoriji (`lastValue`, `lastUpdated`).
+  * Ako poziv dođe pre isteka `refreshIntervalSec` → vrati cached.
+
+* Fallback:
+
+  * Ako API failuje:
+
+    * ako imamo stari cache < 24h → vrati njega + `note: 'stale data'`.
+    * ako nemamo ništa → `status: 'UNKNOWN'`, `killSwitch: false`, `scoreContribution: MACRO_CONFIG.scoringWeights.vix / 2` (neutral), i `note: 'VIX unavailable, neutral weight'`.
+
+---
+
+## 2.3. Altseason Provider (altseasonProvider.js)
+
+### 2.3.1. Zadatak
+
+* Povuci **Altseason Index** (0–100).
+* Povuci **BTC dominance** (procenat).
+* Odredi:
+
+  * da li je **ALTSEASON** (kapital ide u altove),
+  * da li je **BTC season** (dominacija BTC, altovi slabi),
+  * na osnovu toga: coin universe režim (samo BTC ili BTC+alts).
+
+### 2.3.2. Interface
+
+```js
+export async function getAltseasonContext() {
+  return {
+    raw: {
+      altIndex: 78,       // 0–100
+      btcDominance: 56.7, // %
+      source: 'someApi'
+    },
+    mode: 'ALTSEASON' | 'MIXED' | 'BTC_SEASON',
+    allowedUniverses: ['LOW_CAP_ALTS', 'BTC'], // šta naš engine može koristiti
+    scoreContribution: 0–20,
+    note: 'Altseason active, aggressive alt trading enabled'
+  };
+}
+```
+
+### 2.3.3. Logika
+
+* Ako `altIndex >= altSeasonActive` (75):
+
+  ```txt
+  mode = 'ALTSEASON'
+  allowedUniverses = ['LOW_CAP_ALTS', 'BTC']
+  scoreContribution ≈ maxWeight (20)
+  ```
+
+* Ako `altIndex < btcSeason` (50):
+
+  ```txt
+  mode = 'BTC_SEASON'
+  allowedUniverses = ['BTC']  // zabranimo altove
+  scoreContribution ≈ 5–10
+  note = 'BTC dominant, altcoin signals heavily filtered'
+  ```
+
+* Ostalo:
+
+  ```txt
+  mode = 'MIXED'
+  allowedUniverses = ['LOW_CAP_ALTS', 'BTC'] ali sa manjim score
+  scoreContribution ≈ 10–15
+  ```
+
+---
+
+## 2.4. Fear & Greed Provider (fearGreedProvider.js)
+
+### 2.4.1. Zadatak
+
+* Povuci **Crypto Fear & Greed Index** (0–100).
+* Odredi:
+
+  * `marketState`: `"EXTREME_FEAR" | "FEAR" | "NEUTRAL" | "HEALTHY_GREED" | "EXTREME_GREED"`
+  * `confidenceAdjustment`: npr. `-0.15`, `+0.05` itd.
+  * `scoreContribution`.
+
+### 2.4.2. Interface
+
+```js
+export async function getFearGreedContext() {
+  return {
+    raw: {
+      value: 71,
+      source: 'alternativeMeOrSimilar'
+    },
+    marketState: 'HEALTHY_GREED',
+    confidenceAdjustment: +0.05,
+    scoreContribution: 0–15,
+    note: 'Healthy greed 60–80, ideal scalping environment'
+  };
+}
+```
+
+### 2.4.3. Logika
+
+* `fg > extremeGreed (85)`:
+
+  ```txt
+  marketState = 'EXTREME_GREED'
+  confidenceAdjustment = -0.1
+  scoreContribution ≈ 5–8
+  note: 'Euphoria - tops form here, be cautious'
+  ```
+
+* `60 <= fg <= 80` → Andre sweet spot:
+
+  ```txt
+  marketState = 'HEALTHY_GREED'
+  confidenceAdjustment = +0.05
+  scoreContribution ≈ 12–15
+  ```
+
+* `45 <= fg < 60`:
+
+  ```txt
+  marketState = 'NEUTRAL'
+  confidenceAdjustment = 0
+  scoreContribution ≈ 8–10
+  ```
+
+* `< 45`:
+
+  ```txt
+  marketState = 'FEAR'
+  confidenceAdjustment = -0.15
+  scoreContribution ≈ 5–8
+  ```
+
+---
+
+## 2.5. Liquidations Provider (liquidationsProvider.js)
+
+### 2.5.1. Zadatak
+
+* Povuci **24h globalne likvidacije** na kriptomarketima (USDT vrednost).
+
+* Klasifikacija:
+
+  * `EXTREME`: > 500M
+  * `HIGH`: 200–500M
+  * `NORMAL`: 100–200M
+  * `LOW`: < 100M
+
+* Uticaj:
+
+  * `HIGH` = dobro za scalping.
+  * `LOW` = tržište “mrtvo”, choppy.
+
+### 2.5.2. Interface
+
+```js
+export async function getLiquidationsContext() {
+  return {
+    raw: {
+      total24h: 342, // M$
+      source: 'coinglassOrSimilar'
+    },
+    volatility: 'HIGH' | 'NORMAL' | 'LOW' | 'EXTREME',
+    scoreContribution: 0–10,
+    note: 'High volatility, good for fast scalps'
+  };
+}
+```
+
+### 2.5.3. Logika
+
+* `> extreme (500)`:
+
+  ```txt
+  volatility = 'EXTREME'
+  scoreContribution = 5–7
+  note = 'Extreme cascade, maybe temporary pause / extra caution'
+  ```
+
+* `> high (200)`:
+
+  ```txt
+  volatility = 'HIGH'
+  scoreContribution = 10
+  note = 'Great environment, lots of moves'
+  ```
+
+* `< low (100)`:
+
+  ```txt
+  volatility = 'LOW'
+  scoreContribution = 3–5
+  note = 'Low vol, expect chop'
+  ```
+
+* Ostalo → `NORMAL` (7–8).
+
+---
+
+## 2.6. BTC Context Provider (btcContextProvider.js)
+
+### 2.6.1. Zadatak
+
+* Povuci BTC:
+
+  * 24h % promenu,
+  * možda 4h / 1h promenu,
+  * eventualno korelaciju sa alts.
+
+* Odluči:
+
+  * da li favorizujemo LONG/SHORT,
+  * da li je `flat` i time **smanjujemo confidence**.
+
+### 2.6.2. Interface
+
+```js
+export async function getBtcContext() {
+  return {
+    raw: {
+      change24h: -3.4, // %
+      price: 95576.3,
+      source: 'bybitOrCexOrCoingecko'
+    },
+    alignment: 'LONG' | 'SHORT' | 'NEUTRAL',
+    scoreContribution: 0–5,
+    note: 'BTC -3.4% 24h, short bias for alts'
+  };
+}
+```
+
+### 2.6.3. Logika
+
+* `change24h > strongMove (3%)`:
+
+  * Ako je alert LONG → `alignment = 'LONG'`, `scoreContribution = 5`.
+  * Ako je alert SHORT → penalizuj (−2 ili 0).
+
+* `change24h < -strongMove (-3%)`:
+
+  * Obrnuto – ako alert SHORT → +5, ako LONG → -.
+
+* `abs(change24h) < flat (1%)`:
+
+  ```txt
+  alignment = 'NEUTRAL'
+  scoreContribution ≈ 2–3
+  note = 'BTC flat, alt environment mixed'
+  ```
+
+*Napomena:* BTC context realno ima mali weight (5), više kao fine-tuning.
+
+---
+
+## 2.7. Macro Engine – Orchestration (macroEngine.js)
+
+### 2.7.1. Zadatak
+
+* **Jedan centralni servis** koji:
+
+  1. Povlači sve providere paralelno.
+  2. Kombinuje njihove score-ove u `macro_score` (0–100).
+  3. Zadaje `regime` i `positionMultiplier`.
+  4. Radi **caching** i throttling.
+
+### 2.7.2. Data model
+
+```js
+// tip koji vraća getMacroContext()
+{
+  timestamp: '2025-11-22T13:45:00Z',
+  score: 78,                       // 0–100
+  regime: 'NORMAL',                // ili BLOCKED/DEFENSIVE/AGGRESSIVE
+  positionMultiplier: 1.0,         // 0–1.5
+  maxDailyTrades: 7,
+  reasonFlags: {
+    vix: { status, killSwitch, ... },
+    altseason: { mode, ... },
+    fearGreed: { marketState, ... },
+    liquidations: { volatility, ... },
+    btc: { alignment, ... }
+  }
+}
+```
+
+### 2.7.3. Regime logika
+
+Na osnovu `score` + `killSwitch`:
+
+```txt
+if any killSwitch === true → regime = 'BLOCKED', score = 0, positionMultiplier = 0.0
+
+else:
+  if score < 40 → regime = 'DEFENSIVE', positionMultiplier = 0.5, maxDailyTrades = 3–4
+  if 40 <= score < 70 → regime = 'NORMAL', positionMultiplier = 1.0, maxDailyTrades = 5–7
+  if score >= 70 → regime = 'AGGRESSIVE', positionMultiplier = 1.2–1.5, maxDailyTrades = 7–10
+```
+
+Score računanje:
+
+```js
+const base = weights.base; // npr. 20
+
+score =
+  base +
+  vix.scoreContribution +
+  altseason.scoreContribution +
+  fearGreed.scoreContribution +
+  liquidations.scoreContribution +
+  btc.scoreContribution;
+
+score = Math.max(0, Math.min(100, score));
+```
+
+### 2.7.4. Caching & Refresh
+
+* `macroEngine` internu drži:
+
+```js
+let lastMacroContext = null;
+let lastUpdated = 0;
+const REFRESH_MS = MACRO_CONFIG.refreshIntervalSec * 1000;
+```
+
+* `getMacroContext()`:
+
+```js
+export async function getMacroContext() {
+  const now = Date.now();
+
+  if (lastMacroContext && (now - lastUpdated) < REFRESH_MS) {
+    return lastMacroContext; // koristi cache
+  }
+
+  // inače – fetch svi provideri paralelno
+  const [vix, altseason, fg, liq, btc] = await Promise.all([
+    getVixContext(),
+    getAltseasonContext(),
+    getFearGreedContext(),
+    getLiquidationsContext(),
+    getBtcContext()
+  ]);
+
+  // izračunaj score + regime...
+  const macro = computeMacro(vix, altseason, fg, liq, btc);
+
+  lastMacroContext = macro;
+  lastUpdated = now;
+
+  // upiši u macroCache.json za fallback posle restarta
+  await writeMacroCache(macro);
+
+  return macro;
+}
+```
+
+* Na startu engine-a:
+
+```js
+lastMacroContext = await readMacroCache() || null;
+```
+
+Ako ničega nema, možeš vratiti **neutral default**:
+
+```js
+{
+  score: 60,
+  regime: 'NORMAL',
+  positionMultiplier: 1.0,
+  maxDailyTrades: 5,
+  reasonFlags: { all: 'UNAVAILABLE_FALLBACK' }
+}
+```
+
+---
+
+## 2.8. Error Handling & Fallback Strategija
+
+Za svaki provider:
+
+* Ako HTTP fail, timeout, invalid JSON:
+
+  * log: `logger.warn('[macro] VIX provider failed', error)`
+  * return `status: 'UNKNOWN'`, `scoreContribution: weight/2`, `note: 'API error, neutral assumption'`.
+
+Za engine:
+
+* Ako većina providera failuje (npr. 3/5 `UNKNOWN`):
+
+  * postavi `regime: 'DEFENSIVE'`,
+  * `positionMultiplier = 0.5`,
+  * `maxDailyTrades = 3`,
+  * note: “Macro data unreliable, defensive regime”.
+
+---
+
+## 2.9. Testiranje (FAZA 2)
+
+### 2.9.1. Unit testovi po provideru
+
+Za svaki provider (možeš koristiti `jest` ili već što koristiš):
+
+* Mock HTTP odgovore za tipične slučajeve:
+
+  * VIX: 18, 22, 27, 35
+  * Altseason: 40, 60, 80
+  * F&G: 30, 50, 70, 90
+  * Liquidations: 80M, 250M, 600M
+  * BTC: +4%, -4%, 0.5%
+
+* Verifikuj:
+
+  * `status`/`mode`/`marketState` ispravno,
+  * `scoreContribution` unutar očekivanog raspona,
+  * `killSwitch` tamo gde treba.
+
+### 2.9.2. Integration test za macroEngine
+
+* Mock-uj providere sa unapred zadatim vrednostima, npr:
+
+  #### Scenario 1 – “Perfect day” (kao Oct 7–8):
+
+  ```txt
+  VIX=18 → CALM, 30p
+  AltseasonIndex=78 → ALTSEASON, 20p
+  F&G=71 → HEALTHY_GREED, 15p
+  Liquidations=428M → HIGH, 10p
+  BTC change=+1.1% → NEUTRAL, 3p
+  base=20
+
+  score=20+30+20+15+10+3=98 → regime='AGGRESSIVE'
+  ```
+
+* Proveri da:
+
+  * `regime === 'AGGRESSIVE'`
+  * `positionMultiplier ~ 1.2–1.5`
+  * `maxDailyTrades ~ 8–10`.
+
+* Scenario 2 – panic:
+
+  ```txt
+  VIX=35 (PANIC, killSwitch)
+  ```
+
+* Očekivanje:
+
+  * `regime='BLOCKED'`,
+  * `positionMultiplier=0`,
+  * `score=0`.
+
+* Scenario 3 – mixed:
+
+  Kombinacija koja daje score ~50 → `NORMAL`.
+
+---
+
+## 2.10. Integracija sa sledećim fazama
+
+FAZA 2 output koristi se:
+
+* u **FAZA 3 (Peak detection & entry timing)**:
+
+  * `macroContext.positionMultiplier` → utiče na **position size**.
+  * `macroContext.regime` → može podići minimalni entry score sa 70 na 80 u DEFENSIVE modu.
+
+* u **FAZA 4 (Skip filters)**:
+
+  * Ako `regime === 'BLOCKED'` → `shouldSkipSignal()` odmah vraća `skip=true` sa razlogom "Macro kill switch".
+  * Ako `regime === 'DEFENSIVE'` → max concurrent positions = 1–2 umesto 3.
+
+---
+
+## 2.11. Završni checklist za FAZA 2
+
+**Kada kažeš da je FAZA 2 gotova, ovo mora da važi:**
+
+* [ ] `src/macro/macroEngine.js` postoji i ima `getMacroContext()`.
+* [ ] Svi provideri (`vixProvider`, `altseasonProvider`, `fearGreedProvider`, `liquidationsProvider`, `btcContextProvider`) rade sa mock/test API-jem.
+* [ ] `MACRO_CONFIG` centralizovan u jednom fajlu.
+* [ ] Disk cache (`macroCache.json`) se upisuje i čita.
+* [ ] Unit testovi pokrivaju bar *po 3 scenarija* po provideru.
+* [ ] Integration test pokazuje 3 glavna scenarija: `AGGRESSIVE`, `NORMAL`, `BLOCKED`.
+* [ ] Engine loguje **razlog** za svaki regime (`reasonFlags`).
+
+---
+
+Ako ti ovakav nivo detalja odgovara, sledeći korak posle FAZA 2 dokumenta je:
+
+* ili **FAZA 3 – Peak Detection & Entry Timing (mikro-level)**
+* ili **FAZA 4 – Skip Filters & Trade/day logic**
+
+Ti samo reci “Kreni FAZA 3 specifikacija” i odma radim isto ovako detaljno za entry timing.

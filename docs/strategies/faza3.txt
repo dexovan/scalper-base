@@ -1,0 +1,683 @@
+Ajmo sad pravo u meso – **FAZA 3: Peak Detection & Entry Timing (mikro-level)**.
+Ovo je faza gde tvoj bot prestaje da bude “alert forwarder” i postaje **snajper**. 🎯
+
+---
+
+# FAZA 3 – PEAK DETECTION & ENTRY TIMING (MICRO-LEVEL)
+
+**Cilj faze:**
+Na osnovu signala iz FAZA 1 + makro konteksta iz FAZA 2, implementiramo **real-time mehanizam** koji:
+
+1. Posle 2-stage signala (volatility + scalp_reversal)
+2. Čeka da se formira **lokalni vrh (peak)**
+3. Čeka **pullback 3–5%** od tog vrha
+4. Validira **mikrostrukturu (orderbook, trade flow, volume, candles)**
+5. Izračuna **score 0–100** i
+6. Tek onda odluči: **ENTER / SKIP**.
+
+Ovo je TAČNO ono što Andre radi na RAD, PIXEL, NMR, itd.
+
+---
+
+## 3.0. Arhitektura i fajlovi
+
+Predlog:
+
+```text
+src/
+  entry/
+    entryEngine.js              # Glavni orchestrator FAZA 3
+    peakDetector.js             # Otkrivanje vrha (peak) + red candles
+    pullbackWatcher.js          # Praćenje pullback-a 3–5%
+    microstructureChecker.js    # Orderbook, trade flow, volume, candles
+    entryScoring.js             # 6-faktorski scoring sistem (0–100)
+```
+
+Oslanja se na postojeće module (koje već imaš ili planiraš):
+
+```text
+src/
+  market/
+    priceFeed.js        # WS ticks / candles (Bybit)
+    orderbookFeed.js    # WS orderbook
+    tradesFeed.js       # WS trade stream
+```
+
+---
+
+## 3.1. Ulaz / Izlaz (public API FAZA 3)
+
+### 3.1.1. Ulazni podatak (kandidat trejda)
+
+FAZA 1 + FAZA 2 generišu **kandidat signal** koji šalješ u FAZA 3.
+
+```ts
+type TradeCandidate = {
+  symbol: string;           // "RADUSDT"
+  side: 'LONG' | 'SHORT';   // smer (za FAZA 3 pretpostavljamo SHORT za scalp_reversal pump)
+  alert1: Alert;            // volatility alert (Stage 1)
+  alert2: Alert;            // scalp_reversal alert (Stage 2)
+  macro: MacroContext;      // iz FAZA 2 (score, regime, multipliers)
+};
+```
+
+`Alert` (iz FAZA 1):
+
+```ts
+type Alert = {
+  id: string;
+  type: 'volatility' | 'scalp_reversal';
+  symbol: string;
+  price: number;
+  rsi60m: number;
+  volume: number;
+  avgVolume: number;
+  fundingRate: number;
+  lastSeenHours: number; // npr 47.5
+  timestamp: number;     // ms
+};
+```
+
+`MacroContext` (iz FAZA 2, sažeto):
+
+```ts
+type MacroContext = {
+  score: number;                // 0–100
+  regime: 'BLOCKED' | 'DEFENSIVE' | 'NORMAL' | 'AGGRESSIVE';
+  positionMultiplier: number;   // 0–1.5
+  maxDailyTrades: number;
+};
+```
+
+### 3.1.2. Glavna funkcija FAZA 3
+
+```js
+// entryEngine.js
+export async function evaluateAndEnter(candidate) {
+  // 1) peak detection
+  // 2) pullback waiting
+  // 3) microstructure checks
+  // 4) scoring
+  // 5) rezultat: enter ili skip
+  return {
+    enter: boolean,
+    reason: string,
+    score: number,              // 0–100
+    plannedEntryPrice?: number, // ako enter === true
+    breakdown: { ... }          // detaljni skor po faktorima
+  };
+}
+```
+
+FAZA 5 (position management) će kasnije preuzeti `plannedEntryPrice` i napraviti TP/DCA.
+
+---
+
+## 3.2. Real-time stream apstrakcija
+
+Potrebne su ti **4 vrste podataka u realnom vremenu**:
+
+1. **Last price / tick** (svakih nekoliko stotina ms)
+2. **1m candles** (za red / green candle sekvencu)
+3. **Orderbook depth** (top 10–20 nivoa)
+4. **Trade stream** (tick-by-tick buy/sell volumeni za flow delta)
+
+Predlažem jedan helper interfejs:
+
+```ts
+type MarketSnapshot = {
+  symbol: string;
+  lastPrice: number;
+  candle1m: Candle;            // poslednja 1m candle
+  recentCandles1m: Candle[];   // poslednje 4 candle
+  orderbook: Orderbook;        // best N nivoa
+  tradeWindow5m: Trade[];      // poslednjih 5 min tradova
+};
+
+type Candle = {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  timestamp: number;
+};
+
+type Orderbook = {
+  bids: [price: number, size: number][];
+  asks: [price: number, size: number][];
+};
+
+type Trade = {
+  price: number;
+  size: number;
+  side: 'buy' | 'sell';
+  timestamp: number;
+};
+```
+
+`priceFeed/orderbookFeed/tradesFeed` već ti daju sve ovo – FAZA 3 treba samo da umota u jedan **“snapshot getter”**:
+
+```js
+// npr. src/market/marketSnapshot.js
+export async function getMarketSnapshot(symbol) { ... }
+```
+
+---
+
+## 3.3. Moduli u FAZA 3
+
+---
+
+### 3.3.1. peakDetector.js – detekcija vrha
+
+**Zadatak:**
+
+* Od trenutka **alert2 (scalp_reversal)**,
+* pratimo cenu i candle-e,
+* detektujemo **lokalni vrh / peak**,
+* prepoznajemo **prvu red candle posle vrha**,
+* potvrđujemo **momentum break** kroz 3/4 red candle-a.
+
+#### API
+
+```js
+// blocking/await stil – čeka do max X sekundi, vraća rezultat
+export async function detectPeak(symbol, options = {}) {
+  const {
+    maxWaitMs = 3 * 60 * 1000,    // max 3 minuta traženja vrha
+    pollIntervalMs = 1000         // snapshot svaki 1s
+  } = options;
+
+  return {
+    success: boolean,
+    peakPrice?: number,
+    peakTime?: number,
+    redCandlesCount?: number,
+    recentCandles?: Candle[],
+    reason?: string
+  };
+}
+```
+
+#### Algoritam
+
+Pseudo:
+
+```js
+let peakPrice = -Infinity;
+let peakTime = null;
+let firstRedSeen = false;
+let startTime = Date.now();
+
+while (Date.now() - startTime < maxWaitMs) {
+  const snapshot = await getMarketSnapshot(symbol);
+  const { lastPrice, candle1m, recentCandles1m } = snapshot;
+
+  // 1) update peak
+  if (lastPrice > peakPrice) {
+    peakPrice = lastPrice;
+    peakTime = Date.now();
+  }
+
+  // 2) detektuj prvu red candle nakon što smo imali peak
+  // red candle = close < open
+  if (peakTime && candle1m.close < candle1m.open) {
+    firstRedSeen = true;
+  }
+
+  // 3) kad imamo firstRedSeen – proveri poslednje 4 candle
+  if (firstRedSeen) {
+    const redCount = recentCandles1m.filter(c => c.close < c.open).length;
+
+    if (redCount >= 3) {
+      // momentum broken – peak confirmed
+      return {
+        success: true,
+        peakPrice,
+        peakTime,
+        redCandlesCount: redCount,
+        recentCandles: recentCandles1m
+      };
+    }
+  }
+
+  await sleep(pollIntervalMs);
+}
+
+// timeout
+return { success: false, reason: 'Peak not confirmed in time window' };
+```
+
+---
+
+### 3.3.2. pullbackWatcher.js – čekanje 3–5% pullback-a
+
+**Zadatak:**
+
+* Kada imamo `peakPrice`,
+* čekamo da cena padne **između 3% i 5% ispod vrha** (za SHORT),
+* `<3%` = prerano → čekaj,
+* `>5%` = prekasno → SKIP.
+
+#### API
+
+```js
+export async function waitForPullback(symbol, peakPrice, options = {}) {
+  const {
+    minPullbackPct = 3.0,
+    maxPullbackPct = 5.0,
+    maxWaitMs = 5 * 60 * 1000,
+    pollIntervalMs = 5000
+  } = options;
+
+  return {
+    success: boolean,
+    entryPrice?: number,
+    pullbackPct?: number,
+    reason?: string
+  };
+}
+```
+
+#### Algoritam
+
+```js
+const start = Date.now();
+
+while (Date.now() - start < maxWaitMs) {
+  const snapshot = await getMarketSnapshot(symbol);
+  const current = snapshot.lastPrice;
+
+  const pullbackPct = ((peakPrice - current) / peakPrice) * 100;
+
+  if (pullbackPct < minPullbackPct) {
+    // premalo – strpljenje
+    await sleep(pollIntervalMs);
+    continue;
+  }
+
+  if (pullbackPct > maxPullbackPct) {
+    // previše – propušteno
+    return {
+      success: false,
+      reason: `Pullback ${pullbackPct.toFixed(1)}% too deep, missed entry`
+    };
+  }
+
+  // u zoni 3–5% → kandidat entry
+  return {
+    success: true,
+    entryPrice: current,
+    pullbackPct
+  };
+}
+
+// timeout
+return { success: false, reason: 'Pullback not reached in time window' };
+```
+
+Za **LONG** entry (kad bi lovio dump → bounce), logika je ista, samo obrnut smer (pullback gore).
+
+---
+
+### 3.3.3. microstructureChecker.js – hidden layer
+
+**Zadatak:**
+Pre konačnog ulaza, potvrdi da je **mikrostruktura na našoj strani**:
+
+1. Orderbook imbalance (više ask nego bid za SHORT).
+2. Trade flow delta (više sell volumena).
+3. Red candle sekvenca (momentum stvarno obrnut).
+4. Volume exhaustion (volumen pada bar 50% od peak volumena).
+
+#### API
+
+```js
+export async function checkMicrostructure(symbol) {
+  const snapshot = await getMarketSnapshot(symbol);
+
+  // koristi snapshot.orderbook, snapshot.tradeWindow5m, snapshot.recentCandles1m
+
+  return {
+    safe: boolean,
+    reason?: string,
+    metrics: {
+      bidAskRatio: number,   // 0–1
+      flowDelta: number,     // buyVol - sellVol (negativno za short)
+      redCandles: string,    // "3/4"
+      volumeDropPct: number  // 0–100
+    },
+    partialScores: {         // za entryScoring kasnije
+      orderbookScore: number,
+      flowDeltaScore: number,
+      candlesScore: number,
+      volumeScore: number
+    }
+  };
+}
+```
+
+#### 3.3.3.1. Orderbook imbalance
+
+```js
+function computeBidAskRatio(orderbook) {
+  const topNBids = orderbook.bids.slice(0, 10);
+  const topNAsks = orderbook.asks.slice(0, 10);
+
+  const bidVol = topNBids.reduce((sum, [p, s]) => sum + s, 0);
+  const askVol = topNAsks.reduce((sum, [p, s]) => sum + s, 0);
+  const ratio = bidVol / (bidVol + askVol); // 0–1
+
+  return ratio; // <0.40 znači više ask → dobro za SHORT
+}
+```
+
+#### 3.3.3.2. Trade flow delta (5m)
+
+```js
+function computeFlowDelta(trades) {
+  const buyVol = trades
+    .filter(t => t.side === 'buy')
+    .reduce((s, t) => s + t.size, 0);
+
+  const sellVol = trades
+    .filter(t => t.side === 'sell')
+    .reduce((s, t) => s + t.size, 0);
+
+  return buyVol - sellVol; // za SHORT želimo negativan broj
+}
+```
+
+#### 3.3.3.3. Red candles & volume exhaustion
+
+```js
+function analyzeCandles(candles) {
+  const last4 = candles.slice(-4);
+  const redCount = last4.filter(c => c.close < c.open).length;
+  const volumes = last4.map(c => c.volume);
+  const peakVol = Math.max(...volumes);
+  const lastVol = volumes[volumes.length - 1];
+
+  const volumeDropPct = (1 - lastVol / peakVol) * 100; // npr 75%
+
+  return { redCount, volumeDropPct };
+}
+```
+
+#### 3.3.3.4. Pravila
+
+* **Orderbook:**
+
+  * `ratio < 0.40` → idealno (full score).
+  * `0.40–0.45` → srednje (pola skora).
+  * `> 0.45` → loše (0 bodova).
+
+* **Flow delta:**
+
+  * `flowDelta < -15000` → jak sell (full score).
+  * `-15000 < flowDelta < -5000` → srednje.
+  * `> -5000` → loše.
+
+* **Red candles:**
+
+  * `redCount >= 3` → OK.
+  * inače → fail (safe=false).
+
+* **Volume drop:**
+
+  * `volumeDropPct >= 50` → OK (exhaustion).
+  * `< 50` → slab signal.
+
+Ako **jedan ključni uslov failuje** (npr. redCount < 3), možeš odmah vratiti `safe=false` i razlog; entryScoring će to prevesti u nizak skor.
+
+---
+
+### 3.3.4. entryScoring.js – 6 faktora, 0–100
+
+**Zadatak:**
+Na osnovu svega (alerti, pullback, microstructure) izračunati **jedan score 0–100** i breakdown.
+
+#### Težine (kao u opisu):
+
+```ts
+const WEIGHTS = {
+  twoStageAlert: 30,
+  rsiTrigger: 20,
+  pullbackTiming: 20,
+  microstructure: 15,
+  flowDelta: 10,
+  volumeExhaustion: 5
+};
+```
+
+#### API
+
+```js
+export function scoreEntry(context) {
+  // context sadrži:
+  // - candidate (sa alert1, alert2)
+  // - peakResult
+  // - pullbackResult
+  // - microResult
+  // - macroContext (FAZA 2) – opcionalni mali adjustment
+
+  return {
+    totalScore: number,      // 0–100
+    breakdown: {
+      twoStage: { score, status },
+      rsi: { score, status, value },
+      pullback: { score, status, value },
+      orderbook: { score, status, value },
+      flowDelta: { score, status, value },
+      volume: { score, status, value },
+      macroAdjustment: { scoreDelta, note }
+    },
+    enter: boolean,
+    reason: string
+  };
+}
+```
+
+#### 3.3.4.1. Faktor 1 – 2-stage alert (30)
+
+```js
+if (hasVolatility && hasReversal && timeDiffMin >= 1 && timeDiffMin <= 10) {
+  score += 30; status='✅ PERFECT';
+} else if (...) {
+  score += 15; status='⚠️ suboptimal';
+} else {
+  // nema 2-stage → odmah reject
+  return { enter: false, ... };
+}
+```
+
+#### 3.3.4.2. Faktor 2 – RSI (20)
+
+```js
+const rsi = candidate.alert2.rsi60m;
+
+if (rsi > 75)  { score += 20; status='✅ >75 overbought'; }
+else if (rsi > 70) { score += 10; status='⚠️ 70–75'; }
+else {
+  return { enter: false, reason:`RSI ${rsi} below 70`, ... };
+}
+```
+
+#### 3.3.4.3. Faktor 3 – Pullback (20)
+
+```js
+const pb = pullbackResult.pullbackPct;
+
+if (pb >= 3 && pb <= 5) {
+  score += 20; status='✅ PERFECT 3–5%';
+} else if (pb >= 2 && pb < 3) {
+  score += 10; status='⚠️ early 2–3%';
+} else if (pb > 5) {
+  return { enter:false, reason:'Pullback too deep', ... };
+} else {
+  score += 5; status='⏳ too early <2%';
+}
+```
+
+#### 3.3.4.4. Faktor 4 – Microstructure (15)
+
+Koristiš `microResult.partialScores.orderbookScore` itd. npr:
+
+* orderbook <0.40 → puni score, 15.
+* 0.40–0.45 → 8.
+* > 0.45 → 0.
+
+#### 3.3.4.5. Faktor 5 – Flow delta (10)
+
+Preuzeto iz `microResult`.
+
+#### 3.3.4.6. Faktor 6 – Volume exhaustion (5)
+
+Preuzeto iz `microResult`.
+
+#### 3.3.4.7. Makro adjustment (FAZA 2)
+
+Na kraju možeš:
+
+* `if (macro.regime === 'DEFENSIVE') score -= 5;`
+* `if (macro.regime === 'AGGRESSIVE') score += 5;`
+
+#### 3.3.4.8. Prag
+
+```js
+const THRESHOLD = 70;
+
+if (totalScore >= THRESHOLD) enter=true; else enter=false;
+```
+
+---
+
+## 3.4. entryEngine.js – sve zajedno
+
+Glavna orkestracija:
+
+```js
+import { detectPeak } from './peakDetector.js';
+import { waitForPullback } from './pullbackWatcher.js';
+import { checkMicrostructure } from './microstructureChecker.js';
+import { scoreEntry } from './entryScoring.js';
+
+export async function evaluateAndEnter(candidate) {
+  // 1) Peak detection
+  const peak = await detectPeak(candidate.symbol);
+  if (!peak.success) {
+    return {
+      enter: false,
+      reason: `Peak detection failed: ${peak.reason}`,
+      score: 0
+    };
+  }
+
+  // 2) Pullback waiting
+  const pb = await waitForPullback(candidate.symbol, peak.peakPrice);
+  if (!pb.success) {
+    return {
+      enter: false,
+      reason: `Pullback failed: ${pb.reason}`,
+      score: 0
+    };
+  }
+
+  // 3) Microstructure
+  const micro = await checkMicrostructure(candidate.symbol);
+  if (!micro.safe) {
+    return {
+      enter: false,
+      reason: `Microstructure not safe: ${micro.reason}`,
+      score: 0,
+      breakdown: { micro }
+    };
+  }
+
+  // 4) Scoring
+  const scoring = scoreEntry({
+    candidate,
+    peakResult: peak,
+    pullbackResult: pb,
+    microResult: micro,
+    macro: candidate.macro
+  });
+
+  if (!scoring.enter) {
+    return {
+      enter: false,
+      reason: scoring.reason,
+      score: scoring.totalScore,
+      breakdown: scoring.breakdown
+    };
+  }
+
+  // 5) Ako pass:
+  return {
+    enter: true,
+    reason: scoring.reason,
+    score: scoring.totalScore,
+    plannedEntryPrice: pb.entryPrice,
+    breakdown: scoring.breakdown
+  };
+}
+```
+
+FAZA 5 će onda, kad dobije `{ enter: true, plannedEntryPrice, score }`, da:
+
+* izračuna size (FAZA 4 + FAZA 2 + risk),
+* pošalje **market order** na Bybit,
+* otvori TP1/TP2/TP3 + DCA.
+
+---
+
+## 3.5. Test scenariji za FAZA 3
+
+Moraš da imaš barem:
+
+1. **RAD “perfect” scenario** (kao RAD 16:00–16:32):
+
+   * feed-uješ istorijske tikove/candles,
+   * proveriš da:
+
+     * peak ~0.4739 detektovan,
+     * pullback ~4% do 0.455,
+     * microstructure safe,
+     * score = 100,
+     * `evaluateAndEnter()` → `enter: true` i `plannedEntryPrice ~ 0.455`.
+
+2. **Previše dubok pullback** (>5%) → `enter:false`.
+
+3. **Nema 3/4 red candles** → `peakDetector` ne potvrdi → skip.
+
+4. **Orderbook previše balansiran** (bidAskRatio >0.45) → microstructure.safe=false.
+
+5. **RSI prenizak** (<70) → scoring odmah reject.
+
+---
+
+## 3.6. Checklist završetka FAZA 3
+
+* [ ] `peakDetector.js` radi sa real-time snapshotom i timeoutima.
+* [ ] `pullbackWatcher.js` ispravno detektuje 3–5% zonu.
+* [ ] `microstructureChecker.js` vraća `safe` + jasne metrike.
+* [ ] `entryScoring.js` vraća score 0–100 + breakdown.
+* [ ] `entryEngine.js` orkestrira sve i vraća jasan rezultat za FAZA 5.
+* [ ] Bar 3–5 integracionih testova (idealni, loši, borderline scenariji).
+* [ ] Logovi jasno pokazuju *zašto* je trejd uzet ili odbijen (da se lako debuguje).
+
+---
+
+Ako ti ovakva FAZA 3 specifikacija leži, sledeće možemo:
+
+* FAZA 4 – **Skip Filters & Daily Limits** (time-of-day, vikend, max trades, win-rate zaštita),
+  ili
+* FAZA 5 – **Position Management (TP1/TP2/TP3 + DCA + BE)**.
+
+Samo reci:
+
+* “FAZA 4 specifikacija” **ili**
+* “FAZA 5 specifikacija”
+
+…i idem odmah dalje u istom stilu.

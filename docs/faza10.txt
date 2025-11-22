@@ -1,0 +1,383 @@
+Super, ovo je “krunisanje” celog sistema – FAZA 10. Idemo da je zaokružimo kao pravi **production rollout plan**. 🧠⚙️
+
+---
+
+# 🚀 FAZA 10 — LIVE TRADING (FINAL ROLLOUT)
+
+**Cilj:**
+Bezbedan, kontrolisan prelazak sa **paper trading** na **real Bybit LIVE** uz minimalan rizik i jasne “panic” procedure.
+
+Osnovna filozofija FAZE 10:
+
+> *“Sistem je već dokazan na papiru, LIVE je samo promena izvora PnL-a, ne promena logike.”*
+
+---
+
+## 📂 10.0 Struktura FAZE 10
+
+```
+FAZA 10
+│
+├── 10.1 Live mode arhitektura (flags + config)
+├── 10.2 Pre-LIVE checklist (Dan -1 / Dan 0)
+├── 10.3 FAZA 10.1 – Micro-Live ($100–200)
+├── 10.4 FAZA 10.2 – Small-Live ($500)
+├── 10.5 FAZA 10.3 – Scale-Up ($1K → $5K+)
+├── 10.6 Incident Response & Rollback
+└── 10.7 Live performance review & tuning
+```
+
+---
+
+## 10.1 LIVE MODE ARHITEKTURA
+
+### 10.1.1 Environment switch
+
+Uvedi centralni **MODE flag**:
+
+```env
+TRADING_MODE=PAPER | LIVE
+CAPITAL_TIER=MICRO | SMALL | NORMAL
+```
+
+U kodu:
+
+```js
+export function isLiveMode() {
+  return process.env.TRADING_MODE === 'LIVE';
+}
+
+export function isPaperMode() {
+  return process.env.TRADING_MODE !== 'LIVE';
+}
+```
+
+Svi kritični moduli (executionRouter, orderManager, PnL tracker, logging) **NE UMEJU** da rade “na svoju ruku” – *sve prolazi preko centralnog routera* koji poštuje `TRADING_MODE`.
+
+---
+
+### 10.1.2 Execution Router – centralna tačka
+
+`src/execution/router.js`:
+
+```js
+export class ExecutionRouter {
+  constructor({ liveClient, paperEngine, mode }) {
+    this.liveClient  = liveClient;  // Bybit REST/WS
+    this.paperEngine = paperEngine; // FAZA 8 simulator
+    this.mode        = mode;        // 'PAPER' | 'LIVE'
+  }
+
+  async placeOrder(order) {
+    if (this.mode === 'PAPER') {
+      return this.paperEngine.placeOrder(order);
+    }
+    return this.liveClient.placeOrder(order);
+  }
+
+  async closePosition(args) { /* isto */ }
+  async cancelOrders(filter) { /* isto */ }
+}
+```
+
+**Zlatno pravilo:** *nigde u kodu ne sme direktno da se zove Bybit API – sve ide preko ExecutionRouter-a.*
+
+---
+
+### 10.1.3 Live constraints per “capital tier”
+
+`CAPITAL_TIER` definiše limite:
+
+```js
+const TIERS = {
+  MICRO: {
+    maxCapital: 200,
+    maxPerTrade: 25,
+    maxConcurrent: 1,
+    maxDailyTrades: 3,
+    maxDailyLoss: -2,   // %
+  },
+  SMALL: {
+    maxCapital: 500,
+    maxPerTrade: 50,
+    maxConcurrent: 2,
+    maxDailyTrades: 5,
+    maxDailyLoss: -3,
+  },
+  NORMAL: {
+    maxCapital: 1000,
+    maxPerTrade: 100,
+    maxConcurrent: 3,
+    maxDailyTrades: 7,
+    maxDailyLoss: -5,
+  },
+};
+```
+
+Pre svake nove pozicije `riskManager` gleda:
+
+* koji je `CAPITAL_TIER`
+* kakav je trenutni `dailyPnL`
+* koliko je već otvorenih pozicija
+  → ako bilo šta krši limite, **neće ni probati da pošalje order**.
+
+---
+
+## 10.2 PRE-LIVE CHECKLIST (OBAVEZNO!)
+
+Ovo radiš **dan pre** prvog LIVE testa (ili jutro pre).
+
+### 10.2.1 Tehnički pre-check
+
+1. ✅ VPS health: CPU < 70%, RAM ok, disk free > 10GB
+2. ✅ PM2 procesi: `engine`, `monitor`, `dashboard` svi `online`
+3. ✅ Log rotate radi (da logovi ne napune disk)
+4. ✅ Web dashboard `/monitor` radi iz Švedske (tvoj browser)
+5. ✅ WS konekcije na Bybit stabilne (nema reconnect spam)
+
+### 10.2.2 Konfiguracioni pre-check
+
+1. `TRADING_MODE=PAPER` – proveri da sistem zaista radi u paperu i hvata LIVE feed
+2. `config/trading.json` – pozicije: **$25, 25x**, TP1/2/3 kao dogovoreno
+3. `config/safety.json` – kill-switch pragovi:
+
+   * VIX > 30 = stop
+   * daily loss per tier setovan
+4. `config/skip.json` – weekend & time filters aktivni (Mon–Fri, 09–18 UTC)
+
+### 10.2.3 Simulirani “dry run” (Dan 0 jutro)
+
+* ostavi `TRADING_MODE=PAPER`, ali **glumi kao da je LIVE**:
+
+  * gledaj board
+  * prati signale
+  * proveri da se TP/DCA logika ponaša kako treba
+* ako je sve u redu nekoliko sati → spreman si za MICRO-LIVE.
+
+---
+
+## 10.3 FAZA 10.1 — MICRO-LIVE ($100–200)
+
+**Cilj:**
+Testiraš **REAL EXECUTION** sa **minimalnim novcem**.
+
+### 10.3.1 Setup
+
+* `TRADING_MODE=LIVE`
+* `CAPITAL_TIER=MICRO`
+* Bybit API key:
+
+  * permissions: **trade only**, bez withdrawal-a
+  * IP whitelist (VPS IP)
+
+### 10.3.2 Ograničenja (hard-coded preko configa)
+
+* max kapital koji “računaš”: $200
+* max per trade: $25
+* max concurrent: 1 pozicija
+* max dnevno: 3 trade-a
+* max dnevni loss: -2%
+
+### 10.3.3 Pravila za ovaj period
+
+* Trajanje: **minimum 20 live trejdova**
+* Target:
+
+  * Win rate ≥ 60%
+  * nema kritičnih bugova (nedefinisani state, dupli orderi, “ghost” pozicije)
+* Svaki trade:
+
+  * odmah posle zatvaranja: ručno uporedi Bybit history vs `trades.log`
+  * proveri da PnL i fees imaju smisla
+
+### 10.3.4 Kada je FAZA 10.1 uspešna?
+
+* 20+ trejdova
+* Winrate ≥ 60%
+* Nema:
+
+  * duplih entry-ja
+  * nelogičnih TP hitova
+  * neobjašnjenih DCA
+* killSwitch NIJE morao da spašava katastrofu (ili ako jeste – radio je perfektno)
+
+Ako bilo šta bude čudno → **vrati TRADING_MODE=PAPER** i debaguj.
+
+---
+
+## 10.4 FAZA 10.2 — SMALL-LIVE ($500)
+
+Kada MICRO-LIVE prođe ok → prelaziš na **kontrolisani rast**.
+
+### 10.4.1 Setup
+
+* `TRADING_MODE=LIVE`
+* `CAPITAL_TIER=SMALL`
+* max per trade: $50
+* max concurrent: 2
+* max trades/day: 5
+* daily loss: -3%
+
+### 10.4.2 Ciljevi
+
+* Min 30 dodatnih trejdova (ukupno 50 LIVE)
+* Winrate ≥ 65%
+* Nema “pattern” gubitaka (tipa svi losing trades u istoj zoni vremena ili na istom tipu kretanja)
+
+### 10.4.3 Praćenje
+
+Dashboard doda sekciju:
+
+* “LIVE mode: SMALL”
+* “Tier: SMALL, limits: …”
+* tabelu: `liveStats`:
+
+  * ukupni PnL
+  * 7d PnL
+  * winrate (last 20)
+  * avg hold time (da li je i dalje ~26min)
+
+Ako primećuješ da se LIVE dosta razlikuje od paper logike (slippage, partial fills) → FAZA 9 param tuning + nazad na SMALL dok se ne izravna.
+
+---
+
+## 10.5 FAZA 10.3 — SCALE-UP ($1K → $5K+)
+
+Ovo radiš tek kad:
+
+* imaš **50+ micro/small LIVE trejdova**
+* sistem se ponaša PREDVIDLJIVO
+* nema panike kod svake sveće 😄
+
+### 10.5.1 Setup
+
+* `CAPITAL_TIER=NORMAL`
+* `maxPerTrade = $100`
+* `maxConcurrent = 3`
+* `maxDailyTrades = 7`
+* `maxDailyLoss = -5%`
+
+**Pravilo rasta:**
+
+* Start: `$1,000`
+* Kad equity (real PnL) pređe `$2,000`:
+
+  * možeš podići maxPerTrade na `$150`
+* Kad equity > `$5,000`:
+
+  * možeš početi razmišljanje o “portfolio heat” logici (kasnija faza)
+
+**NIKAD:**
+
+* ne dižeš leverage iznad dogovorenog (npr. 25x)
+* ne dižeš maxDailyLoss preko -5%
+
+---
+
+## 10.6 INCIDENT RESPONSE & ROLLBACK
+
+Mora postojati jasan “šta ako sve ode u PM?” plan.
+
+### 10.6.1 Kategorije incidenta
+
+1. **Tehnički bug**
+
+   * dupli entry
+   * pozicija ostala otvorena bez TPa
+   * mismatch između Bybit i internog stanja
+
+2. **Market anomaly**
+
+   * ogroman wick
+   * exchange partial outage
+   * bizaran slippage
+
+3. **Safety failure**
+
+   * safety modul trebao da stopira, a nije
+   * daily loss > definisanog praga
+
+### 10.6.2 Procedura (šablon)
+
+1. **Hitno:**
+
+   * Ručno: zatvori sve pozicije u Bybit UI ako si u panici
+   * Pokreni: `killSwitch.manualTrigger("manual_panic")` (endpoint npr. `/api/admin/kill`)
+
+2. **Posle smirivanja:**
+
+   * Setuj: `TRADING_MODE=PAPER`
+   * Prescani `logs/` za zadnjih 15 minuta
+   * Zapiši incident u `INCIDENTS.md`:
+
+     * vreme
+     * simptom
+     * uzrok
+     * fix
+
+3. **Rollback pravilo:**
+
+   * Posle ozbiljnog incidenta → ideš **2–3 dana samo PAPER**, čak i ako bug rešimo odmah.
+   * Tek posle toga, polako vraćaš LIVE u MICRO tier.
+
+---
+
+## 10.7 LIVE PERFORMANCE REVIEW & TUNING
+
+Ovo je stalna rutina, npr.:
+
+* dnevni mini review (10–15min)
+* nedeljni deep-dive (60–90min)
+
+### 10.7.1 Dnevni review
+
+Na kraju trading dana (posle 18:00 UTC):
+
+1. Pregledaj `/monitor`–>“Dan na kratko”:
+
+   * todayPnL %
+   * todayWinRate
+   * broj trade-ova
+   * koliko puta je triggeovan skip po razlogu
+   * da li je killSwitch aktiviran (nadam se 0 😄)
+
+2. Ako je dan bio:
+
+   * **odličan:** ništa ne diraj, samo loguj
+   * **loš:** pogledaj 2–3 najgora trejda i vidi:
+
+     * da li su prošli scoring ≥ 70
+     * da li je vreme bilo na granici (npr. blizu 18:00)
+     * da li je market bio “čudan” (VIX, F&G)
+
+### 10.7.2 Nedeljni review
+
+Jednom nedeljno:
+
+* izvezi `live-trades.jsonl` za tu nedelju
+* računaš:
+
+  * win/loss per sat
+  * per dan u nedelji
+  * po tipu kretanja (pump/dump/slow grind)
+
+Na osnovu toga radiš sitne korekcije u `config/thresholds.json`, **NE** u core kodu (core ostaje stabilan).
+
+---
+
+## ✅ FAZA 10 — SUCCESS CRITERIA (KONAČNI)
+
+Možemo reći da je FAZA 10 kompletirana kada:
+
+1. Imaš **≥ 50 LIVE trejdova** (MICRO + SMALL + NORMAL)
+2. Ukupan LIVE win rate ≥ **65–70%**
+3. Nisi imao **ni jedan** critical incident bez da safety reaguje
+4. KillSwitch, daily loss, time-of-day, weekend filter – sve radi u realnim uslovima
+5. Uspostavljen dnevni i nedeljni review ritual
+6. **Ti** se osećaš mirno kad bot trejduje bez da buljiš non-stop u ekran.
+
+---
+
+Ako želiš sledeći korak, mogu:
+
+* da ti prelomim FAZU 10 u **konkretnu strukturu fajlova + TODO blokove** (npr. `config/`, `src/execution/router.js`, `src/safety/killSwitch.js`, `routes/adminKill.js`, itd.), tako da bukvalno možeš da počneš da kucaš kod po skeletonu.
