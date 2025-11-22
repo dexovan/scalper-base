@@ -26,8 +26,8 @@ class VolatilityEngine {
             // Explosion detection multiplier
             explosionMultiplier: 3.0,
 
-            // Minimum candles required for calculation
-            minCandlesRequired: 5,
+            // Minimum candles required for calculation (lowered from 5 to 2)
+            minCandlesRequired: 2,
 
             ...config
         };
@@ -268,9 +268,18 @@ class VolatilityEngine {
      * Validation and helper methods
      */
     isValidCandleData(candleData) {
-        return candleData &&
-               typeof candleData === 'object' &&
-               Object.keys(candleData).length > 0;
+        if (!candleData || typeof candleData !== 'object') {
+            return false;
+        }
+
+        // Check if at least ONE timeframe has minimum required candles
+        for (const [timeframe, candles] of Object.entries(candleData)) {
+            if (candles && Array.isArray(candles) && candles.length >= this.config.minCandlesRequired) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     getEmptyVolatility() {
