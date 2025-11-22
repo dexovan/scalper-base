@@ -5,6 +5,66 @@
 
 ---
 
+## ⚠️ KRITIČNA PRAVILA ZA AI ASISTENTA
+
+### 🔴 **PRAVILO #1: UVEK PROVERI PRE NEGO ŠTO DODAJEŠ KOD**
+
+**Problem:** AI često dodaje funkcije/varijable koje već postoje, što izaziva:
+
+- `SyntaxError: Identifier 'X' has already been declared`
+- Duplicate function declarations
+- Engine crash-ove
+
+**Obavezna procedura pre dodavanja bilo čega:**
+
+1. **GREP SEARCH** - Proveri da li funkcija/varijabla već postoji:
+
+   ```
+   grep_search: "^export.*functionName|^function functionName|^const variableName"
+   ```
+
+2. **COUNT MATCHES** - Ako nađeš 1+ match, NE DODAVAJ DUPLIKAT!
+
+3. **READ CONTEXT** - Pročitaj okolni kod da razumeš šta već postoji
+
+4. **DIFF CHECK** - Uporedi što želiš dodati sa postojećim
+
+**Primer greške (22.11.2025):**
+
+```javascript
+// Dodao sam:
+export function getUniverseStats() { ... }  // Line 184
+
+// Ali već je postojala:
+export function getUniverseStats() { ... }  // Line 208
+
+// Rezultat: ENGINE CRASH!
+```
+
+**Kako ispravno:**
+
+```bash
+# 1. Prvo pretraži
+grep_search: "getUniverseStats"
+
+# 2. Ako postoji - NE DODAVAJ!
+# 3. Ako treba promeniti - EDIT postojeću, ne dodavaj novu
+```
+
+### 🟡 **PRAVILO #2: COMMIT MALI, TESTIRAJ ČESTO**
+
+- Ne pravi 10 izmena odjednom
+- Commit po commit, restart engine, proveri da li radi
+- Ako nešto pukne, lakše je rollback-ovati
+
+### 🟢 **PRAVILO #3: DOKUMENTUJ SVE U project-memory.md**
+
+- Svaki kritični bug → dokumentuj ovde
+- Svaka arhitekturalna odluka → zapiši razlog
+- Svaka greška → objasni kako je nastala i kako je rešena
+
+---
+
 ## 🔍 SYSTEM AUDIT - NOVEMBER 22, 2025
 
 **Status:** 🚧 IN PROGRESS
