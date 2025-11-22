@@ -750,18 +750,21 @@ class FeatureEngine {
      * Get health status of the Feature Engine
      */
     getHealthStatus() {
-        const symbolData = this.symbolData || {};
         const performanceMetrics = this.performanceMetrics || {};
         const engines = this.engines || {};
+
+        // Calculate activeSymbols from lastUpdateTimes (symbols updated in last 60s)
+        const now = Date.now();
+        const activeSymbols = Array.from(this.lastUpdateTimes.values())
+            .filter(time => now - time < 60000).length;
 
         const status = {
             status: 'healthy',
             uptime: process.uptime(),
             memory: process.memoryUsage(),
-            activeSymbols: Object.keys(symbolData).length,
-            totalAnalyses: Object.values(symbolData).reduce((total, data) => {
-                return total + Object.keys((data && data.features) || {}).length;
-            }, 0),
+            activeSymbols: activeSymbols,
+            totalSymbols: this.featureStates.size,
+            totalAnalyses: this.featureStates.size, // Total symbols in universe
             performanceMetrics: performanceMetrics,
             engines: {
                 imbalance: !!engines.imbalance,
