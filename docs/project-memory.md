@@ -1733,3 +1733,53 @@ const universe = await getUniverseSnapshot(); // NE ZABORAVI await!
 
 **End of Project Memory**
 _Automatski ažurirano tokom development sesija_
+
+##  PHASE 0.6 - DASHBOARD REDESIGN & MARKETS PAGE (Nov 22, 2025)
+
+### Problem: Missing 24h Ticker Data (change24h, volume24h)
+
+**Symptom:**
+- Markets page showing '0.00%' for all 24h changes
+- Volume column showing '-' for all symbols
+- Console logs: `change24h: null, volume24h: null`
+
+**Root Cause:**
+WebSocket ticker events from Bybit only provide real-time price, NOT 24h statistics.
+
+**Solution Implemented:**
+Created robust 24h data refresh system in `src/http/monitorApi.js`:
+- Hybrid data model: WebSocket (real-time) + REST API (24h stats)
+- Fetch from `https://api.bybit.com/v5/market/tickers?category=linear` every 60s
+- Retry logic: 3 attempts with 5s delay
+- Timeout: 10s per request
+- New endpoint: `GET /api/monitor/24h-status`
+
+**Key Features:**
+1. Updates existing tickers (preserves WebSocket prices)
+2. Creates new tickers for symbols not in WebSocket
+3. Tracks `last24hUpdate` timestamp
+4. Graceful degradation (null if unavailable)
+
+**Configuration:**
+- Refresh interval: 60 seconds
+- Max retry attempts: 3
+- Retry delay: 5 seconds
+
+**Files Changed:**
+- `src/http/monitorApi.js` (+180 lines)
+  - `fetch24hData()` - Main fetch with retry
+  - `start24hDataRefresh()` - Initialize refresh
+  - `stop24hDataRefresh()` - Cleanup
+  - `get24hDataStatus()` - Monitoring
+
+**Lessons Learned:**
+1. Always check project-memory.md API inventory first
+2. WebSocket != REST API (different data)
+3. Hybrid approach works best
+4. Robust error handling is critical
+5. Monitor everything
+
+**Commits:**
+- `1049fa0` - Initial 24h data refresh
+- `[CURRENT]` - Robust version with retry + monitoring
+

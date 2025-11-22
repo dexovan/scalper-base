@@ -69,6 +69,10 @@ let latestTickers = new Map(); // symbol -> ticker data
 let recentTrades = []; // last 100 trades
 const MAX_RECENT_TRADES = 100;
 
+// ============================================================
+// PUBLIC EXPORTS
+// ============================================================
+
 // Listen to bybitPublic events for real-time data
 export function attachRealtimeListeners(bybitPublic) {
   console.log("🔗 attachRealtimeListeners: Setting up event listeners");
@@ -142,76 +146,190 @@ export function attachRealtimeListeners(bybitPublic) {
 }
 
 // ============================================================
-// FETCH 24H DATA FROM BYBIT REST API
+// FETCH 24H DATA FROM BYBIT REST API (ROBUST VERSION)
 // ============================================================
 let ticker24hInterval = null;
+let fetch24hRetryCount = 0;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 5000; // 5 seconds
+const REFRESH_INTERVAL_MS = 60000; // 60 seconds
+let lastSuccessfulFetch = null;
 
-async function fetch24hData() {
+/**
+ * Fetch 24h ticker data from Bybit REST API with retry logic
+ * Updates latestTickers Map with change24h and volume24h
+ * WebSocket provides real-time prices, REST API provides 24h statistics
+ */
+async function fetch24hData(retryAttempt = 0) {
+  const startTime = Date.now();
+
   try {
-    console.log("📊 Fetching 24h ticker data from Bybit REST API...");
+    console.log(`📊 [24H-DATA] Fetching from Bybit REST API (attempt ${retryAttempt + 1}/${MAX_RETRY_ATTEMPTS})...`);
+
     const url = "https://api.bybit.com/v5/market/tickers?category=linear";
-    const response = await fetch(url);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'scalper-base/1.0'
+      }
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
     const json = await response.json();
 
+    // Validate response structure
     if (!json || !json.result || !Array.isArray(json.result.list)) {
-      console.error("❌ Failed to fetch 24h data:", json);
-      return;
+      throw new Error(`Invalid API response structure: ${JSON.stringify(json).slice(0, 200)}`);
     }
 
     const tickers = json.result.list;
-    let updatedCount = 0;
+    let updatedExisting = 0;
+    let createdNew = 0;
+    let skipped = 0;
 
+    // Process all tickers
     for (const ticker of tickers) {
       const symbol = ticker.symbol;
+
+      // Skip if symbol is missing
+      if (!symbol) {
+        skipped++;
+        continue;
+      }
+
       const existing = latestTickers.get(symbol);
 
-      // Parse 24h data
-      const change24h = ticker.price24hPcnt ? parseFloat(ticker.price24hPcnt) : null;
+      // Parse 24h data with multiple fallbacks
+      const change24h = ticker.price24hPcnt ? parseFloat(ticker.price24hPcnt) :
+                        ticker.priceChangePercent ? parseFloat(ticker.priceChangePercent) : null;
+
       const volume24h = ticker.volume24h ? parseFloat(ticker.volume24h) :
-                        ticker.turnover24h ? parseFloat(ticker.turnover24h) : null;
+                        ticker.turnover24h ? parseFloat(ticker.turnover24h) :
+                        ticker.quoteVolume ? parseFloat(ticker.quoteVolume) : null;
 
       if (existing) {
-        // Update existing ticker with 24h data
+        // Update existing ticker with 24h data (preserve real-time price from WebSocket)
         existing.change24h = change24h;
         existing.volume24h = volume24h;
-        updatedCount++;
+        existing.last24hUpdate = new Date().toISOString();
+        updatedExisting++;
       } else {
-        // Create new ticker entry
-        const price = ticker.lastPrice ? parseFloat(ticker.lastPrice) : null;
+        // Create new ticker entry (for symbols not yet in WebSocket stream)
+        const price = ticker.lastPrice ? parseFloat(ticker.lastPrice) :
+                     ticker.price ? parseFloat(ticker.price) : null;
+
         if (price) {
           latestTickers.set(symbol, {
             symbol,
             price,
             change24h,
             volume24h,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            last24hUpdate: new Date().toISOString(),
+            source: 'rest-api'
           });
-          updatedCount++;
+          createdNew++;
+        } else {
+          skipped++;
         }
       }
     }
 
-    console.log(`✅ Updated 24h data for ${updatedCount} symbols (total: ${latestTickers.size})`);
+    const duration = Date.now() - startTime;
+    lastSuccessfulFetch = new Date().toISOString();
+    fetch24hRetryCount = 0; // Reset retry counter on success
+
+    console.log(
+      `✅ [24H-DATA] Success in ${duration}ms | ` +
+      `Updated: ${updatedExisting} | Created: ${createdNew} | Skipped: ${skipped} | ` +
+      `Total tickers: ${latestTickers.size}`
+    );
+
+    return true;
+
   } catch (error) {
-    console.error("❌ Error fetching 24h data:", error.message);
+    const duration = Date.now() - startTime;
+    console.error(`❌ [24H-DATA] Failed after ${duration}ms:`, error.message);
+
+    // Retry logic
+    if (retryAttempt < MAX_RETRY_ATTEMPTS - 1) {
+      fetch24hRetryCount++;
+      console.log(`🔄 [24H-DATA] Retrying in ${RETRY_DELAY_MS}ms (attempt ${retryAttempt + 2}/${MAX_RETRY_ATTEMPTS})...`);
+
+      setTimeout(() => {
+        fetch24hData(retryAttempt + 1);
+      }, RETRY_DELAY_MS);
+
+      return false;
+    } else {
+      console.error(`❌ [24H-DATA] Max retry attempts reached. Will try again on next interval.`);
+      fetch24hRetryCount = 0;
+      return false;
+    }
   }
 }
 
-// Start periodic 24h data refresh (every 30 seconds)
+/**
+ * Start periodic 24h data refresh
+ * - Initial fetch on startup
+ * - Refresh every 60 seconds
+ * - Auto-retry on failures
+ */
 function start24hDataRefresh() {
   if (ticker24hInterval) {
+    console.log("⚠️ [24H-DATA] Refresh already running, clearing old interval...");
     clearInterval(ticker24hInterval);
   }
 
-  // Initial fetch
+  console.log(`🚀 [24H-DATA] Starting periodic refresh (interval: ${REFRESH_INTERVAL_MS / 1000}s)...`);
+
+  // Initial fetch (don't wait)
   fetch24hData();
 
-  // Refresh every 30 seconds
+  // Periodic refresh
   ticker24hInterval = setInterval(() => {
-    fetch24hData();
-  }, 30000);
+    // Only fetch if not currently retrying
+    if (fetch24hRetryCount === 0) {
+      fetch24hData();
+    } else {
+      console.log(`⏭️ [24H-DATA] Skipping scheduled fetch (retry in progress: ${fetch24hRetryCount}/${MAX_RETRY_ATTEMPTS})`);
+    }
+  }, REFRESH_INTERVAL_MS);
 
-  console.log("🔄 Started 24h data refresh (every 30s)");
+  console.log(`✅ [24H-DATA] Periodic refresh started successfully`);
+}
+
+/**
+ * Stop 24h data refresh (for cleanup)
+ */
+function stop24hDataRefresh() {
+  if (ticker24hInterval) {
+    clearInterval(ticker24hInterval);
+    ticker24hInterval = null;
+    console.log("🛑 [24H-DATA] Periodic refresh stopped");
+  }
+}
+
+/**
+ * Get 24h data refresh status (for monitoring)
+ */
+function get24hDataStatus() {
+  return {
+    running: ticker24hInterval !== null,
+    lastSuccessfulFetch,
+    retryCount: fetch24hRetryCount,
+    totalTickers: latestTickers.size,
+    intervalSeconds: REFRESH_INTERVAL_MS / 1000
+  };
 }
 
 // ============================================================
@@ -325,7 +443,18 @@ export function startMonitorApiServer(port = 8090) {
     return res.json({
       ok: true,
       timestamp: new Date().toISOString(),
-      tickers: tickerArray
+      tickers: tickerArray,
+      ticker24hStatus: get24hDataStatus() // Include 24h refresh status
+    });
+  });
+
+  // ============================================================
+  // GET /api/monitor/24h-status - 24h data refresh status
+  // ============================================================
+  app.get("/api/monitor/24h-status", (req, res) => {
+    return res.json({
+      ok: true,
+      status: get24hDataStatus()
     });
   });
 
@@ -948,8 +1077,19 @@ export function startMonitorApiServer(port = 8090) {
     console.log("🚀 DEBUG: Monitor API successfully started");
     console.log(`🟢 ENGINE-API running on port ${port}`);
     console.log(`➡️  http://localhost:${port}/api/monitor/summary`);
+    console.log(`➡️  http://localhost:${port}/api/monitor/24h-status`);
 
-    // Start 24h data refresh
+    // Start 24h data refresh with robust error handling
     start24hDataRefresh();
   });
 }
+
+// ============================================================
+// EXPORTS FOR EXTERNAL USE
+// ============================================================
+export {
+  start24hDataRefresh,
+  stop24hDataRefresh,
+  get24hDataStatus,
+  fetch24hData
+};
