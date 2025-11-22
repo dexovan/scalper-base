@@ -10,8 +10,8 @@ const router = express.Router();
 /* ---------------------------------------------------------
    /api/universe – Full snapshot
 --------------------------------------------------------- */
-router.get("/", (req, res) => {
-  const uni = getUniverseSnapshot();
+router.get("/", async (req, res) => {
+  const uni = await getUniverseSnapshot();
 
   res.json({
     fetchedAt: uni.fetchedAt,

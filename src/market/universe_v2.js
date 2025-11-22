@@ -162,7 +162,12 @@ export async function initUniverse(options = {}) {
 // -------------------------------------------
 // Getteri
 // -------------------------------------------
-export function getUniverseSnapshot() {
+export async function getUniverseSnapshot() {
+  // Auto-load from disk if state is empty (for dashboard process)
+  if (!UniverseState.fetchedAt || Object.keys(UniverseState.symbols || {}).length === 0) {
+    await loadExistingUniverse();
+  }
+
   // duboka kopija da niko spolja ne menja stanje
   return JSON.parse(JSON.stringify(UniverseState));
 }
