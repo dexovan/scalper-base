@@ -108,7 +108,7 @@
             }
 
             // Get ticker data
-            const tickerResponse = await fetch('/api/monitor/tickers');
+            const tickerResponse = await fetch('/monitor/api/tickers');
             const tickerData = await tickerResponse.json();
             const tickers = tickerData.ok ? tickerData.tickers : [];
 
