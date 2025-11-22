@@ -239,7 +239,20 @@ class FeatureEngine {
             // Get required data from microstructure
             const microstructureData = await this.getMicrostructureData(symbol);
             if (!microstructureData) {
+                // DEBUG: Count and log failures
+                if (!this._updateFailCount) this._updateFailCount = 0;
+                this._updateFailCount++;
+                if (this._updateFailCount <= 5) {
+                    console.log(`[DEBUG] updateFeaturesForSymbol(${symbol}): getMicrostructureData returned null`);
+                }
                 return false;
+            }
+
+            // DEBUG: Log success
+            if (!this._updateSuccessCount) this._updateSuccessCount = 0;
+            this._updateSuccessCount++;
+            if (this._updateSuccessCount <= 5) {
+                console.log(`[DEBUG] updateFeaturesForSymbol(${symbol}): SUCCESS - got data, will set lastUpdateTimes`);
             }
 
             const {
