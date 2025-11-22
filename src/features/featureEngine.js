@@ -28,6 +28,7 @@ import PumpPreSignalsEngine from './pumpPreSignals.js';
 
 import logger from '../utils/logger.js';
 import { getUniverseSymbols } from '../market/universe_v2.js';
+import { getOrderbookSummary, getRecentTrades, getCandles } from '../microstructure/OrderbookManager.js';
 
 class FeatureEngine {
     constructor(config = {}) {
@@ -380,13 +381,7 @@ class FeatureEngine {
      */
     async getMicrostructureData(symbol) {
         try {
-            // Import OrderbookManager functions
-            const {
-                getOrderbookSummary,
-                getRecentTrades,
-                getCandles
-            } = await import('../microstructure/OrderbookManager.js');
-
+            // Use statically imported OrderbookManager functions
             const [orderbook, trades, candles] = await Promise.all([
                 getOrderbookSummary(symbol, 10),
                 getRecentTrades(symbol, 100),
