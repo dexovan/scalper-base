@@ -60,7 +60,8 @@ class WallsSpoofingEngine {
         if (!this._analyzeCallCount) this._analyzeCallCount = 0;
         this._analyzeCallCount++;
         if (this._analyzeCallCount % 10 === 1) {
-            console.log(`🔍 [WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})`);
+            const msg = `🔍 [WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})\n`;
+            process.stdout.write(msg);
         }
 
         try {

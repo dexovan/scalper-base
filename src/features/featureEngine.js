@@ -239,7 +239,8 @@ class FeatureEngine {
         if (!this._updateCallCount) this._updateCallCount = 0;
         this._updateCallCount++;
         if (this._updateCallCount % 10 === 1) {
-            console.log(`🔍 [FEATURE ENGINE DEBUG] updateFeaturesForSymbol called (count: ${this._updateCallCount}, symbol: ${symbol})`);
+            const msg = `🔍 [FEATURE ENGINE DEBUG] updateFeaturesForSymbol called (count: ${this._updateCallCount}, symbol: ${symbol})\n`;
+            process.stdout.write(msg);
         }
 
         try {
