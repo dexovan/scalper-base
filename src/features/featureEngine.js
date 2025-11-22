@@ -292,9 +292,14 @@ class FeatureEngine {
                 volatilityResult,
                 feeLeverageResult,
                 pumpResult
-            ] = analyses.map(result =>
-                result.status === 'fulfilled' ? result.value : this.getEmptyAnalysisForType(result.reason)
-            );
+            ] = analyses.map((result, idx) => {
+                if (result.status === 'rejected') {
+                    const engineNames = ['imbalance', 'walls', 'flow', 'volatility', 'feeLeverage', 'pumpSignals'];
+                    this.logger.error(`[${symbol}] Engine ${engineNames[idx]} failed:`, result.reason);
+                    return this.getEmptyAnalysisForType(result.reason);
+                }
+                return result.value;
+            });
 
             // Update fee/leverage with volatility data
             if (volatilityResult && feeLeverageResult) {
