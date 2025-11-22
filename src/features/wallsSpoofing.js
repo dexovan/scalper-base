@@ -59,7 +59,7 @@ class WallsSpoofingEngine {
         // DEBUG: Log every call periodically
         if (!this._analyzeCallCount) this._analyzeCallCount = 0;
         this._analyzeCallCount++;
-        if (this._analyzeCallCount % 50 === 1) {
+        if (this._analyzeCallCount % 10 === 1) {
             console.log(`🔍 [WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})`);
         }
 
@@ -175,8 +175,8 @@ class WallsSpoofingEngine {
         if (!this._wallDetectionCount) this._wallDetectionCount = 0;
         this._wallDetectionCount++;
 
-        // Log every 100 calls to see actual data being processed
-        if (this._wallDetectionCount % 100 === 1) {
+        // Log every 10 calls to see actual data being processed
+        if (this._wallDetectionCount % 10 === 1) {
             const sample = entries.slice(0, 5).map(([p, q]) => ({
                 price: parseFloat(p),
                 qty: parseFloat(q),
@@ -234,7 +234,7 @@ class WallsSpoofingEngine {
         }
 
         // Log wall detection results periodically
-        if (walls.length > 0 || this._wallDetectionCount % 100 === 1) {
+        if (walls.length > 0 || this._wallDetectionCount % 10 === 1) {
             console.log(`🔍 [WALLS DEBUG ${this._wallDetectionCount}] ${side} result:`, JSON.stringify({
                 wallsFound: walls.length,
                 candidatesChecked: wallCandidatesChecked,
