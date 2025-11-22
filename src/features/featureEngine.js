@@ -484,14 +484,17 @@ class FeatureEngine {
                 '15s': candles15s || []
             };
 
-            // Check if we have ANY data for this symbol
-            const hasData = orderbook || (trades && trades.length > 0);
+            // Check if we have ANY usable data for this symbol
+            // orderbook must have bids/asks arrays with data, not just exist as empty object
+            const hasOrderbookData = orderbook && orderbook.bids && orderbook.bids.length > 0 && orderbook.asks && orderbook.asks.length > 0;
+            const hasTradesData = trades && trades.length > 0;
+            const hasData = hasOrderbookData || hasTradesData;
 
             // DEBUG: Log null data pattern
             if (!hasData) {
                 this._nullDataCount++;
                 if (this._nullDataCount <= 10) {
-                    this.logger.info(`[DEBUG] No data for ${symbol}: orderbook=${!!orderbook}, trades=${trades?.length || 0}, candles1s=${candles1s?.length || 0}`);
+                    this.logger.info(`[DEBUG] No data for ${symbol}: orderbook=${hasOrderbookData}, trades=${trades?.length || 0}, candles1s=${candles1s?.length || 0}`);
                 } else if (this._nullDataCount === 100) {
                     this.logger.warn(`[DEBUG] 100 symbols with no data. Success count: ${this._successDataCount}`);
                 }
