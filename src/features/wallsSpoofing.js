@@ -390,12 +390,12 @@ class WallsSpoofingEngine {
 
         // Pattern 3: Single-sided dominance (potential spoof setup)
         if (bidWalls.length > 0 && askWalls.length === 0) {
-            if (bidWalls[0].strength > 5) { // Very strong wall with no opposition
-                manipulationScore += 0.15;
+            if (bidWalls[0].strength > 4) { // Strong wall with no opposition (lowered from 5 to 4)
+                manipulationScore += 0.25; // Increased from 0.15
             }
         } else if (askWalls.length > 0 && bidWalls.length === 0) {
-            if (askWalls[0].strength > 5) {
-                manipulationScore += 0.15;
+            if (askWalls[0].strength > 4) { // Lowered threshold
+                manipulationScore += 0.25; // Increased from 0.15
             }
         }
 
@@ -403,7 +403,7 @@ class WallsSpoofingEngine {
         if (bidWalls.length > 0 && askWalls.length > 0) {
             const sizeRatio = bidWalls[0].size / askWalls[0].size;
             if (sizeRatio > 5 || sizeRatio < 0.2) { // 5x imbalance
-                manipulationScore += 0.1;
+                manipulationScore += 0.15; // Increased from 0.1
             }
         }
 
