@@ -484,6 +484,417 @@ scalper-base/
 
 ---
 
+## 🎯 PHASE 0.5 - DASHBOARD FRONTEND REFACTORING (Completed 2025-11-22)
+
+**Status:** ✅ COMPLETED
+**Started:** 2025-11-22 23:45
+**Completed:** 2025-11-23 00:30
+**Duration:** ~45 minutes
+**Reason:** After system audit, identified dashboard.ejs as bloated monolith (1651 lines) with inline CSS, config, and API logic. Refactored into modular ES6 structure as first step before backend reorganization.
+
+### OBJECTIVES & ACHIEVEMENTS
+
+**Primary Goal:** Extract inline code from `dashboard.ejs` into separate, maintainable modules using ES6 import/export pattern.
+
+**Success Metrics:**
+
+- ✅ Reduced `dashboard.ejs` from **1651 → 628 lines** (62% reduction, -1023 lines)
+- ✅ Created 3 new modules totaling **1100 lines** of organized code
+- ✅ Zero functionality regressions - all features working in production
+- ✅ Clean browser console (no errors after bugfixes)
+- ✅ Established modular architecture pattern for future refactoring
+
+### DETAILED STATISTICS
+
+**File Changes:**
+
+| File                           | Before | After | Change    | Purpose                         |
+| ------------------------------ | ------ | ----- | --------- | ------------------------------- |
+| `web/views/dashboard.ejs`      | 1651   | 628   | -1023     | HTML template (cleaned)         |
+| `web/public/css/dashboard.css` | N/A    | 30    | +30 NEW   | Dashboard-specific styles       |
+| `web/public/js/config.js`      | N/A    | 54    | +54 NEW   | Centralized configuration       |
+| `web/public/js/api-client.js`  | N/A    | 1016  | +1016 NEW | DashboardAPI class & API logic  |
+| `web/server.js`                | 279    | 282   | +3        | Added favicon middleware        |
+| **TOTAL NET CHANGE:**          |        |       | **+77**   | Better organized, same features |
+
+**Code Organization Improvements:**
+
+- **Separation of Concerns:** CSS → Styling, Config → Settings, API Client → Logic, EJS → Structure
+- **Reusability:** Config and API client can now be imported by other dashboard pages
+- **Maintainability:** Each module has single, clear responsibility
+- **Testability:** API logic isolated from DOM, easier to unit test
+- **Debuggability:** Browser DevTools can now show individual module files
+
+### ARCHITECTURAL CHANGES
+
+**Before (Monolithic):**
+
+```
+dashboard.ejs (1651 lines)
+├── HTML structure (200 lines)
+├── <style> inline CSS (30 lines)
+└── <script> inline JavaScript (1400 lines)
+    ├── Configuration constants
+    ├── DashboardAPI class
+    ├── API fetch logic
+    ├── DOM manipulation
+    └── Event listeners
+```
+
+**After (Modular ES6):**
+
+```
+web/public/
+├── css/
+│   └── dashboard.css (30 lines)
+│       └── Custom scrollbar styles
+├── js/
+│   ├── config.js (54 lines)
+│   │   ├── API_ENDPOINTS (8 endpoints)
+│   │   ├── UPDATE_INTERVALS (6 intervals)
+│   │   ├── TIMEOUTS (2 values)
+│   │   ├── UI_SETTINGS (3 settings)
+│   │   └── debugLog() helper
+│   └── api-client.js (1016 lines)
+│       └── DashboardAPI class
+│           ├── Constructor & initialization
+│           ├── fetchWithTimeout() - Request wrapper
+│           ├── updateTickers() - Live prices (2s interval)
+│           ├── updateTrades() - Trade feed (3s interval)
+│           ├── updateStorage() - Disk stats (10s interval)
+│           ├── updateUniverse() - Universe data (30s interval)
+│           ├── updateMicrostructureStats() - Phase 3 (5s interval)
+│           ├── updateFeatureEngineStats() - Phase 4 (5s interval)
+│           ├── renderTickers() - DOM: ticker grid
+│           ├── renderTrades() - DOM: trade feed
+│           ├── renderStorage() - DOM: storage stats
+│           ├── renderUniverseStats() - DOM: universe metadata
+│           ├── renderSymbols() - DOM: symbol list by category
+│           └── start() - Initialize all polling intervals
+web/views/
+└── dashboard.ejs (628 lines)
+    ├── HTML structure (600 lines)
+    └── <script type="module"> (20 lines)
+        ├── import { DashboardAPI } from '/js/api-client.js'
+        ├── DOMContentLoaded event
+        ├── Initialize dashboard instance
+        └── Universe tab click listeners
+```
+
+**Key Architecture Decisions:**
+
+1. **ES6 Modules:** Native browser support (`type="module"`) - no build step required
+2. **Config Centralization:** All endpoints, intervals, timeouts in one place
+3. **Class-Based API:** DashboardAPI encapsulates all backend communication
+4. **Debug Mode:** `DashboardConfig.DEBUG` flag for development logging
+5. **Polling Intervals:** Clear separation of concerns (tickers: 2s, trades: 3s, storage: 10s, etc.)
+
+### GIT COMMIT HISTORY
+
+**Commit 1: 2ce84a6** - "Extract dashboard modules: CSS, config, API client"
+
+- **Files:** +3 new files (`dashboard.css`, `config.js`, `api-client.js`)
+- **Lines:** +1099 added
+- **Changes:**
+  - Created `web/public/css/dashboard.css` with custom scrollbar styles
+  - Created `web/public/js/config.js` with all configuration constants
+  - Created `web/public/js/api-client.js` with complete DashboardAPI class
+
+**Commit 2: 4de6deb** - "Update dashboard.ejs to use modular imports"
+
+- **Files:** Modified `web/views/dashboard.ejs`
+- **Lines:** -1027 removed
+- **Changes:**
+  - Replaced inline `<style>` with `<link rel="stylesheet" href="/css/dashboard.css">`
+  - Removed 1000+ lines of inline `<script>`
+  - Added ES6 import: `import { DashboardAPI } from '/js/api-client.js'`
+  - Kept only initialization logic (20 lines)
+
+**Commit 3: 2873351** - "Fix Universe API response format handling"
+
+- **Files:** Modified `web/public/js/api-client.js`
+- **Lines:** +7 -4
+- **Bug:** Console error "❌ Universe API error: undefined"
+- **Root Cause:** API returns `{fetchedAt, totalSymbols, stats, symbols}` but code expected `{ok: true, universe: {...}}`
+- **Fix:** Added response normalization:
+  ```javascript
+  const universeData = data.ok ? data.universe : data;
+  if (universeData.stats || universeData.totalSymbols) {
+    this.renderUniverseStats(universeData);
+    await this.updateSymbols(this.currentCategory);
+  }
+  ```
+
+**Commit 4: 7013115** - "Suppress favicon.ico 404 errors in console"
+
+- **Files:** Modified `web/server.js`
+- **Lines:** +3
+- **Issue:** Browser repeatedly requesting `/favicon.ico` (doesn't exist) → console clutter
+- **Fix:** Added Express middleware before static handler:
+  ```javascript
+  // Ignore favicon requests to prevent 404 errors in console
+  app.get("/favicon.ico", (req, res) => res.status(204).end());
+  ```
+
+### DEPLOYMENT & VALIDATION
+
+**Deployment Workflow:**
+
+```bash
+# Step 1: Commit changes locally
+git add web/public/css/dashboard.css web/public/js/config.js web/public/js/api-client.js web/views/dashboard.ejs web/server.js
+git commit -m "Extract dashboard modules and fix bugs"
+git push origin main
+
+# Step 2: Deploy to production server (via SSH)
+cd /root/scalper-base
+git pull origin main
+pm2 restart dashboard
+pm2 logs dashboard --lines 50  # Verify startup
+
+# Step 3: Test in browser
+# Open http://YOUR_SERVER:8080/dashboard
+# Open DevTools Console
+# Verify: No errors, all data loading, intervals running
+```
+
+**PM2 Status After Deployment:**
+
+```
+┌─────┬──────────┬─────────┬─────────┬──────────┐
+│ id  │ name     │ status  │ restart │ memory   │
+├─────┼──────────┼─────────┼─────────┼──────────┤
+│ 0   │ engine   │ online  │ 0       │ 66.9 MB  │
+│ 1   │ dashboard│ online  │ 11      │ 8.6 MB   │
+└─────┴──────────┴─────────┴─────────┴──────────┘
+```
+
+- **Engine:** Stable, processing data (~80% CPU during active trading)
+- **Dashboard:** Very lightweight (8.6 MB), static file serving + API proxying
+
+**Browser Console Validation (Production):**
+
+```javascript
+// ✅ Module Loading
+✅ DOM Content Loaded - Starting Dashboard...
+✅ DashboardAPI constructor called
+✅ All API endpoints configured correctly
+
+// ✅ Initial Data Load
+✅ Initial universe load successful
+✅ Valid universe data, rendering stats...
+✅ Universe Stats: 500 total, 6 Prime, 494 Normal, 0 Wild
+
+// ✅ Real-Time Updates
+✅ Tickers: 300 symbols, 275 valid (updating every 2s)
+✅ Trades: Feed updating every 3s (25 recent trades displayed)
+✅ Storage: Stats updating every 10s (data/, logs/ usage)
+✅ Microstructure: Metrics updating every 5s (Phase 3)
+✅ Feature Engine: Health updating every 5s (status: "healthy", uptime: 10s)
+
+// ✅ User Interactions
+✅ Universe tab switching: Prime → Normal → Wild → All (instant filtering)
+✅ Manual refresh button: Force feature data update
+✅ All DOM elements rendering correctly
+
+// ✅ No Errors
+✅ No 404 errors (favicon fixed)
+✅ No API errors (Universe response format fixed)
+✅ No console warnings
+✅ All intervals running without conflicts
+```
+
+**Functionality Verification Checklist:**
+
+- ✅ **Tickers Grid:** Live BTC, ETH, SOL prices updating (2s polling)
+- ✅ **Trades Feed:** Recent trades scrolling (3s polling, 25 max items)
+- ✅ **Storage Stats:** Disk usage (data/ and logs/ directories, 10s polling)
+- ✅ **Universe Metadata:** Total symbols, categories breakdown (30s polling)
+- ✅ **Universe Tabs:** Prime (6) / Normal (494) / Wild (0) / All (500) filtering
+- ✅ **Microstructure Stats:** Order flow metrics (Phase 3, 5s polling)
+- ✅ **Feature Engine Health:** Status badge, uptime, error count (Phase 4, 5s polling)
+- ✅ **Manual Refresh:** Button triggers immediate feature update
+- ✅ **Responsive UI:** Scrollbars styled, animations smooth
+- ✅ **Authentication:** Login/logout working (session-based)
+
+### LESSONS LEARNED & BEST PRACTICES
+
+**✅ What Worked Well:**
+
+1. **Incremental Extraction:** CSS first → Config next → API logic last
+
+   - Allowed testing after each extraction
+   - Reduced risk of breaking changes
+
+2. **ES6 Modules in Browser:** No build step, native support, clean syntax
+
+   - `export const/class` pattern simple and readable
+   - Browser DevTools show individual module files for debugging
+
+3. **Immediate Production Testing:** Deploy → Test → Fix bugs quickly
+
+   - Found Universe API bug within 2 minutes of testing
+   - Favicon issue spotted in clean console
+
+4. **Configuration Centralization:** Single source of truth for all settings
+
+   - Easy to adjust polling intervals
+   - Debug mode toggle without code changes
+
+5. **Git Workflow:** Small commits with clear messages
+   - Easy to rollback if needed
+   - Clear history of what changed when
+
+**⚠️ Issues Encountered & Solutions:**
+
+1. **API Response Format Mismatch:**
+
+   - **Problem:** Engine API returned different structure than frontend expected
+   - **Solution:** Normalize response with `data.ok ? data.universe : data`
+   - **Lesson:** Always handle multiple response formats defensively
+
+2. **Favicon 404 Spam:**
+
+   - **Problem:** Browser auto-requests favicon, clutters console
+   - **Solution:** Add Express middleware returning 204 No Content
+   - **Lesson:** Small UX improvements matter for clean debugging experience
+
+3. **Module Import Paths:**
+   - **Problem:** Initially unsure if paths should be relative or absolute
+   - **Solution:** Use absolute paths from web root (`/js/config.js` not `./js/config.js`)
+   - **Lesson:** Absolute paths more reliable when file served from different routes
+
+**📋 Patterns Established for Future Refactoring:**
+
+1. **Modular Extraction Process:**
+
+   ```
+   Step 1: Identify self-contained code block
+   Step 2: Create new module file with exports
+   Step 3: Update original file to import module
+   Step 4: Test functionality unchanged
+   Step 5: Git commit
+   Step 6: Deploy and validate in production
+   ```
+
+2. **ES6 Module Structure:**
+
+   ```javascript
+   // config.js - Configuration module
+   export const CONFIG_OBJECT = {
+     /* settings */
+   };
+   export function helperFunction() {
+     /* utility */
+   }
+
+   // api-client.js - Class module
+   import { CONFIG_OBJECT } from "./config.js";
+   export class APIClient {
+     /* logic */
+   }
+
+   // main file - Consumer
+   import { APIClient } from "/js/api-client.js";
+   const client = new APIClient();
+   ```
+
+3. **Configuration Pattern:**
+
+   ```javascript
+   export const DashboardConfig = {
+     API_ENDPOINTS: {
+       /* URLs */
+     },
+     UPDATE_INTERVALS: {
+       /* milliseconds */
+     },
+     TIMEOUTS: {
+       /* milliseconds */
+     },
+     UI_SETTINGS: {
+       /* display options */
+     },
+     DEBUG: false, // Toggle for development
+   };
+   ```
+
+4. **API Client Pattern:**
+
+   ```javascript
+   export class DashboardAPI {
+     constructor() {
+       this.config = DashboardConfig;
+       this.intervals = {};
+     }
+
+     async fetchWithTimeout(url, timeout) {
+       const controller = new AbortController();
+       const timeoutId = setTimeout(() => controller.abort(), timeout);
+       // ... fetch logic with abort signal
+     }
+
+     async updateDataSource() {
+       // Fetch → Validate → Render
+     }
+
+     start() {
+       // Initialize all polling intervals
+     }
+   }
+   ```
+
+5. **Error Handling Pattern:**
+
+   ```javascript
+   try {
+     const response = await fetch(url);
+     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+     const data = await response.json();
+
+     // Normalize response format (handle multiple structures)
+     const normalized = data.ok ? data.result : data;
+
+     this.renderData(normalized);
+   } catch (error) {
+     if (this.config.DEBUG) console.error("Error:", error);
+     this.renderError(error.message);
+   }
+   ```
+
+**🚀 Next Steps Enabled by This Refactoring:**
+
+1. **Backend Reorganization (STEP 2 from Audit):**
+
+   - Now that frontend is modular, backend changes won't break frontend
+   - Can refactor Engine API endpoints without touching dashboard HTML
+   - Clear separation allows independent testing
+
+2. **Additional Dashboard Pages:**
+
+   - Can reuse `config.js` and `api-client.js` in other pages
+   - Create `monitor.ejs`, `features.ejs` with same pattern
+   - Consistent API client across all pages
+
+3. **Unit Testing:**
+
+   - `api-client.js` can be tested independently with mock fetch
+   - `config.js` can be validated for required properties
+   - No need to test full EJS template for logic bugs
+
+4. **Documentation:**
+   - Each module can have JSDoc comments
+   - Clear exports make API surface visible
+   - Easier to onboard new developers
+
+**🎓 Knowledge Transfer:**
+
+- **For Future AI Sessions:** This refactoring established modular ES6 pattern. Use same approach for other monolithic files (e.g., `monitor.ejs`, `features.ejs`). Always test in production browser immediately after deployment.
+
+- **For Dejan:** Dashboard now organized into maintainable modules. If you need to change polling interval, edit `config.js`. If you need to add new API endpoint, edit `api-client.js`. HTML structure stays clean in `dashboard.ejs`.
+
+---
+
 ### NEXT STEPS:
 
 **STEP 2:** Discuss Architecture Options (see below)
