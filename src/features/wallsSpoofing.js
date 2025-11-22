@@ -68,6 +68,18 @@ class WallsSpoofingEngine {
             const bidWalls = this.detectWalls(bids, 'bid', currentPrice);
             const askWalls = this.detectWalls(asks, 'ask', currentPrice);
 
+            // DEBUG: Log wall detection
+            if (!this._wallDebugLogged && (bidWalls.length > 0 || askWalls.length > 0)) {
+                this._wallDebugLogged = true;
+                this.logger.info('[WALLS DEBUG] Detected walls:', {
+                    bidWalls: bidWalls.length,
+                    askWalls: askWalls.length,
+                    currentPrice,
+                    topBidWall: bidWalls[0],
+                    topAskWall: askWalls[0]
+                });
+            }
+
             // Update wall history
             this.updateWallHistory(bidWalls, askWalls, now);
 
@@ -311,6 +323,25 @@ class WallsSpoofingEngine {
 
         manipulationScore += checkLayering(bidWalls);
         manipulationScore += checkLayering(askWalls);
+
+        // Pattern 3: Single-sided dominance (potential spoof setup)
+        if (bidWalls.length > 0 && askWalls.length === 0) {
+            if (bidWalls[0].strength > 5) { // Very strong wall with no opposition
+                manipulationScore += 0.15;
+            }
+        } else if (askWalls.length > 0 && bidWalls.length === 0) {
+            if (askWalls[0].strength > 5) {
+                manipulationScore += 0.15;
+            }
+        }
+
+        // Pattern 4: Extreme size imbalance
+        if (bidWalls.length > 0 && askWalls.length > 0) {
+            const sizeRatio = bidWalls[0].size / askWalls[0].size;
+            if (sizeRatio > 5 || sizeRatio < 0.2) { // 5x imbalance
+                manipulationScore += 0.1;
+            }
+        }
 
         return manipulationScore;
     }
