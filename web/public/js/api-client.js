@@ -1039,17 +1039,21 @@ export class DashboardAPI {
 
             container.innerHTML = primeSymbols.map(symbol => {
                 const ticker = tickerMap.get(symbol.symbol);
-                const price = ticker?.price ? `$${ticker.price.toLocaleString()}` : 'N/A';
+                const price = ticker?.price ? `$${ticker.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : 'N/A';
                 const change = ticker?.change24h || 0;
                 const changeClass = change >= 0 ? 'text-emerald-400' : 'text-red-400';
                 const changeIcon = change >= 0 ? '▲' : '▼';
-                const volume = ticker?.volume24h ? this.formatVolume(ticker.volume24h) : 'N/A';
+                const volume = ticker?.volume24h ? this.formatVolume(ticker.volume24h) : '-';
+
+                // Format leverage (handle different formats: "1-100x", 100, "100", etc.)
+                const leverage = symbol.leverage || symbol.maxLeverage || 'N/A';
+                const leverageText = typeof leverage === 'string' ? leverage : `${leverage}x`;
 
                 return `
                     <div class="p-3 rounded-lg border border-slate-700 bg-slate-800/40 hover:border-slate-600 transition-colors">
                         <div class="flex items-center justify-between mb-2">
                             <span class="text-sm font-bold text-slate-200">${symbol.symbol}</span>
-                            <span class="text-xs text-slate-500">${symbol.leverage}</span>
+                            <span class="text-xs text-slate-500">${leverageText}</span>
                         </div>
                         <div class="text-xl font-bold text-slate-100">${price}</div>
                         <div class="flex items-center justify-between mt-2 text-xs">
