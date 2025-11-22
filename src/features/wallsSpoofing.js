@@ -14,11 +14,11 @@ import logger from '../utils/logger.js';
 class WallsSpoofingEngine {
     constructor(config = {}) {
         this.config = {
-            // Wall detection multiplier (professional standard)
-            wallMultiplier: 8.0,
+            // Wall detection multiplier (lowered for crypto markets)
+            wallMultiplier: 4.0,  // Was 8.0 - now 4x average is wall
 
-            // Minimum wall size (in USDT value)
-            minWallSize: 1000,
+            // Minimum wall size (in USDT value) - lowered for broader detection
+            minWallSize: 500,  // Was 1000 - now $500+
 
             // Wall tracking duration
             wallHistoryDuration: 30000, // 30 seconds
