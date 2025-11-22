@@ -137,13 +137,13 @@
         <!-- Top Symbols by Risk -->
         <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-6">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-semibold text-slate-200">Top Symbols by Risk Score</h2>
-                <select id="filter-tier" class="px-3 py-1.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-sm">
-                    <option value="all">All Tiers</option>
-                    <option value="prime">Prime</option>
-                    <option value="normal">Normal</option>
-                    <option value="wild">Wild</option>
-                </select>
+                <h2 class="text-lg font-semibold text-slate-200">Top 50 Symbols by Risk Score</h2>
+                <button onclick="location.reload()" class="px-3 py-1.5 rounded-md bg-violet-600 hover:bg-violet-500 text-white text-sm transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                    </svg>
+                    Refresh
+                </button>
             </div>
             <div id="symbols-container" class="space-y-3">
                 <div class="text-center py-8 text-slate-500">
@@ -207,60 +207,43 @@
                 return;
             }
 
-            // Filter out symbols without valid data (futures/options without prices or tier)
-            const validSymbols = symbols.filter(sym => {
-                // Must have current price
-                if (!sym.currentPrice || sym.currentPrice === 0) return false;
-                // Must have tier (not 'unknown')
-                if (!sym.tier || sym.tier === 'unknown') return false;
-                // Must have some feature data
-                if (!sym.imbalance && !sym.flow && !sym.volatility) return false;
-                return true;
-            });
-
-            if (validSymbols.length === 0) {
-                container.innerHTML = '<div class="text-center py-8 text-slate-500">No valid symbols data available</div>';
-                return;
-            }
-
             // Sort by risk score descending
-            const sorted = validSymbols.sort((a, b) => (b.overallRiskScore || 0) - (a.overallRiskScore || 0));
-            const top20 = sorted.slice(0, 20);
+            const sorted = symbols.sort((a, b) => (b.overallRiskScore || 0) - (a.overallRiskScore || 0));
+            const top50 = sorted.slice(0, 50);
 
-            container.innerHTML = top20.map(sym => `
+            container.innerHTML = top50.map(sym => `
                 <div class="feature-card p-4 rounded-lg border border-slate-700 bg-slate-800/50 hover:border-violet-600">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-3">
-                            <span class="text-lg font-bold text-slate-100">${sym.symbol}</span>
+                            <span class="text-lg font-bold text-slate-100">${sym.symbol || 'N/A'}</span>
                             <span class="metric-badge ${getRiskClass(sym.overallRiskScore)}">
                                 Risk: ${(sym.overallRiskScore || 0).toFixed(2)}
                             </span>
                             <span class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300">${sym.marketCondition || 'UNKNOWN'}</span>
                         </div>
                         <div class="text-right">
-                            <p class="text-sm font-medium text-slate-300">$${sym.currentPrice?.toFixed(4) || 'N/A'}</p>
-                            <p class="text-xs text-slate-500">Tier: ${sym.tier || 'unknown'}</p>
+                            <p class="text-xs text-slate-400">${new Date(sym.lastUpdateAt).toLocaleTimeString() || 'N/A'}</p>
                         </div>
                     </div>
                     <div class="grid grid-cols-4 gap-3 text-xs">
                         <div>
-                            <p class="text-slate-500 mb-1">Imbalance</p>
-                            <p class="font-semibold ${getImbalanceColor(sym.imbalance?.ratio)}">
-                                ${(sym.imbalance?.ratio || 0).toFixed(2)}
+                            <p class="text-slate-500 mb-1">TOB Imbalance</p>
+                            <p class="font-semibold ${getImbalanceColor(sym.tobImbalance)}">
+                                ${(sym.tobImbalance || 0).toFixed(2)}
                             </p>
                         </div>
                         <div>
-                            <p class="text-slate-500 mb-1">Flow Score</p>
-                            <p class="font-semibold text-blue-400">${(sym.flow?.flowScore || 0).toFixed(2)}</p>
+                            <p class="text-slate-500 mb-1">Spoofing Score</p>
+                            <p class="font-semibold text-amber-400">${(sym.spoofingScore || 0).toFixed(2)}</p>
                         </div>
                         <div>
                             <p class="text-slate-500 mb-1">Volatility</p>
-                            <p class="font-semibold text-amber-400">${(sym.volatility?.volatility || 0).toFixed(4)}</p>
+                            <p class="font-semibold text-blue-400">${(sym.volatilityScore || 0).toFixed(2)}</p>
                         </div>
                         <div>
-                            <p class="text-slate-500 mb-1">Walls</p>
-                            <p class="font-semibold ${sym.walls?.hasLargeWalls ? 'text-red-400' : 'text-slate-400'}">
-                                ${sym.walls?.hasLargeWalls ? 'Yes' : 'No'}
+                            <p class="text-slate-500 mb-1">Pump Score</p>
+                            <p class="font-semibold ${sym.pumpLikelihoodScore > 0.5 ? 'text-red-400' : 'text-slate-400'}">
+                                ${(sym.pumpLikelihoodScore || 0).toFixed(2)}
                             </p>
                         </div>
                     </div>
@@ -274,26 +257,12 @@
             return 'risk-low';
         }
 
-        function getImbalanceColor(ratio) {
-            if (ratio > 1.5) return 'text-green-400';
-            if (ratio < 0.67) return 'text-red-400';
+        function getImbalanceColor(value) {
+            if (!value) return 'text-slate-300';
+            if (value > 0.1) return 'text-green-400';
+            if (value < -0.1) return 'text-red-400';
             return 'text-slate-300';
         }
-
-        // Tier filter
-        document.getElementById('filter-tier').addEventListener('change', async (e) => {
-            const tier = e.target.value;
-            const res = await fetch('/api/features/overview');
-            const data = await res.json();
-
-            if (data.status === 'success') {
-                let filtered = data.data;
-                if (tier !== 'all') {
-                    filtered = filtered.filter(s => s.tier === tier);
-                }
-                updateSymbolsList(filtered);
-            }
-        });
 
         // Auto-refresh every 5 seconds
         loadFeatureData();
