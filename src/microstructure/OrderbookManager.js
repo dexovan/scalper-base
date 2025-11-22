@@ -132,24 +132,69 @@ function getDepthLimitForSymbol(symbol) {
 
 /**
  * Ažurira orderbook state sa novim podacima
+ * Podržava i snapshot (full replace) i delta (merge updates)
  */
 function updateOrderbookState(symbolState, eventData, depthLimit) {
-  const { bids, asks, lastUpdateId } = eventData;
+  const { bids, asks, lastUpdateId, isSnapshot } = eventData;
 
-  // Sort i limit bids (highest first)
-  if (bids && Array.isArray(bids)) {
-    symbolState.orderbook.bids = bids
-      .filter(level => level.qty > 0) // ukloni prazne nivoe
-      .sort((a, b) => b.price - a.price) // sort descending
-      .slice(0, depthLimit);
-  }
+  if (isSnapshot) {
+    // SNAPSHOT: Replace entire orderbook
+    if (bids && Array.isArray(bids)) {
+      symbolState.orderbook.bids = bids
+        .filter(level => level.qty > 0)
+        .sort((a, b) => b.price - a.price)
+        .slice(0, depthLimit);
+    }
 
-  // Sort i limit asks (lowest first)
-  if (asks && Array.isArray(asks)) {
-    symbolState.orderbook.asks = asks
-      .filter(level => level.qty > 0) // ukloni prazne nivoe
-      .sort((a, b) => a.price - b.price) // sort ascending
-      .slice(0, depthLimit);
+    if (asks && Array.isArray(asks)) {
+      symbolState.orderbook.asks = asks
+        .filter(level => level.qty > 0)
+        .sort((a, b) => a.price - b.price)
+        .slice(0, depthLimit);
+    }
+  } else {
+    // DELTA: Merge updates into existing orderbook
+    // For each update: if qty > 0, update/add level; if qty = 0, remove level
+
+    if (bids && Array.isArray(bids)) {
+      const existingBids = symbolState.orderbook.bids || [];
+      const bidMap = new Map(existingBids.map(b => [b.price, b.qty]));
+
+      // Apply delta updates
+      for (const level of bids) {
+        if (level.qty > 0) {
+          bidMap.set(level.price, level.qty);
+        } else {
+          bidMap.delete(level.price);
+        }
+      }
+
+      // Convert back to array and sort
+      symbolState.orderbook.bids = Array.from(bidMap.entries())
+        .map(([price, qty]) => ({ price, qty }))
+        .sort((a, b) => b.price - a.price)
+        .slice(0, depthLimit);
+    }
+
+    if (asks && Array.isArray(asks)) {
+      const existingAsks = symbolState.orderbook.asks || [];
+      const askMap = new Map(existingAsks.map(a => [a.price, a.qty]));
+
+      // Apply delta updates
+      for (const level of asks) {
+        if (level.qty > 0) {
+          askMap.set(level.price, level.qty);
+        } else {
+          askMap.delete(level.price);
+        }
+      }
+
+      // Convert back to array and sort
+      symbolState.orderbook.asks = Array.from(askMap.entries())
+        .map(([price, qty]) => ({ price, qty }))
+        .sort((a, b) => a.price - b.price)
+        .slice(0, depthLimit);
+    }
   }
 
   // Update ID
