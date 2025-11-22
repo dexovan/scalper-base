@@ -484,13 +484,25 @@ export class DashboardAPI {
             const sideClass = trade.side === 'Buy' ? 'text-emerald-400' : 'text-red-400';
             const directionIcon = this.getTickDirectionIcon(trade.tickDirection);
 
+            // Format price with appropriate decimal places
+            let priceDisplay = 'N/A';
+            if (trade.price) {
+                if (trade.price >= 1) {
+                    priceDisplay = `$${trade.price.toFixed(2)}`;
+                } else if (trade.price >= 0.01) {
+                    priceDisplay = `$${trade.price.toFixed(4)}`;
+                } else {
+                    priceDisplay = `$${trade.price.toFixed(6)}`;
+                }
+            }
+
             return `
                 <tr class="hover:bg-slate-800/30 transition-colors">
                     <td class="py-2 px-3 text-slate-400">${time}</td>
                     <td class="py-2 px-3 text-slate-200 font-medium">${trade.symbol}</td>
                     <td class="py-2 px-3 ${sideClass} font-medium">${trade.side}</td>
-                    <td class="py-2 px-3 text-right text-slate-200 font-mono">$${trade.price?.toFixed(2) || 'N/A'}</td>
-                    <td class="py-2 px-3 text-right text-slate-300 font-mono">${trade.quantity || 'N/A'}</td>
+                    <td class="py-2 px-3 text-right text-slate-200 font-mono">${priceDisplay}</td>
+                    <td class="py-2 px-3 text-right text-slate-300 font-mono">${trade.quantity?.toFixed(4) || 'N/A'}</td>
                     <td class="py-2 px-3 text-center text-slate-400">${directionIcon}</td>
                 </tr>
             `;
