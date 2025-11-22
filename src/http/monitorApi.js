@@ -1100,7 +1100,7 @@ export function startMonitorApiServer(port = 8090) {
   app.get("/api/features/symbol/:symbol", async (req, res) => {
     try {
       const { symbol } = req.params;
-      const features = featureEngine.getFeaturesForSymbol(symbol);
+      const features = featureEngine.getFeatureState(symbol);
       res.json({
         status: "success",
         data: features,
