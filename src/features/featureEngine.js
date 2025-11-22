@@ -90,6 +90,7 @@ class FeatureEngine {
         this._nullDataCount = 0;
         this._successDataCount = 0;
         this._firstDataLogged = false;
+        this._firstUpdateLogged = false;
 
         // System state
         this.isInitialized = false;
@@ -343,6 +344,12 @@ class FeatureEngine {
             this.featureStates.set(symbol, featureState);
             this.lastUpdateTimes.set(symbol, Date.now());
 
+            // DEBUG: Log first successful update
+            if (!this._firstUpdateLogged) {
+                this._firstUpdateLogged = true;
+                this.logger.info(`[DEBUG] First successful feature update for ${symbol} - lastUpdateTimes size: ${this.lastUpdateTimes.size}`);
+            }
+
             // Update performance metrics
             this.updatePerformanceMetrics(Date.now() - startTime);
 
@@ -389,8 +396,19 @@ class FeatureEngine {
      */
     getHealthMetrics() {
         const totalSymbols = this.featureStates.size;
+        const now = Date.now();
         const recentlyUpdated = Array.from(this.lastUpdateTimes.values())
-            .filter(time => Date.now() - time < 30000).length; // Updated in last 30s
+            .filter(time => now - time < 30000).length; // Updated in last 30s
+
+        // DEBUG: Log health calculation periodically
+        if (!this._lastHealthLog || now - this._lastHealthLog > 10000) {
+            this._lastHealthLog = now;
+            this.logger.info(`[DEBUG] Health check: lastUpdateTimes.size=${this.lastUpdateTimes.size}, recentlyUpdated=${recentlyUpdated}, totalSymbols=${totalSymbols}`);
+            if (this.lastUpdateTimes.size > 0) {
+                const ages = Array.from(this.lastUpdateTimes.values()).map(t => Math.floor((now - t) / 1000));
+                this.logger.info(`[DEBUG] Sample update ages (seconds): ${ages.slice(0, 5).join(', ')}`);
+            }
+        }
 
         return {
             status: this.isRunning ? 'RUNNING' : 'STOPPED',
