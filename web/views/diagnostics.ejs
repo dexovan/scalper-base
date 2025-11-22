@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 System Diagnostics - Scalper Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .status-healthy { @apply bg-green-100 border-green-500 text-green-900; }
+        .status-degraded { @apply bg-yellow-100 border-yellow-500 text-yellow-900; }
+        .status-critical { @apply bg-red-100 border-red-500 text-red-900; }
+        .check-ok { @apply text-green-600; }
+        .check-warning { @apply text-yellow-600; }
+        .check-error { @apply text-red-600; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">🔧 System Diagnostics</h1>
+            <p class="text-gray-600">Comprehensive health check - instant problem detection</p>
+            <div class="mt-4">
+                <button onclick="runDiagnostics()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium">
+                    🔄 Run Full Diagnostics
+                </button>
+                <button onclick="location.href='/features'" class="ml-3 bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg font-medium">
+                    📊 Back to Features
+                </button>
+            </div>
+        </div>
+
+        <!-- Overall Status -->
+        <div id="overallStatus" class="bg-white rounded-lg shadow-lg p-6 mb-6 hidden">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-bold mb-2">System Status</h2>
+                    <p id="statusText" class="text-2xl font-bold"></p>
+                </div>
+                <div id="statusIcon" class="text-6xl"></div>
+            </div>
+        </div>
+
+        <!-- Issues -->
+        <div id="issuesSection" class="bg-red-50 border-l-4 border-red-500 p-6 mb-6 rounded-lg hidden">
+            <h3 class="text-lg font-bold text-red-900 mb-3">❌ Critical Issues</h3>
+            <ul id="issuesList" class="list-disc list-inside space-y-2 text-red-800"></ul>
+        </div>
+
+        <!-- Warnings -->
+        <div id="warningsSection" class="bg-yellow-50 border-l-4 border-yellow-500 p-6 mb-6 rounded-lg hidden">
+            <h3 class="text-lg font-bold text-yellow-900 mb-3">⚠️ Warnings</h3>
+            <ul id="warningsList" class="list-disc list-inside space-y-2 text-yellow-800"></ul>
+        </div>
+
+        <!-- Detailed Checks -->
+        <div id="checksSection" class="space-y-4 hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Detailed Checks</h2>
+
+            <!-- WebSocket Check -->
+            <div id="wsCheck" class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold mb-2">📡 WebSocket Data Flow</h3>
+                <div id="wsDetails" class="text-gray-600"></div>
+            </div>
+
+            <!-- Orderbook Depth Check -->
+            <div id="depthCheck" class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold mb-2">📊 Orderbook Depth</h3>
+                <div id="depthDetails" class="text-gray-600"></div>
+            </div>
+
+            <!-- Feature Engine Check -->
+            <div id="feCheck" class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold mb-2">🧠 Feature Engine</h3>
+                <div id="feDetails" class="text-gray-600"></div>
+            </div>
+
+            <!-- Wall Detection Check -->
+            <div id="wallCheck" class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold mb-2">🧱 Wall Detection</h3>
+                <div id="wallDetails" class="text-gray-600"></div>
+            </div>
+
+            <!-- Data Format Check -->
+            <div id="formatCheck" class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-bold mb-2">📋 Data Formats</h3>
+                <div id="formatDetails" class="text-gray-600"></div>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p class="mt-4 text-gray-600">Click "Run Full Diagnostics" to start</p>
+        </div>
+    </div>
+
+    <script>
+        async function runDiagnostics() {
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('overallStatus').classList.add('hidden');
+            document.getElementById('issuesSection').classList.add('hidden');
+            document.getElementById('warningsSection').classList.add('hidden');
+            document.getElementById('checksSection').classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/diagnostics');
+                const result = await response.json();
+                const report = result.data;
+
+                displayOverallStatus(report);
+                displayIssues(report);
+                displayWarnings(report);
+                displayChecks(report);
+
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('overallStatus').classList.remove('hidden');
+                document.getElementById('checksSection').classList.remove('hidden');
+            } catch (error) {
+                alert('Error running diagnostics: ' + error.message);
+                document.getElementById('loading').classList.add('hidden');
+            }
+        }
+
+        function displayOverallStatus(report) {
+            const statusText = document.getElementById('statusText');
+            const statusIcon = document.getElementById('statusIcon');
+            const overallDiv = document.getElementById('overallStatus');
+
+            if (report.overall === 'HEALTHY') {
+                statusText.textContent = '✅ ALL SYSTEMS HEALTHY';
+                statusIcon.textContent = '✅';
+                overallDiv.className = 'bg-green-50 border-l-4 border-green-500 rounded-lg shadow-lg p-6 mb-6';
+            } else if (report.overall === 'DEGRADED') {
+                statusText.textContent = '⚠️ SYSTEM DEGRADED';
+                statusIcon.textContent = '⚠️';
+                overallDiv.className = 'bg-yellow-50 border-l-4 border-yellow-500 rounded-lg shadow-lg p-6 mb-6';
+            } else {
+                statusText.textContent = '❌ CRITICAL ISSUES DETECTED';
+                statusIcon.textContent = '❌';
+                overallDiv.className = 'bg-red-50 border-l-4 border-red-500 rounded-lg shadow-lg p-6 mb-6';
+            }
+        }
+
+        function displayIssues(report) {
+            if (report.issues.length === 0) return;
+
+            const section = document.getElementById('issuesSection');
+            const list = document.getElementById('issuesList');
+            list.innerHTML = report.issues.map(issue => `<li class="font-medium">${issue}</li>`).join('');
+            section.classList.remove('hidden');
+        }
+
+        function displayWarnings(report) {
+            if (report.warnings.length === 0) return;
+
+            const section = document.getElementById('warningsSection');
+            const list = document.getElementById('warningsList');
+            list.innerHTML = report.warnings.map(warning => `<li class="font-medium">${warning}</li>`).join('');
+            section.classList.remove('hidden');
+        }
+
+        function displayChecks(report) {
+            displayCheck('ws', report.checks.websocket);
+            displayCheck('depth', report.checks.orderbookDepth);
+            displayCheck('fe', report.checks.featureEngine);
+            displayCheck('wall', report.checks.wallDetection);
+            displayCheck('format', report.checks.dataFormats);
+        }
+
+        function displayCheck(id, check) {
+            if (!check) return;
+
+            const details = document.getElementById(id + 'Details');
+            const checkDiv = document.getElementById(id + 'Check');
+
+            let statusClass = '';
+            if (check.status === 'OK') {
+                statusClass = 'border-l-4 border-green-500 bg-green-50';
+            } else if (check.status === 'WARNING') {
+                statusClass = 'border-l-4 border-yellow-500 bg-yellow-50';
+            } else {
+                statusClass = 'border-l-4 border-red-500 bg-red-50';
+            }
+
+            checkDiv.className = 'bg-white rounded-lg shadow p-6 ' + statusClass;
+
+            let html = `<p class="font-medium mb-3">${check.message}</p>`;
+
+            // Add extra details
+            if (check.activeSymbols !== undefined) {
+                html += `<p class="text-sm">Active Symbols: ${check.activeSymbols}</p>`;
+            }
+            if (check.avgDepth !== undefined) {
+                html += `<p class="text-sm">Avg Depth: ${check.avgDepth.toFixed(1)} levels</p>`;
+            }
+            if (check.samples && check.samples.length > 0) {
+                html += `<pre class="text-xs mt-2 p-2 bg-gray-100 rounded">${JSON.stringify(check.samples, null, 2)}</pre>`;
+            }
+            if (check.updatesPerSecond !== undefined) {
+                html += `<p class="text-sm">Updates/sec: ${check.updatesPerSecond}</p>`;
+            }
+            if (check.symbolsWithWalls !== undefined) {
+                html += `<p class="text-sm">Symbols with Walls: ${check.symbolsWithWalls} / ${check.totalSymbols}</p>`;
+            }
+
+            details.innerHTML = html;
+        }
+
+        // Auto-run on load
+        window.addEventListener('load', runDiagnostics);
+    </script>
+</body>
+</html>

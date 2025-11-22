@@ -309,6 +309,15 @@ app.get("/features", requireAuth, (req, res) => {
   });
 });
 
+// 8️⃣ DIAGNOSTICS PAGE (SYSTEM HEALTH)
+app.get("/diagnostics", requireAuth, (req, res) => {
+  res.render("diagnostics", {
+    title: "System Diagnostics",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
 // =======================================
 // SERVER START
 // =======================================

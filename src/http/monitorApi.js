@@ -993,6 +993,27 @@ export function startMonitorApiServer(port = 8090) {
   const featureEngine = new FeatureEngine();
   console.log("🔧 Feature Engine instance created");
 
+  // GET /api/diagnostics - COMPREHENSIVE SYSTEM HEALTH CHECK
+  app.get("/api/diagnostics", async (req, res) => {
+    try {
+      const { runFullDiagnostics } = await import('../diagnostics/systemHealth.js');
+      const report = await runFullDiagnostics(featureEngine);
+
+      res.json({
+        status: "success",
+        data: report,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [DIAGNOSTICS] Error:", error);
+      res.status(500).json({
+        status: "error",
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // GET /api/features/health - Feature Engine health status
   app.get("/api/features/health", async (req, res) => {
     try {
