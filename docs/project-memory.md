@@ -915,6 +915,98 @@ pm2 logs dashboard --lines 50  # Verify startup
 
 ## 🔴 KRITIČNI PROBLEMI I REŠENJA
 
+### [2025-11-22 23:55] FeatureEngine Disk Persistence - Disk Filling Bug - REŠENO ✅
+
+**Problem:**
+
+- Kada se otvori Microstructure Monitor (`/monitor-micro`), disk storage brzo raste (5.8GB → 5.9GB za kratko vreme)
+- FeatureEngine pisao na disk **SVAKIH 10 SEKUNDI** bez prestanka
+- 500 simbola × ~10KB po state = **5MB svakih 10s** = **30MB/min** = **1.8GB/sat** = **43GB/dan!** 😱
+
+**Root Cause:**
+
+- `src/features/featureEngine.js` imao aktivno periodično čuvanje na disk
+- U `init()` metodi (linija 115): `this.startPeriodicSave()` pozivao interval
+- `startPeriodicSave()` kreirao `setInterval()` koji svake `config.saveInterval` (10s) poziva `saveAllStates()`
+- `saveAllStates()` pisao JSON fajl za **svaki** simbol u `data/metrics/` direktorijumu
+- Nije bilo potrebe za disk persistence - svi feature states već u RAM-u (Map struktura)
+
+**Zašto se manifestovao tek sada:**
+
+- FeatureEngine inicijalizovan tek kada se prvi put pristupi Microstructure Monitor stranici
+- Dashboard home stranica NE koristi FeatureEngine direktno (samo API pozivi)
+- Microstructure Monitor страница triggeruje inicijalizaciju Feature Engine-a
+
+**Rešenje:**
+
+1. **Disabled `startPeriodicSave()` poziv u `init()` metodi:**
+
+   ```javascript
+   // BILO:
+   this.startPeriodicSave();
+
+   // SADA:
+   // DISABLED: Disk persistence fills disk too fast (500+ symbols × 10KB each = 5MB every 10s = 1.8GB/hour!)
+   // this.startPeriodicSave();
+   ```
+
+2. **Disabled `saveAllStates()` implementaciju:**
+
+   ```javascript
+   async saveAllStates() {
+       // DISABLED: Disk persistence fills disk too fast!
+       this.logger.debug('saveAllStates() called but DISABLED to prevent disk fill');
+       return;
+       /* ORIGINAL CODE - DISABLED: ... */
+   }
+   ```
+
+3. **Disabled `startPeriodicSave()` interval kreiranje:**
+
+   ```javascript
+   startPeriodicSave() {
+       // DISABLED: Prevent disk fill - features kept in RAM only
+       this.logger.info('Periodic save DISABLED - feature states kept in memory only');
+       return;
+   }
+   ```
+
+**Rezultat:**
+
+- ✅ Feature states ostaju **SAMO u RAM-u** (Map struktura: `this.featureStates`)
+- ✅ **NEMA više upisivanja na disk** - disk usage prestaje da raste
+- ✅ Sve funkcionalnosti rade normalno (API, dashboard, monitor)
+- ✅ Feature Engine i dalje ažurira state u realnom vremenu
+- ✅ Commit: `9eaec74` - "fix(features): Disable FeatureEngine disk persistence"
+
+**Deployment:**
+
+```bash
+cd ~/scalper-base
+git pull origin master
+pm2 restart engine
+pm2 logs engine --lines 50  # Trazi: "Periodic save DISABLED"
+```
+
+**Opciono čišćenje:**
+
+```bash
+# Proveri velicinu
+du -sh data/metrics
+
+# Obriši stare metric fajlove
+rm -rf data/metrics/*
+```
+
+**Lekcija:**
+
+- ⚠️ **Periodični disk writes mogu brzo napuniti disk** - pogotovo sa stotinama simbola
+- ✅ Uvek pitaj: "Da li ovaj data MORA biti na disku ili može u RAM-u?"
+- ✅ Ako se nešto čuva na disk, dokumentuj ZAŠTO i izračunaj disk usage per day
+- ✅ Monitor disk usage tokom razvoja: `watch -n 5 'df -h'`
+
+---
+
 ### [2025-11-22] Market Universe Filtering - Multi-Process Architecture Bug - REŠENO ✅
 
 **Problem:**
