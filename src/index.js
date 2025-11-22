@@ -57,9 +57,9 @@ async function startEngine() {
   // Verify universe loaded
   const universeCheck = await getUniverseSnapshot();
   console.log("🌍 [ENGINE] Universe verification:", {
-    totalSymbols: universeCheck.stats.totalSymbols,
-    fetchedAt: universeCheck.fetchedAt,
-    symbolCount: Object.keys(universeCheck.symbols).length
+    totalSymbols: universeCheck?.stats?.totalSymbols || 0,
+    fetchedAt: universeCheck?.fetchedAt || 'N/A',
+    symbolCount: Object.keys(universeCheck?.symbols || {}).length
   });
 
   // MAIN WS (dynamic)
