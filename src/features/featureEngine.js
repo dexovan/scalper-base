@@ -380,20 +380,22 @@ class FeatureEngine {
      */
     async getMicrostructureData(symbol) {
         try {
-            // This would integrate with the microstructure engine from Phase 3
-            // For now, we'll use a placeholder that would be replaced with actual integration
-
-            const microstructure = await import('../market/microstructure.js');
+            // Import OrderbookManager functions
+            const {
+                getOrderbookSummary,
+                getRecentTrades,
+                getCandles
+            } = await import('../microstructure/OrderbookManager.js');
 
             const [orderbook, trades, candles] = await Promise.all([
-                microstructure.getOrderbookSummary(symbol),
-                microstructure.getRecentTrades(symbol, 100),
-                microstructure.getMicroCandles(symbol, ['1s', '5s', '15s'])
+                getOrderbookSummary(symbol, 10),
+                getRecentTrades(symbol, 100),
+                getCandles(symbol, ['1s', '5s', '15s'])
             ]);
 
             // Get current price from orderbook or trades
             let currentPrice = 0;
-            if (orderbook && orderbook.bids && orderbook.asks) {
+            if (orderbook && orderbook.bids && orderbook.bids.length > 0 && orderbook.asks && orderbook.asks.length > 0) {
                 currentPrice = (parseFloat(orderbook.bids[0]?.[0] || 0) +
                               parseFloat(orderbook.asks[0]?.[0] || 0)) / 2;
             } else if (trades && trades.length > 0) {
