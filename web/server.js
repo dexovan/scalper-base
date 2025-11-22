@@ -276,6 +276,15 @@ app.get("/dashboard", requireAuth, (req, res) => {
   });
 });
 
+// Markets overview page
+app.get("/markets", requireAuth, (req, res) => {
+  res.render("markets", {
+    title: "Markets",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
 // 5️⃣ SYSTEM MONITOR PAGE (PROTECTED)
 app.get("/monitor", requireAuth, (req, res) => {
   res.render("monitor", {

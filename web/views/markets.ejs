@@ -1,0 +1,218 @@
+<!-- Markets View - All Symbols -->
+<link rel="stylesheet" href="/css/dashboard.css">
+
+<div class="space-y-4">
+
+    <!-- Header -->
+    <section class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-100">Market Overview</h1>
+            <p class="text-sm text-slate-400 mt-1">Complete list of tracked symbols with live prices</p>
+        </div>
+        <a href="/dashboard" class="px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition-colors">
+            ← Back to Dashboard
+        </a>
+    </section>
+
+    <!-- Stats Summary -->
+    <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+            <p class="text-xs font-medium text-slate-400 uppercase">Total Symbols</p>
+            <p class="mt-1 text-2xl font-bold text-slate-100" id="stats-total">-</p>
+        </div>
+        <div class="rounded-lg border border-emerald-700 bg-emerald-950/30 p-4">
+            <p class="text-xs font-medium text-emerald-400 uppercase">Prime</p>
+            <p class="mt-1 text-2xl font-bold text-emerald-300" id="stats-prime">-</p>
+        </div>
+        <div class="rounded-lg border border-blue-700 bg-blue-950/30 p-4">
+            <p class="text-xs font-medium text-blue-400 uppercase">Normal</p>
+            <p class="mt-1 text-2xl font-bold text-blue-300" id="stats-normal">-</p>
+        </div>
+        <div class="rounded-lg border border-amber-700 bg-amber-950/30 p-4">
+            <p class="text-xs font-medium text-amber-400 uppercase">Wild</p>
+            <p class="mt-1 text-2xl font-bold text-amber-300" id="stats-wild">-</p>
+        </div>
+    </section>
+
+    <!-- Category Filters -->
+    <section class="flex items-center justify-between">
+        <div class="flex gap-2">
+            <button class="category-filter active px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-medium" data-category="Prime">
+                Prime
+            </button>
+            <button class="category-filter px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium" data-category="Normal">
+                Normal
+            </button>
+            <button class="category-filter px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium" data-category="Wild">
+                Wild
+            </button>
+            <button class="category-filter px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium" data-category="All">
+                All
+            </button>
+        </div>
+        <div class="text-sm text-slate-400">
+            Showing: <span class="font-semibold text-slate-200" id="showing-count">-</span> symbols
+        </div>
+    </section>
+
+    <!-- Markets Table -->
+    <section class="rounded-lg border border-slate-800 bg-slate-900/60">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-slate-800 border-b border-slate-700">
+                    <tr>
+                        <th class="text-left py-3 px-4 text-slate-300 font-semibold">Symbol</th>
+                        <th class="text-left py-3 px-4 text-slate-300 font-semibold">Category</th>
+                        <th class="text-right py-3 px-4 text-slate-300 font-semibold">Price</th>
+                        <th class="text-right py-3 px-4 text-slate-300 font-semibold">24h Change</th>
+                        <th class="text-right py-3 px-4 text-slate-300 font-semibold">Volume</th>
+                        <th class="text-center py-3 px-4 text-slate-300 font-semibold">Leverage</th>
+                        <th class="text-center py-3 px-4 text-slate-300 font-semibold">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="markets-table-body" class="divide-y divide-slate-700/50">
+                    <tr>
+                        <td colspan="7" class="text-center text-slate-500 py-8">Loading markets...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</div>
+
+<!-- Markets Page Script -->
+<script type="module">
+    import { DashboardConfig } from '/js/config.js';
+
+    let allSymbols = [];
+    let allTickers = new Map();
+    let currentCategory = 'Prime';
+
+    // Fetch universe data
+    async function loadMarkets() {
+        try {
+            // Get universe data
+            const universeResponse = await fetch('/api/universe');
+            const universeData = await universeResponse.json();
+            const universe = universeData.ok ? universeData.universe : universeData;
+
+            if (universe.symbols) {
+                allSymbols = Object.values(universe.symbols);
+
+                // Update stats
+                document.getElementById('stats-total').textContent = universe.totalSymbols || allSymbols.length;
+                document.getElementById('stats-prime').textContent = universe.primeCount || allSymbols.filter(s => s.category === 'Prime').length;
+                document.getElementById('stats-normal').textContent = universe.normalCount || allSymbols.filter(s => s.category === 'Normal').length;
+                document.getElementById('stats-wild').textContent = universe.wildCount || allSymbols.filter(s => s.category === 'Wild').length;
+            }
+
+            // Get ticker data
+            const tickerResponse = await fetch('/api/monitor/tickers');
+            const tickerData = await tickerResponse.json();
+            const tickers = tickerData.ok ? tickerData.tickers : [];
+
+            allTickers.clear();
+            tickers.forEach(t => allTickers.set(t.symbol, t));
+
+            // Render initial category
+            renderMarkets(currentCategory);
+
+        } catch (error) {
+            console.error('Failed to load markets:', error);
+            document.getElementById('markets-table-body').innerHTML = `
+                <tr><td colspan="7" class="text-center text-red-400 py-8">Failed to load markets: ${error.message}</td></tr>
+            `;
+        }
+    }
+
+    // Render markets table
+    function renderMarkets(category) {
+        const tbody = document.getElementById('markets-table-body');
+
+        // Filter symbols by category
+        const filtered = category === 'All'
+            ? allSymbols
+            : allSymbols.filter(s => s.category === category);
+
+        document.getElementById('showing-count').textContent = filtered.length;
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-slate-500 py-8">No ${category} symbols found</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(symbol => {
+            const ticker = allTickers.get(symbol.symbol);
+            const price = ticker?.price ? `$${ticker.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 6})}` : '-';
+            const change = ticker?.change24h || 0;
+            const changeClass = change >= 0 ? 'text-emerald-400' : 'text-red-400';
+            const changeIcon = change >= 0 ? '▲' : '▼';
+            const volume = ticker?.volume24h ? formatVolume(ticker.volume24h) : '-';
+
+            const leverage = symbol.leverage || symbol.maxLeverage || '-';
+            const leverageText = typeof leverage === 'string' ? leverage : `${leverage}x`;
+
+            const categoryColor = symbol.category === 'Prime' ? 'text-emerald-400' :
+                                 symbol.category === 'Wild' ? 'text-amber-400' : 'text-blue-400';
+
+            return `
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                    <td class="py-3 px-4 font-semibold text-slate-200">${symbol.symbol}</td>
+                    <td class="py-3 px-4">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${categoryColor}">
+                            ${symbol.category}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4 text-right font-mono text-slate-200">${price}</td>
+                    <td class="py-3 px-4 text-right ${changeClass} font-medium">
+                        ${changeIcon} ${Math.abs(change).toFixed(2)}%
+                    </td>
+                    <td class="py-3 px-4 text-right text-slate-300">${volume}</td>
+                    <td class="py-3 px-4 text-center text-slate-400 text-xs">${leverageText}</td>
+                    <td class="py-3 px-4 text-center">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs">
+                            Active
+                        </span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Format volume
+    function formatVolume(volume) {
+        if (!volume) return '-';
+        if (volume >= 1000000000) return (volume / 1000000000).toFixed(1) + 'B';
+        if (volume >= 1000000) return (volume / 1000000).toFixed(1) + 'M';
+        if (volume >= 1000) return (volume / 1000).toFixed(1) + 'K';
+        return volume.toFixed(0);
+    }
+
+    // Category filter click handlers
+    document.querySelectorAll('.category-filter').forEach(button => {
+        button.addEventListener('click', () => {
+            // Update active state
+            document.querySelectorAll('.category-filter').forEach(btn => {
+                btn.classList.remove('active', 'bg-emerald-600', 'text-white');
+                btn.classList.add('bg-slate-800', 'hover:bg-slate-700', 'text-slate-300');
+            });
+            button.classList.add('active', 'bg-emerald-600', 'text-white');
+            button.classList.remove('bg-slate-800', 'hover:bg-slate-700', 'text-slate-300');
+
+            // Render filtered markets
+            currentCategory = button.dataset.category;
+            renderMarkets(currentCategory);
+        });
+    });
+
+    // Auto-refresh every 5 seconds
+    setInterval(() => {
+        loadMarkets();
+    }, 5000);
+
+    // Initial load
+    document.addEventListener('DOMContentLoaded', () => {
+        loadMarkets();
+    });
+</script>
