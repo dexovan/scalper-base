@@ -150,6 +150,16 @@ class FeatureEngine {
         // Start performance monitoring
         this.startPerformanceMonitoring();
 
+        // Diagnostic: Check how many symbols have OrderbookManager data
+        setTimeout(async () => {
+            const { getActiveSymbols } = await import('../microstructure/OrderbookManager.js');
+            const activeInOrderbook = getActiveSymbols();
+            this.logger.info(`[DIAGNOSTIC] Symbols in universe: ${symbols.length}, Symbols with orderbook data: ${activeInOrderbook.length}`);
+            if (activeInOrderbook.length > 0) {
+                this.logger.info(`[DIAGNOSTIC] Sample symbols with data: ${activeInOrderbook.slice(0, 5).join(', ')}`);
+            }
+        }, 5000);
+
         this.logger.info(`Feature Engine started - processing ${symbols.length} symbols`);
     }
 
