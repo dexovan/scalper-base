@@ -989,20 +989,9 @@ export function startMonitorApiServer(port = 8090) {
   // FAZA 4: FEATURE ENGINE API ROUTES
   // ============================================================
 
-  // Initialize and start Feature Engine
+  // Create Feature Engine instance (will be initialized in app.listen callback)
   const featureEngine = new FeatureEngine();
-  console.log("🔧 Feature Engine created");
-
-  // Initialize and start the engine
-  try {
-    await featureEngine.init();
-    console.log("✅ Feature Engine initialized successfully");
-
-    await featureEngine.start();
-    console.log("✅ Feature Engine started - processing symbols");
-  } catch (error) {
-    console.error("❌ Failed to initialize Feature Engine:", error);
-  }
+  console.log("🔧 Feature Engine instance created");
 
   // GET /api/features/health - Feature Engine health status
   app.get("/api/features/health", async (req, res) => {
@@ -1112,7 +1101,7 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   // START SERVER
   // ============================================================
-  app.listen(port, "0.0.0.0", () => {
+  app.listen(port, "0.0.0.0", async () => {
     console.log("=".repeat(60));
     console.log("🚀 DEBUG: Monitor API successfully started");
     console.log(`🟢 ENGINE-API running on port ${port}`);
@@ -1125,6 +1114,19 @@ export function startMonitorApiServer(port = 8090) {
     console.log("⏳ About to call start24hDataRefresh()...");
     start24hDataRefresh();
     console.log("✅ start24hDataRefresh() call completed");
+    console.log("=".repeat(60));
+
+    // Initialize and start Feature Engine
+    console.log("🔧 Initializing Feature Engine...");
+    try {
+      await featureEngine.init();
+      console.log("✅ Feature Engine initialized successfully");
+
+      await featureEngine.start();
+      console.log("✅ Feature Engine started - processing symbols");
+    } catch (error) {
+      console.error("❌ Failed to initialize Feature Engine:", error);
+    }
     console.log("=".repeat(60));
   });
 }
