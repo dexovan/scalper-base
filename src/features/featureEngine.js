@@ -91,6 +91,7 @@ class FeatureEngine {
         this._successDataCount = 0;
         this._firstDataLogged = false;
         this._firstUpdateLogged = false;
+        this._analysisLogged = false;
 
         // System state
         this.isInitialized = false;
@@ -284,6 +285,14 @@ class FeatureEngine {
                 })
             ]);
 
+            // DEBUG: Log analysis completion
+            const rejectedCount = analyses.filter(a => a.status === 'rejected').length;
+            if (rejectedCount > 0 || !this._analysisLogged) {
+                this._analysisLogged = true;
+                const statuses = analyses.map(a => a.status === 'fulfilled' ? '✓' : '✗').join('');
+                this.logger.info(`[DEBUG] Analysis for ${symbol}: [${statuses}] - ${rejectedCount} rejected`);
+            }
+
             // Extract results (handle any failures gracefully)
             const [
                 imbalanceResult,
@@ -303,13 +312,18 @@ class FeatureEngine {
 
             // Update fee/leverage with volatility data
             if (volatilityResult && feeLeverageResult) {
-                const updatedFeeAnalysis = await this.engines.feeLeverage.analyzeFeeAndLeverage({
-                    symbol,
-                    symbolMeta,
-                    volatilityData: volatilityResult,
-                    currentPrice
-                });
-                Object.assign(feeLeverageResult, updatedFeeAnalysis);
+                try {
+                    const updatedFeeAnalysis = await this.engines.feeLeverage.analyzeFeeAndLeverage({
+                        symbol,
+                        symbolMeta,
+                        volatilityData: volatilityResult,
+                        currentPrice
+                    });
+                    Object.assign(feeLeverageResult, updatedFeeAnalysis);
+                } catch (error) {
+                    this.logger.error(`[${symbol}] Fee/leverage update failed:`, error.message);
+                    // Keep original feeLeverageResult
+                }
             }
 
             // Compose final feature state
