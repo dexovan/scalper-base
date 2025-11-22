@@ -27,7 +27,7 @@ import FeeLeverageEngine from './feeLeverageEngine.js';
 import PumpPreSignalsEngine from './pumpPreSignals.js';
 
 import logger from '../utils/logger.js';
-import { getUniverseSymbols } from '../market/universe.js';
+import { getUniverseSymbols } from '../market/universe_v2.js';
 
 class FeatureEngine {
     constructor(config = {}) {

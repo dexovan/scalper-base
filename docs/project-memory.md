@@ -1,7 +1,434 @@
 # SCALPER-BASE PROJECT MEMORY
 
-**Last Updated:** 2025-11-22
+**Last Updated:** 2025-11-22 23:45
 **Purpose:** Persistent knowledge base for critical problems, solutions, and best practices
+
+---
+
+## 🔍 SYSTEM AUDIT - NOVEMBER 22, 2025
+
+**Status:** 🚧 IN PROGRESS
+**Started:** 2025-11-22 23:30
+**Reason:** After repeated debugging sessions with endpoint confusion, missing awaits, and module conflicts, identified need for comprehensive architectural review and reorganization.
+
+**Goal:** Map entire codebase structure, identify anti-patterns, document all endpoints, trace data flows, and prepare recommendations for centralized architecture.
+
+### AUDIT FINDINGS - PART 1: API ENDPOINT INVENTORY
+
+#### **Dashboard Server (PORT 8080)** - `web/server.js`
+
+**Direct Routes (Dashboard-local handlers):**
+
+| Method | Path             | Handler Location    | Purpose                        | Status   |
+| ------ | ---------------- | ------------------- | ------------------------------ | -------- |
+| GET    | `/login`         | `web/server.js:246` | Login page                     | ✅ Works |
+| GET    | `/`              | `web/server.js:261` | Dashboard home (requires auth) | ✅ Works |
+| GET    | `/dashboard`     | `web/server.js:269` | Dashboard alias                | ✅ Works |
+| GET    | `/monitor`       | `web/server.js:277` | System monitor page            | ✅ Works |
+| GET    | `/monitor-micro` | `web/server.js:284` | Microstructure page (FAZA 3)   | ✅ Works |
+
+**Router Mounts (Dashboard sub-routes):**
+
+| Mount Path      | Router File                  | Endpoints                                  | Purpose                                         |
+| --------------- | ---------------------------- | ------------------------------------------ | ----------------------------------------------- |
+| `/api/universe` | `web/routes/api-universe.js` | `GET /`, `GET /categories`                 | Universe data (cross-process via disk)          |
+| `/api/features` | `web/routes/api-features.js` | 9 endpoints                                | Feature Engine API (deprecated - proxied below) |
+| `/api`          | `web/routes/api.js`          | `GET /health/*`                            | Health checks                                   |
+| `/api/test`     | `web/routes/api-test.js`     | 4 test endpoints                           | Dev testing routes                              |
+| `/` (root)      | `web/routes/auth.js`         | `GET /login`, `POST /login`, `GET /logout` | Authentication                                  |
+
+**Proxy Middleware (Forward to Engine on 8090):**
+
+| Dashboard Path          | Engine Target                                     | Timeout | Purpose                  |
+| ----------------------- | ------------------------------------------------- | ------- | ------------------------ |
+| `/monitor/api/*`        | `http://localhost:8090/api/monitor/*`             | 30s     | Monitor API proxy        |
+| `/api/microstructure/*` | `http://localhost:8090/api/microstructure/*`      | 30s     | Microstructure API proxy |
+| `/api/symbol/*`         | `http://localhost:8090/api/symbol/*`              | 30s     | Symbol data proxy        |
+| `/api/health`           | `http://localhost:8090/api/microstructure/health` | 30s     | Health proxy             |
+| `/api/features/*`       | `http://localhost:8090/api/features/*`            | 30s     | Feature Engine proxy     |
+
+⚠️ **PROBLEM IDENTIFIED:**
+
+- Confusion between local routes and proxied routes
+- `/api/features` defined TWICE (local router + proxy) - proxy overwrites local
+- No central registry of all endpoints
+
+---
+
+#### **Engine Server (PORT 8090)** - `src/http/monitorApi.js`
+
+**All Engine API Endpoints:**
+
+| Method | Path                                     | Handler Line | Purpose                      | Data Source                                |
+| ------ | ---------------------------------------- | ------------ | ---------------------------- | ------------------------------------------ |
+| GET    | `/api/monitor/summary`                   | 155          | System overview              | `metrics`, `wsMetrics`, `OrderbookManager` |
+| GET    | `/api/monitor/logs`                      | 229          | PM2 log viewer               | File system (`logs/`)                      |
+| GET    | `/api/monitor/tickers`                   | 250          | Live ticker prices           | `latestTickers` Map (RAM)                  |
+| GET    | `/api/monitor/trades`                    | 262          | Recent trades                | `recentTrades` Array (RAM)                 |
+| GET    | `/api/monitor/storage`                   | 277          | Disk usage stats             | `getStorageStats()`                        |
+| GET    | `/api/monitor/universe`                  | 297          | Universe snapshot            | `getUniverseSnapshot()` from `universe_v2` |
+| GET    | `/api/monitor/symbols/:category`         | 328          | Symbols by category          | `getSymbolsByCategory()`                   |
+| GET    | `/api/monitor/symbol/:symbol`            | 381          | Single symbol full data      | `getSymbolMeta()` + tickers + orderbook    |
+| GET    | `/api/symbol/:symbol/basic`              | 412          | Symbol basic info            | `getSymbolMeta()`                          |
+| GET    | `/api/symbols`                           | 459          | All symbols list             | `getUniverseSnapshot()`                    |
+| GET    | `/api/monitor/symbols`                   | 482          | Monitor symbols (duplicate?) | `getUniverseSnapshot()`                    |
+| POST   | `/api/monitor/refresh-ws`                | 523          | Force WS reconnect           | `bybitPublic` instance                     |
+| GET    | `/api/symbol/:symbol/micro`              | 550          | Microstructure stats         | `OrderbookManager`                         |
+| GET    | `/api/symbol/:symbol/orderbook`          | 582          | Orderbook depth              | `OrderbookManager`                         |
+| GET    | `/api/symbol/:symbol/trades`             | 616          | Symbol trades                | `recentTrades` filter                      |
+| GET    | `/api/symbol/:symbol/candles/:timeframe` | 642          | OHLCV candles                | Bybit REST API                             |
+| GET    | `/api/microstructure/symbols`            | 670          | All symbols micro stats      | `OrderbookManager.getAllSymbols()`         |
+| GET    | `/api/microstructure/health`             | 704          | Microstructure health        | `OrderbookManager.getHealthMetrics()`      |
+| GET    | `/api/features/health`                   | 767          | Feature Engine health        | `FeatureEngine.getHealth()`                |
+| GET    | `/api/features/config`                   | 786          | Feature config               | `FeatureEngine.getConfig()`                |
+| GET    | `/api/features/overview`                 | 805          | All features overview        | `FeatureEngine.getOverview()`              |
+| GET    | `/api/features/symbol/:symbol`           | 824          | Symbol-specific features     | `FeatureEngine.getFeaturesBySymbol()`      |
+| POST   | `/api/features/update`                   | 844          | Trigger feature update       | `FeatureEngine.updateFeatures()`           |
+
+⚠️ **PROBLEMS IDENTIFIED:**
+
+1. **Endpoint Duplication:**
+
+   - `/api/symbols` (line 459) vs `/api/monitor/symbols` (line 482) - both return universe
+   - `/api/monitor/universe` vs `/api/symbols` - redundant
+
+2. **Inconsistent Naming:**
+
+   - Some use `/api/monitor/...` prefix
+   - Some use `/api/...` directly
+   - No clear pattern when to use which
+
+3. **Mixed Responsibilities:**
+
+   - `monitorApi.js` handles Monitor + Microstructure + Features - should be split
+
+4. **Unused Alternative:** `src/http/simpleMonitorApi.js` exists but not used (87 lines, similar endpoints)
+
+---
+
+### AUDIT FINDINGS - PART 2: MODULE DEPENDENCIES
+
+#### **Critical Module Relationships:**
+
+```
+src/index.js (Engine Entry)
+  ├─ src/connectors/bybitPublic.js (WebSocket)
+  │   └─ src/microstructure/OrderbookManager.js
+  ├─ src/ws/eventHub.js (Event aggregation)
+  │   └─ src/connectors/bybitPublic.js (circular?)
+  ├─ src/http/monitorApi.js (API Server)
+  │   ├─ src/core/metrics.js
+  │   ├─ src/monitoring/wsMetrics.js
+  │   ├─ src/market/universe_v2.js ✅
+  │   ├─ src/microstructure/OrderbookManager.js
+  │   └─ src/features/featureEngine.js
+  └─ src/market/universe_v2.js (Market Universe)
+      └─ src/connectors/bybitPublic.js (for fetch)
+
+web/server.js (Dashboard Entry)
+  ├─ web/routes/api-universe.js
+  │   └─ src/market/universe_v2.js ✅
+  ├─ web/routes/api-features.js
+  │   └─ src/features/featureEngine.js (direct import!)
+  ├─ web/routes/api.js (Health)
+  ├─ web/routes/auth.js
+  └─ web/auth/* (middleware, db)
+
+src/features/featureEngine.js
+  ├─ src/features/orderbookImbalance.js
+  ├─ src/features/wallsSpoofing.js
+  ├─ src/features/flowDelta.js
+  ├─ src/features/volatilityEngine.js
+  ├─ src/features/feeLeverageEngine.js
+  ├─ src/features/pumpPreSignals.js
+  ├─ src/utils/logger.js
+  └─ src/market/universe.js ⚠️ STARI!
+```
+
+⚠️ **PROBLEMS IDENTIFIED:**
+
+1. **universe.js vs universe_v2.js Confusion:**
+
+   - `src/market/universe.js` (165 lines) - DEPRECATED, stari kod
+   - `src/market/universe_v2.js` (246 lines) - AKTIVAN
+   - `featureEngine.js` uvozi `universe.js` umesto `universe_v2.js` (line 30)
+   - Danas smo imali bug jer je `api-universe.js` importovao stari modul
+
+2. **Direct Cross-Process Imports:**
+
+   - `web/routes/api-features.js` direktno uvozi `src/features/featureEngine.js`
+   - Ali Feature Engine je u Engine procesu (8090), Dashboard je (8080)
+   - Ovo može raditi samo ako dele kod, ali NE dele state!
+   - Bolje bi bilo da Feature API rute budu samo proxy
+
+3. **Circular Import Risk:**
+
+   - `bybitPublic.js` → `OrderbookManager.js`
+   - `eventHub.js` → `bybitPublic.js` (via publicEmitter)
+   - Potencijalni circular dependency
+
+4. **Logger Duplication:**
+   - Svi feature engine-i uvode `src/utils/logger.js`
+   - Logger bi trebao biti centralizovan Singleton
+
+---
+
+### AUDIT FINDINGS - PART 3: DATA FLOW ANALYSIS
+
+#### **Real-Time Data Flow (WebSocket → Browser):**
+
+```
+1. Bybit WebSocket
+   ↓ (raw messages)
+2. src/connectors/bybitPublic.js
+   ├─ Parse & validate
+   ├─ Update OrderbookManager (orderbook updates)
+   ├─ Emit event via publicEmitter
+   └─ Store in latestTickers Map
+   ↓
+3. src/ws/eventHub.js
+   ├─ Listen to publicEmitter
+   ├─ Aggregate events
+   └─ (Optional) trigger features update
+   ↓
+4. src/http/monitorApi.js
+   ├─ Reads latestTickers Map
+   ├─ Reads OrderbookManager state
+   └─ Serves via GET /api/monitor/tickers
+   ↓
+5. web/server.js (proxy middleware)
+   ├─ Dashboard calls /monitor/api/tickers
+   └─ Proxies to localhost:8090/api/monitor/tickers
+   ↓
+6. Browser (dashboard.ejs)
+   ├─ fetchWithTimeout() calls /monitor/api/tickers
+   ├─ Parses JSON response
+   └─ Updates DOM
+```
+
+#### **Universe Data Flow (Periodic + On-Demand):**
+
+```
+ENGINE PROCESS (8090):
+1. src/index.js startup
+   ├─ await initUniverse() (from universe_v2.js)
+   ├─ Fetch from Bybit /v5/market/instruments-info
+   ├─ Categorize (Prime/Normal/Wild)
+   ├─ Store in UniverseState (RAM)
+   └─ Write to data/system/universe.v2.json (disk)
+   ↓
+2. Periodic refresh (every X minutes)
+   └─ Repeat step 1
+
+DASHBOARD PROCESS (8080):
+3. User clicks Universe tab in browser
+   ↓
+4. Dashboard frontend calls /api/universe
+   ↓
+5. web/routes/api-universe.js
+   ├─ await getUniverseSnapshot() (from universe_v2.js)
+   ├─ universe_v2 checks if UniverseState empty
+   ├─ If empty → loadExistingUniverse() reads data/system/universe.v2.json
+   └─ Returns JSON
+   ↓
+6. Browser filters by category and renders table
+```
+
+⚠️ **PROBLEM IDENTIFIED:**
+
+- Dual-path access (Engine direct, Dashboard via disk)
+- No notification mechanism when Universe updates
+- Dashboard shows stale data until refresh
+
+---
+
+### AUDIT FINDINGS - PART 4: ASYNC/AWAIT VALIDATION
+
+**Async Functions Found:**
+
+| File                            | Function                    | Awaited? | Issue                                                           |
+| ------------------------------- | --------------------------- | -------- | --------------------------------------------------------------- |
+| `src/market/universe_v2.js:152` | `getUniverseSnapshot()`     | ⚠️       | Fixed today - missing await in `index.js:58` caused 170 crashes |
+| `web/routes/api-universe.js:13` | `router.get("/", async...)` | ✅       | Awaits `getUniverseSnapshot()`                                  |
+| `src/http/monitorApi.js:155`    | `/api/monitor/summary`      | ⚠️       | Doesn't await `getUniverseSnapshot()` on line 172               |
+| `src/http/monitorApi.js:297`    | `/api/monitor/universe`     | ✅       | Properly awaits                                                 |
+| `src/features/featureEngine.js` | `updateFeatures()`          | ⚠️       | Returns Promise but callers may not await                       |
+
+⚠️ **PROBLEMS TO FIX:**
+
+1. **monitorApi.js line 172:**
+
+   ```javascript
+   // POGREŠNO (not awaited):
+   universe: getUniverseSnapshot(),
+
+   // ISPRAVNO:
+   universe: await getUniverseSnapshot(),
+   ```
+
+2. **Feature Engine calls:**
+   - Need to audit all places where `FeatureEngine.updateFeatures()` is called
+   - Ensure proper error handling if Promise rejects
+
+---
+
+### AUDIT FINDINGS - PART 5: ANTI-PATTERNS & CODE SMELLS
+
+#### 🔴 **Critical Issues:**
+
+1. **Endpoint Chaos:**
+
+   - No single source of truth for API routes
+   - Routes split across 8+ files
+   - Overlapping/duplicate endpoints
+   - Inconsistent naming conventions
+
+2. **Module Confusion:**
+
+   - `universe.js` (old) vs `universe_v2.js` (new) both exist
+   - Imports use wrong module randomly
+   - No deprecation warnings in old files
+
+3. **Cross-Process State Sharing:**
+
+   - Dashboard and Engine share code but not state
+   - Rely on disk files for IPC
+   - No real-time sync mechanism
+
+4. **Missing Error Boundaries:**
+
+   - Many async functions don't have try/catch
+   - Proxy timeouts added today but errors not logged properly
+
+5. **No API Documentation:**
+   - No OpenAPI/Swagger spec
+   - No comments explaining what each endpoint does
+   - Frontend guesses endpoint structure
+
+#### ⚠️ **Medium Issues:**
+
+6. **Duplicate API Servers:**
+
+   - `monitorApi.js` (880 lines, active)
+   - `simpleMonitorApi.js` (256 lines, unused?)
+   - Why two files?
+
+7. **Feature Engine Import in Dashboard:**
+
+   - `web/routes/api-features.js` directly imports engine code
+   - Should proxy to Engine API instead
+
+8. **Global State in Modules:**
+
+   - `latestTickers` Map in `monitorApi.js`
+   - `recentTrades` Array in `monitorApi.js`
+   - Should be in centralized State Manager
+
+9. **No Request Validation:**
+
+   - API endpoints don't validate params
+   - No input sanitization
+   - Security risk
+
+10. **Inconsistent Response Formats:**
+    - Some return `{ success: true, data: {...} }`
+    - Some return raw data
+    - Some return `{ error: "..." }`
+    - No standard error format
+
+---
+
+### AUDIT FINDINGS - PART 6: FILE ORGANIZATION
+
+**Current Structure:**
+
+```
+scalper-base/
+├── src/               (Engine Backend)
+│   ├── config/        (Configuration)
+│   ├── connectors/    (Bybit WebSocket/REST)
+│   ├── core/          (metrics.js)
+│   ├── features/      (Feature Engine - 7 modules)
+│   ├── http/          (monitorApi.js + simpleMonitorApi.js)
+│   ├── market/        (universe.js + universe_v2.js + symbolProfile.js)
+│   ├── microstructure/(OrderbookManager.js)
+│   ├── monitoring/    (health.js, wsMetrics.js, metricsTracker.js)
+│   ├── storage/       (jsonStore.js)
+│   ├── utils/         (dataStorage.js, logger.js)
+│   ├── ws/            (eventHub.js)
+│   └── index.js       (Engine Entry Point)
+│
+├── web/               (Dashboard Frontend)
+│   ├── auth/          (auth.js, middleware.js)
+│   ├── public/        (Static files, monitor-api.js client)
+│   ├── routes/        (5 route files)
+│   ├── views/         (EJS templates)
+│   └── server.js      (Dashboard Server Entry Point)
+│
+├── data/              (Persistent Data)
+│   ├── sessions/      (SQLite session store)
+│   └── system/        (universe.v2.json)
+│
+├── tests/             (Test files - 9 files)
+└── docs/              (project-memory.md)
+```
+
+⚠️ **PROBLEMS:**
+
+1. **No Clear Separation:**
+
+   - `/src/http/` mixes API routes with business logic
+   - `/web/routes/` has local handlers AND proxy configs
+   - Feature Engine logic scattered across 7 files
+
+2. **Flat Structure:**
+
+   - `/src/` has 15+ subdirectories at root level
+   - Hard to navigate
+   - No grouping by domain (Trading, Monitoring, Features, etc.)
+
+3. **Mixed Concerns:**
+
+   - `monitorApi.js` handles Monitor + Microstructure + Features
+   - Should be 3 separate API routers
+
+4. **No API Layer:**
+   - Business logic mixed with route handlers
+   - No service/controller separation
+   - Hard to test
+
+---
+
+### IMMEDIATE ACTION ITEMS (Before Refactor):
+
+1. ✅ **Fix Missing Await in monitorApi.js:**
+
+   - Line 172: `universe: await getUniverseSnapshot()`
+
+2. ✅ **Delete or Deprecate universe.js:**
+
+   - Rename to `universe.js.deprecated`
+   - Or add big warning comment at top
+
+3. ✅ **Fix FeatureEngine Import:**
+
+   - `featureEngine.js` line 30: Change from `universe.js` to `universe_v2.js`
+
+4. ✅ **Document All Endpoints:**
+
+   - Create `docs/API_ENDPOINTS.md` with full list
+
+5. ⏳ **Discuss Architecture:**
+   - Review findings with Dejan
+   - Decide on reorganization strategy
+
+---
+
+### NEXT STEPS:
+
+**STEP 2:** Discuss Architecture Options (see below)
+
+**STEP 3:** Design New Structure (after agreement)
 
 ---
 

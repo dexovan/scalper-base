@@ -176,6 +176,15 @@ export function getSymbolMeta(symbol) {
   return UniverseState.symbols?.[symbol] || null;
 }
 
+export function getUniverseSymbols() {
+  // Return all active symbols from universe
+  return Object.keys(UniverseState.symbols || {});
+}
+
+export function getUniverseStats() {
+  return UniverseState.stats || { totalSymbols: 0, primeCount: 0, normalCount: 0, wildCount: 0 };
+}
+
 export async function getSymbolsByCategory(category) {
   // Ako je state prazan, pokušaj da učitaš postojeći snapshot
   if (!UniverseState.fetchedAt || Object.keys(UniverseState.symbols || {}).length === 0) {

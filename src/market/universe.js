@@ -1,7 +1,24 @@
 /* =========================================================
+   ⚠️ DEPRECATED - DO NOT USE! ⚠️
+
    src/market/universe.js
-   AI Scalper – Universe Service (PHASE 2 – CLEAN VERSION)
+
+   **OVAJ FAJL JE ZASTAREO I NE KORISTI SE!**
+
+   Umesto ovog modula koristi: src/market/universe_v2.js
+
+   Razlog: universe_v2.js ima:
+   - Async/await support za cross-process pristup
+   - Auto-load mehanizam iz disk fajla
+   - Bolju kategorijaciju (Prime/Normal/Wild)
+   - Persistence u data/system/universe.v2.json
+
+   Ovaj fajl ostaje samo za referencu, ali NE SME SE IMPORTOVATI!
+
+   Datum deprecation-a: 2025-11-22
    ========================================================= */
+
+console.warn("⚠️ WARNING: universe.js is DEPRECATED! Use universe_v2.js instead!");
 
 import fs from "fs";
 import path from "path";
