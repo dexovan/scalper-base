@@ -244,13 +244,16 @@ export class DashboardAPI {
             const data = await response.json();
             debugLog("📊 Universe data received:", data);
 
-            if (data.ok && data.universe) {
+            // Handle both response formats: {ok: true, universe: {...}} or direct {...stats, symbols}
+            const universeData = data.ok ? data.universe : data;
+
+            if (universeData && (universeData.stats || universeData.totalSymbols)) {
                 debugLog("✅ Valid universe data, rendering stats...");
-                this.renderUniverseStats(data.universe);
+                this.renderUniverseStats(universeData);
                 debugLog("🎯 Updating symbols for category:", this.currentCategory);
                 await this.updateSymbols(this.currentCategory);
-            } else if (!data.ok) {
-                console.error("❌ Universe API error:", data.error);
+            } else {
+                console.error("❌ Universe API error: Invalid response format", data);
             }
         } catch (error) {
             console.error("💥 Failed to fetch universe:", error);
