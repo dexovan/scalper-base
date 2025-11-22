@@ -1050,6 +1050,37 @@ export function startMonitorApiServer(port = 8090) {
     }
   });
 
+  // GET /api/features/walls/stats - Wall detection statistics
+  app.get("/api/features/walls/stats", async (req, res) => {
+    try {
+      const overview = featureEngine.getFeaturesOverview();
+      const wallStats = {
+        totalSymbols: overview.length,
+        symbolsWithWalls: overview.filter(s => s.spoofingScore > 0).length,
+        symbolsWithHighImbalance: overview.filter(s => Math.abs(s.tobImbalance) > 0.5).length,
+        avgSpoofingScore: overview.reduce((sum, s) => sum + s.spoofingScore, 0) / overview.length,
+        maxSpoofingScore: Math.max(...overview.map(s => s.spoofingScore)),
+        topSpoofingSymbols: overview
+          .filter(s => s.spoofingScore > 0)
+          .sort((a, b) => b.spoofingScore - a.spoofingScore)
+          .slice(0, 10)
+          .map(s => ({ symbol: s.symbol, spoofingScore: s.spoofingScore, tobImbalance: s.tobImbalance }))
+      };
+      res.json({
+        status: "success",
+        data: wallStats,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [FEATURES/WALLS/STATS] Error:", error);
+      res.status(500).json({
+        status: "error",
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // GET /api/features/symbol/:symbol - Symbol-specific features
   app.get("/api/features/symbol/:symbol", async (req, res) => {
     try {
