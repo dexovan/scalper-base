@@ -60,7 +60,7 @@ class WallsSpoofingEngine {
         if (!this._analyzeCallCount) this._analyzeCallCount = 0;
         this._analyzeCallCount++;
         if (this._analyzeCallCount % 50 === 1) {
-            console.log(`[WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})`);
+            this.logger.info(`[WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})`);
         }
 
         try {
@@ -68,7 +68,7 @@ class WallsSpoofingEngine {
                 // DEBUG: Log validation failure
                 if (!this._validationFailLogged) {
                     this._validationFailLogged = true;
-                    console.log('[WALLS DEBUG] Validation failed:', {
+                    this.logger.info('[WALLS DEBUG] Validation failed:', {
                         hasOrderbook: !!orderbookData,
                         hasBids: !!orderbookData?.bids,
                         hasAsks: !!orderbookData?.asks,
@@ -78,9 +78,7 @@ class WallsSpoofingEngine {
                     });
                 }
                 return this.getEmptyAnalysis();
-            }
-
-            const { bids, asks, timestamp } = orderbookData;
+            }            const { bids, asks, timestamp } = orderbookData;
             const now = Date.now();
 
             // Detect current walls
@@ -185,7 +183,7 @@ class WallsSpoofingEngine {
                 usd: parseFloat(p) * parseFloat(q),
                 strength: parseFloat(q) / avgQuantity
             }));
-            console.log(`[WALLS DEBUG ${this._wallDetectionCount}] ${side} side:`, {
+            this.logger.info(`[WALLS DEBUG ${this._wallDetectionCount}] ${side} side:`, {
                 levels: entries.length,
                 avgQuantity: avgQuantity.toFixed(4),
                 currentPrice,
@@ -194,9 +192,7 @@ class WallsSpoofingEngine {
                 maxDistanceFromPrice: this.config.spoofing.maxDistanceFromPrice,
                 sample
             });
-        }
-
-        // Find walls (quantities significantly above average)
+        }        // Find walls (quantities significantly above average)
         let wallCandidatesChecked = 0;
         let wallCandidatesFailed = { strength: 0, minSize: 0, distance: 0 };
 
@@ -239,7 +235,7 @@ class WallsSpoofingEngine {
 
         // Log wall detection results periodically
         if (walls.length > 0 || this._wallDetectionCount % 100 === 1) {
-            console.log(`[WALLS DEBUG ${this._wallDetectionCount}] ${side} result:`, {
+            this.logger.info(`[WALLS DEBUG ${this._wallDetectionCount}] ${side} result:`, {
                 wallsFound: walls.length,
                 candidatesChecked: wallCandidatesChecked,
                 failedStrength: wallCandidatesFailed.strength,
