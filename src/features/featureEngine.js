@@ -382,11 +382,28 @@ class FeatureEngine {
     async getMicrostructureData(symbol) {
         try {
             // Use statically imported OrderbookManager functions
-            const [orderbook, trades, candles] = await Promise.all([
+            const [orderbook, trades, candles1s, candles5s, candles15s] = await Promise.all([
                 getOrderbookSummary(symbol, 10),
                 getRecentTrades(symbol, 100),
-                getCandles(symbol, ['1s', '5s', '15s'])
+                getCandles(symbol, '1s', 100),
+                getCandles(symbol, '5s', 100),
+                getCandles(symbol, '15s', 100)
             ]);
+
+            // Combine candles into a map
+            const candles = {
+                '1s': candles1s || [],
+                '5s': candles5s || [],
+                '15s': candles15s || []
+            };
+
+            // Check if we have ANY data for this symbol
+            const hasData = orderbook || (trades && trades.length > 0);
+
+            if (!hasData) {
+                // Symbol has no microstructure data yet - skip silently
+                return null;
+            }
 
             // Get current price from orderbook or trades
             let currentPrice = 0;
@@ -401,8 +418,8 @@ class FeatureEngine {
             const symbolMeta = await this.getSymbolMetadata(symbol);
 
             return {
-                orderbook,
-                trades,
+                orderbook: orderbook || { bids: [], asks: [], spread: 0 },
+                trades: trades || [],
                 candles,
                 currentPrice,
                 symbolMeta
