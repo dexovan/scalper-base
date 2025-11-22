@@ -484,22 +484,24 @@ class FeatureEngine {
             // Check if we have ANY data for this symbol
             const hasData = orderbook || (trades && trades.length > 0);
 
-            // DEBUG: Log first successful data fetch
-            if (hasData && !this._firstDataLogged) {
-                this._firstDataLogged = true;
-                this.logger.info(`[DEBUG] First successful data fetch for ${symbol}: orderbook=${!!orderbook}, trades=${trades?.length || 0}`);
-            }
-
+            // DEBUG: Log null data pattern
             if (!hasData) {
-                // Symbol has no microstructure data yet - skip silently
                 this._nullDataCount++;
-                if (this._nullDataCount === 100) {
-                    this.logger.warn(`[DEBUG] 100 null data results - last symbol: ${symbol}. Success count: ${this._successDataCount}`);
+                if (this._nullDataCount <= 10) {
+                    this.logger.info(`[DEBUG] No data for ${symbol}: orderbook=${!!orderbook}, trades=${trades?.length || 0}, candles1s=${candles1s?.length || 0}`);
+                } else if (this._nullDataCount === 100) {
+                    this.logger.warn(`[DEBUG] 100 symbols with no data. Success count: ${this._successDataCount}`);
                 }
                 return null;
             }
 
             this._successDataCount++;
+
+            // DEBUG: Log first successful data fetch
+            if (!this._firstDataLogged) {
+                this._firstDataLogged = true;
+                this.logger.info(`[DEBUG] First successful data fetch for ${symbol}: orderbook=${!!orderbook}, trades=${trades?.length || 0}`);
+            }
 
             // Get current price from orderbook or trades
             let currentPrice = 0;
