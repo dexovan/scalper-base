@@ -1060,19 +1060,25 @@ export class DashboardAPI {
             const microResponse = await this.fetchWithTimeout('/api/microstructure/health');
             if (microResponse.ok) {
                 const micro = await microResponse.json();
+                debugLog("🔍 Microstructure health data:", micro);
 
                 const activeSymbolsEl = document.getElementById('metric-active-symbols');
                 const symbolsDetailEl = document.getElementById('metric-symbols-detail');
                 const dataRateEl = document.getElementById('metric-data-rate');
 
-                if (activeSymbolsEl && micro.activeSymbols !== undefined) {
-                    activeSymbolsEl.textContent = micro.activeSymbols;
+                // Handle different response structures
+                const activeSymbols = micro.activeSymbols || micro.data?.activeSymbols || 0;
+                const lastProcessed = micro.lastProcessed || micro.data?.lastProcessed || 0;
+                const eventsPerSecond = micro.eventsPerSecond || micro.data?.eventsPerSecond || 0;
+
+                if (activeSymbolsEl) {
+                    activeSymbolsEl.textContent = activeSymbols;
                 }
-                if (symbolsDetailEl && micro.lastProcessed !== undefined) {
-                    symbolsDetailEl.textContent = `${micro.lastProcessed} tracking`;
+                if (symbolsDetailEl) {
+                    symbolsDetailEl.textContent = `${lastProcessed} tracking`;
                 }
-                if (dataRateEl && micro.eventsPerSecond !== undefined) {
-                    dataRateEl.textContent = `${micro.eventsPerSecond} evt/s`;
+                if (dataRateEl) {
+                    dataRateEl.textContent = `${eventsPerSecond} evt/s`;
                 }
             }
 
@@ -1080,15 +1086,21 @@ export class DashboardAPI {
             const featuresResponse = await this.fetchWithTimeout(this.featuresHealthUrl);
             if (featuresResponse.ok) {
                 const features = await featuresResponse.json();
+                debugLog("🔍 Features health data:", features);
 
                 const uptimeEl = document.getElementById('metric-uptime');
                 const healthEl = document.getElementById('metric-health');
 
-                if (uptimeEl && features.uptime !== undefined) {
-                    uptimeEl.textContent = this.formatUptime(features.uptime);
+                // Handle different response structures
+                const data = features.data || features;
+                const uptime = data.uptime || 0;
+                const status = data.status || 'unknown';
+
+                if (uptimeEl) {
+                    uptimeEl.textContent = this.formatUptime(uptime);
                 }
                 if (healthEl) {
-                    const isHealthy = features.status === 'healthy';
+                    const isHealthy = status === 'healthy';
                     healthEl.textContent = isHealthy ? 'All systems operational' : 'Check system logs';
                     healthEl.className = isHealthy ? 'mt-1 text-xs text-emerald-400' : 'mt-1 text-xs text-amber-400';
                 }
@@ -1096,6 +1108,21 @@ export class DashboardAPI {
 
         } catch (error) {
             console.error('Failed to update key metrics:', error);
+            // Set fallback values
+            const activeSymbolsEl = document.getElementById('metric-active-symbols');
+            const symbolsDetailEl = document.getElementById('metric-symbols-detail');
+            const dataRateEl = document.getElementById('metric-data-rate');
+            const uptimeEl = document.getElementById('metric-uptime');
+            const healthEl = document.getElementById('metric-health');
+
+            if (activeSymbolsEl) activeSymbolsEl.textContent = '0';
+            if (symbolsDetailEl) symbolsDetailEl.textContent = 'Connecting...';
+            if (dataRateEl) dataRateEl.textContent = '0 evt/s';
+            if (uptimeEl) uptimeEl.textContent = '-';
+            if (healthEl) {
+                healthEl.textContent = 'Connection error';
+                healthEl.className = 'mt-1 text-xs text-red-400';
+            }
         }
     }
 
