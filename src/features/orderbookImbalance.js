@@ -40,6 +40,19 @@ class OrderbookImbalanceEngine {
     analyzeImbalance(orderbookData) {
         try {
             if (!this.isValidOrderbook(orderbookData)) {
+                // DEBUG: Log why validation failed
+                if (!this._validationDebugLogged) {
+                    this._validationDebugLogged = true;
+                    console.log('[IMBALANCE DEBUG] Invalid orderbook:', {
+                        hasOrderbook: !!orderbookData,
+                        hasBids: !!orderbookData?.bids,
+                        hasAsks: !!orderbookData?.asks,
+                        bidsIsArray: Array.isArray(orderbookData?.bids),
+                        asksIsArray: Array.isArray(orderbookData?.asks),
+                        bidsLength: orderbookData?.bids?.length || 0,
+                        asksLength: orderbookData?.asks?.length || 0
+                    });
+                }
                 return this.getEmptyImbalance();
             }
 
@@ -48,6 +61,18 @@ class OrderbookImbalanceEngine {
 
             // Calculate TOB imbalance
             const tobImbalance = this.calculateTOBImbalance(bids, asks);
+
+            // DEBUG: Log successful calculation
+            if (!this._successDebugLogged) {
+                this._successDebugLogged = true;
+                console.log('[IMBALANCE DEBUG] Successful analysis:', {
+                    tobImbalance,
+                    bidsLength: bids.length,
+                    asksLength: asks.length,
+                    topBid: bids[0],
+                    topAsk: asks[0]
+                });
+            }
 
             // Calculate zone-based imbalances
             const zoneImbalances = this.calculateZoneImbalances(bids, asks, midPrice);

@@ -542,10 +542,32 @@ class FeatureEngine {
             // Get current price from orderbook or trades
             let currentPrice = 0;
             if (orderbook && orderbook.bids && orderbook.bids.length > 0 && orderbook.asks && orderbook.asks.length > 0) {
-                currentPrice = (parseFloat(orderbook.bids[0]?.[0] || 0) +
-                              parseFloat(orderbook.asks[0]?.[0] || 0)) / 2;
+                const topBid = parseFloat(orderbook.bids[0]?.[0] || 0);
+                const topAsk = parseFloat(orderbook.asks[0]?.[0] || 0);
+                currentPrice = (topBid + topAsk) / 2;
+
+                // DEBUG: Log price calculation
+                if (!this._priceDebugLogged) {
+                    this._priceDebugLogged = true;
+                    this.logger.info(`[DEBUG] Price calculation for ${symbol}:`, {
+                        topBid,
+                        topAsk,
+                        currentPrice,
+                        bidStructure: orderbook.bids[0],
+                        askStructure: orderbook.asks[0]
+                    });
+                }
             } else if (trades && trades.length > 0) {
                 currentPrice = parseFloat(trades[0].price);
+
+                // DEBUG: Log fallback to trade price
+                if (!this._tradePriceDebugLogged) {
+                    this._tradePriceDebugLogged = true;
+                    this.logger.info(`[DEBUG] Using trade price for ${symbol}:`, {
+                        currentPrice,
+                        tradeStructure: trades[0]
+                    });
+                }
             }
 
             // Get symbol metadata
