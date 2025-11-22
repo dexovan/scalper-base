@@ -407,6 +407,23 @@ class FeatureEngine {
     getFeaturesOverview() {
         const overview = [];
 
+        // DEBUG: Log first state to see structure
+        if (!this._overviewDebugLogged && this.featureStates.size > 0) {
+            this._overviewDebugLogged = true;
+            const firstState = Array.from(this.featureStates.values())[0];
+            this.logger.info('[DEBUG] First state structure:', {
+                hasImbalance: !!firstState.imbalance,
+                imbalanceKeys: firstState.imbalance ? Object.keys(firstState.imbalance) : [],
+                hasWalls: !!firstState.walls,
+                wallsKeys: firstState.walls ? Object.keys(firstState.walls) : [],
+                hasVolatility: !!firstState.volatility,
+                volatilityKeys: firstState.volatility ? Object.keys(firstState.volatility) : [],
+                tobImbalance: firstState.imbalance?.tobImbalance,
+                spoofingScore: firstState.walls?.spoofingScore,
+                volatilityScore: firstState.volatility?.volatilityScore
+            });
+        }
+
         for (const [symbol, state] of this.featureStates.entries()) {
             overview.push({
                 symbol,
