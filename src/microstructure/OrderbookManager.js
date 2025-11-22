@@ -386,13 +386,17 @@ function getOrderbookSummary(symbol, depthLimit = 10) {
   const { bids, asks, lastUpdateAt } = symbolState.orderbook;
   const { bestBid, bestAsk, spread } = symbolState.priceInfo;
 
+  // Convert {price, qty} objects to [price, qty] arrays for compatibility
+  const bidsArray = bids.slice(0, depthLimit).map(level => [level.price, level.qty]);
+  const asksArray = asks.slice(0, depthLimit).map(level => [level.price, level.qty]);
+
   return {
     symbol,
     bestBid,
     bestAsk,
     spread,
-    bids: bids.slice(0, depthLimit),
-    asks: asks.slice(0, depthLimit),
+    bids: bidsArray,
+    asks: asksArray,
     lastUpdateAt
   };
 }
