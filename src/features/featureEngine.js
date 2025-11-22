@@ -255,33 +255,33 @@ class FeatureEngine {
             // Run all feature analyses
             const analyses = await Promise.allSettled([
                 // Orderbook imbalance analysis
-                Promise.resolve(this.engines.imbalance.analyzeImbalance(orderbook)),
+                this.engines.imbalance.analyzeImbalance(orderbook),
 
                 // Walls & spoofing analysis
-                Promise.resolve(this.engines.walls.analyzeWallsAndSpoofing(orderbook, trades, currentPrice)),
+                this.engines.walls.analyzeWallsAndSpoofing(orderbook, trades, currentPrice),
 
                 // Flow/delta analysis
-                Promise.resolve(this.engines.flow.analyzeFlow(trades)),
+                this.engines.flow.analyzeFlow(trades),
 
                 // Volatility analysis
-                Promise.resolve(this.engines.volatility.analyzeVolatility(candles)),
+                this.engines.volatility.analyzeVolatility(candles),
 
                 // Fee/leverage analysis
-                Promise.resolve(this.engines.feeLeverage.analyzeFeeAndLeverage({
+                this.engines.feeLeverage.analyzeFeeAndLeverage({
                     symbol,
                     symbolMeta,
                     volatilityData: {}, // Will be filled after volatility analysis
                     currentPrice
-                })),
+                }),
 
                 // Pump pre-signals analysis
-                Promise.resolve(this.engines.pumpSignals.analyzePumpSignals({
+                this.engines.pumpSignals.analyzePumpSignals({
                     currentPrice,
                     priceHistory,
                     recentTrades: trades,
                     orderbookData: orderbook,
                     candleData: candles
-                }))
+                })
             ]);
 
             // Extract results (handle any failures gracefully)
