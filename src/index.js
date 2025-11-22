@@ -6,7 +6,8 @@
 import {
   initUniverse,
   refreshUniversePeriodically,
-  getSymbolsByCategory
+  getSymbolsByCategory,
+  getUniverseSnapshot
 } from "./market/universe_v2.js";
 
 import {
@@ -49,7 +50,17 @@ async function startEngine() {
   // --------------------------
   // UNIVERSE INIT
   // --------------------------
+  console.log("🌍 [ENGINE] About to call initUniverse()...");
   await initUniverse();
+  console.log("🌍 [ENGINE] initUniverse() completed!");
+
+  // Verify universe loaded
+  const universeCheck = getUniverseSnapshot();
+  console.log("🌍 [ENGINE] Universe verification:", {
+    totalSymbols: universeCheck.stats.totalSymbols,
+    fetchedAt: universeCheck.fetchedAt,
+    symbolCount: Object.keys(universeCheck.symbols).length
+  });
 
   // MAIN WS (dynamic)
   console.log("🔍 DEBUG: Calling initPublicConnection...");
