@@ -989,9 +989,20 @@ export function startMonitorApiServer(port = 8090) {
   // FAZA 4: FEATURE ENGINE API ROUTES
   // ============================================================
 
-  // Initialize Feature Engine
+  // Initialize and start Feature Engine
   const featureEngine = new FeatureEngine();
-  console.log("🔧 Feature Engine initialized for API");
+  console.log("🔧 Feature Engine created");
+
+  // Initialize and start the engine
+  try {
+    await featureEngine.init();
+    console.log("✅ Feature Engine initialized successfully");
+
+    await featureEngine.start();
+    console.log("✅ Feature Engine started - processing symbols");
+  } catch (error) {
+    console.error("❌ Failed to initialize Feature Engine:", error);
+  }
 
   // GET /api/features/health - Feature Engine health status
   app.get("/api/features/health", async (req, res) => {
