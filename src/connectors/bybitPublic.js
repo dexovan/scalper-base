@@ -62,7 +62,7 @@ function buildTopics(symbols = []) {
   for (const s of symbols) {
     topics.push(`tickers.${s}`);
     topics.push(`publicTrade.${s}`);
-    topics.push(`orderbook.1.${s}`); // L1 orderbook data
+    topics.push(`orderbook.50.${s}`); // L50 orderbook data for wall detection
   }
   return topics;
 }
