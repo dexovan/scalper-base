@@ -1,0 +1,506 @@
+Odlično.
+Sada ću isporučiti **FAZU 15 — LATENCY & SLIPPAGE ADAPTATION** u *najdetaljnijem mogućem profesionalnom formatu*, potpuno ujednačeno sa fazama 11–14.
+
+---
+
+# ✅ **PHASE 15 — LATENCY & SLIPPAGE ADAPTATION (ULTRA-DETALJNA SPECIFIKACIJA)**
+
+*Real-world adaptive execution layer*
+
+---
+
+# **0. CILJ FAZE 15**
+
+Do sada:
+
+* sistem je znao kako treba da trguje *teorijski*
+* znao je TP/SL matematiku
+* znao je scoring / risk / regime
+* znao je execution i replay
+
+Ali sada:
+
+### **Faza 15 uči sistem da reaguje NA REALNE USLOVE TRŽIŠTA:**
+
+* prava mrežna kašnjenja (REST i WebSocket)
+* prava slippage odstupanja (planirano vs dobijeno)
+* realni spread rasponi
+* kvalitet egzekucije po simbolu
+* penalizacija loših simbola / pump režima
+* automatsko povećanje MinMoveForProfit
+* dinamično prilagođavanje TP/SL distance
+* penalizacija scoring-a za „loše okruženje“
+* risk blokade kada egzekucija postane previše loša
+
+Rezultat je: **AI Scalper koji se sam prilagođava kvalitetu tržišnih uslova u realnom vremenu.**
+
+---
+
+# **1. NOVI FAJLOVI / IZMJENE**
+
+## **1.1 Novi fajlovi (src/latency i src/execution)**
+
+```
+src/
+  latency/
+    latencyMonitor.js
+    latencyStats.js
+
+  execution/
+    slippageTracker.js
+    executionQuality.js
+```
+
+## **1.2 Izmene u postojećim modulima**
+
+* **orderRouter.js**
+  → šalje slippage sample posle svakog fill-a
+* **stateMachine.js**
+  → dobija signale za blocking entry-ja
+* **TPSL engine**
+  → koristi adaptivni minMoveForProfit
+* **Risk engine**
+  → koristi executionQuality penal
+* **ConfigEngine**
+  → novi „execution.latency“ i „execution.slippage“ parametri
+* **ProfileUpdater**
+  → slippage i latency ulaze u simbol profile
+* **Dashboard**
+  → novi Execution Quality panel
+
+---
+
+# **2. PROŠIRENI CONFIG (config.json)**
+
+Dodajemo novi blok u CONFIG.execution:
+
+```json
+"execution": {
+  "mode": "SIM",
+  "maxSlippagePct": 0.10,
+  "maxSpreadPct": 0.15,
+  "minNotionalUsd": 5,
+  "maxNotionalUsd": 500,
+
+  "latency": {
+    "pingIntervalMs": 5000,
+    "maxAllowedPingMs": 350,
+    "latencyPenaltyThresholdMs": 250
+  },
+
+  "slippage": {
+    "updateWindowTrades": 100,
+    "maxAllowedAvgSlippagePct": 0.20,
+    "hardSymbolBlockSlippagePct": 0.40,
+    "adaptativeMinMoveFactor": 1.0,
+    "minMoveFloorPct": 0.08,
+    "minMoveCeilPct": 0.6
+  }
+}
+```
+
+Sve vrednosti su **number**.
+
+---
+
+# **3. LATENCY MONITOR (src/latency/latencyMonitor.js)**
+
+Radi 24/7 i meri:
+
+### **REST kašnjenje**
+
+* GET `/v5/market/time`
+* meri roundtrip (t1 – t0)
+
+### **WS kašnjenje**
+
+* koristi WS ping/pong
+* meri roundtrip
+
+---
+
+## **3.1 Struktura LatencySample**
+
+```js
+LatencySample {
+  timestamp: string,
+  type: "REST" | "WS",
+  latencyMs: number,
+  endpoint: string | null
+}
+```
+
+---
+
+## **3.2 LatencyStats**
+
+```js
+LatencyStats {
+  windowSize: number,
+  rest: { samples, avgMs, maxMs, minMs },
+  ws:   { samples, avgMs, maxMs, minMs },
+  lastUpdate: string
+}
+```
+
+---
+
+## **3.3 API**
+
+```js
+LatencyMonitor {
+  init(config)
+  start()
+  stop()
+  getStats(): LatencyStats
+  isLatencyBad(): boolean
+}
+```
+
+`isLatencyBad()` vraća true ako prosečno REST ili WS kašnjenje > `latencyPenaltyThresholdMs`.
+
+---
+
+# **4. SLIPPAGE TRACKER (src/execution/slippageTracker.js)**
+
+Ovo je srce FAZE 15.
+
+Za svaki filled order:
+
+* znao si **plannedEntryPrice** (TPSLPlan ili EntryPlan)
+* znaš **avgFillPrice**
+
+Ovo se pretvara u:
+
+```js
+slippagePct = abs(fillPrice - plannedPrice) / plannedPrice * 100
+```
+
+---
+
+## **4.1 Struktura SlippageSample**
+
+```js
+SlippageSample {
+  timestamp,
+  symbol,
+  side: "LONG" | "SHORT",
+  plannedPrice,
+  fillPrice,
+  slippagePct,
+  spreadPctAtEntry,
+  mode
+}
+```
+
+---
+
+## **4.2 Stats per symbol**
+
+```js
+SymbolSlippageStats {
+  symbol,
+  samplesCount,
+  avgSlippagePct,
+  maxSlippagePct,
+  p95SlippagePct,
+  avgSpreadPct,
+  lastUpdate
+}
+```
+
+---
+
+## **4.5 SlippageTracker API**
+
+```js
+SlippageTracker {
+  addSample(sample)
+  getSymbolStats(symbol)
+  getAllStats()
+}
+```
+
+---
+
+# **5. EXECUTION QUALITY ENGINE (src/execution/executionQuality.js)**
+
+Meri:
+
+* avg slippage %
+* p95 slippage %
+* avg spread %
+* avg latency %
+* kvalitet po simbolu
+* global execution health
+
+---
+
+## **5.1 ExecutionQualitySymbol**
+
+```js
+ExecutionQualitySymbol {
+  symbol,
+  qualityScore,
+  avgSlippagePct,
+  p95SlippagePct,
+  avgSpreadPct,
+  avgLatencyMs,
+  lastUpdate,
+  flags: {
+    highSlippage,
+    highSpread,
+    highLatency,
+    blockNewEntries
+  }
+}
+```
+
+---
+
+## **5.2 Global Quality**
+
+```js
+ExecutionQualityGlobal {
+  timestamp,
+  avgLatencyMsRest,
+  avgLatencyMsWs,
+  overallQualityScore,
+  symbols: ExecutionQualitySymbol[]
+}
+```
+
+---
+
+## **5.3 Penali**
+
+### **Slippage penalty**
+
+* <0.05% → 0
+* 0.05–0.1% → -10
+* 0.1–0.2% → -20
+* > 0.2% → -40
+
+### **Spread penalty**
+
+* linear, identično scoring penalima
+
+### **Latency penalty**
+
+* > `latencyPenaltyThresholdMs` → -20
+
+### **blockNewEntries**
+
+Ako:
+
+* p95Slippage > `hardSymbolBlockSlippagePct`
+  ili
+* avgSpread > 2× maxSpreadPct
+
+→ sistem BLOKIRA ulaze za taj simbol.
+
+---
+
+# **6. INTEGRACIJA U ENGINE (najvažniji deo)**
+
+## **6.1 MinMoveForProfit adaptacija (TPSL)**
+
+Dosadašnja formula se menja.
+
+### **NOVA FORMULA**
+
+```
+minMoveForProfit = max(
+    (entryFee + exitFee + effectiveSlippagePct*price),
+    minMoveFloorPct*price
+)
+
+ali NE više od: minMoveCeilPct * price
+```
+
+Gde je:
+
+```
+effectiveSlippagePct = slippageAvgPct(symbol)
+```
+
+---
+
+## **6.2 TP/SL REAL-TIME ADAPTACIJA**
+
+* TP1, TP2 i SL se prave na bazi:
+
+```
+baseMove = minMoveForProfit
+TP1 = baseMove * 1.2
+TP2 = baseMove * 2.1
+SL  = baseMove * 0.8
+```
+
+U Pump/News režimima override ostaje, ali sada zna za realne slippage uslove.
+
+---
+
+## **6.3 Scoring penal (ExecutionPenaltyFactor)**
+
+```js
+if (qualityScore < 60) penalty=0.20
+else if (qualityScore < 80) penalty=0.10
+else penalty=0
+```
+
+```
+FinalScalpScore *= (1 - penalty)
+```
+
+---
+
+## **6.4 Risk integracija**
+
+Ako executionQuality.symbol.blockNewEntries === true:
+→ RiskEngine blokira entry za taj simbol.
+
+Ako globalQualityScore < 50:
+→ RiskEngine smanjuje:
+
+* maxRiskPerTradePct → ×0.5
+* maxPortfolioHeatPct → ×0.5
+
+---
+
+# **7. PROFILE UPDATER (Phase 14 integracija)**
+
+Koristi nove podatke:
+
+```js
+executionStats: {
+  avgSlippagePct,
+  avgSpreadPct,
+  recommendedMinMoveForProfitPct
+}
+
+riskAdjustment: {
+  recommendedLeverage,
+  recommendedRiskPct
+}
+```
+
+ProfileEngine piše u:
+
+```
+data/profiles/<symbol>.json
+```
+
+---
+
+# **8. DASHBOARD: EXECUTION QUALITY PANEL**
+
+## **8.1 API**
+
+```
+GET /api/execution/quality
+GET /api/execution/slippage/:symbol
+GET /api/latency
+```
+
+## **8.2 UI elementi**
+
+Global summary:
+
+* REST latency avg
+* WS latency avg
+* Global quality score
+* Top 5 loših simbola
+* Top 5 najboljih simbola
+
+Tabela simbola:
+
+| Symbol | Avg Slippage | P95 Slip | Spread | Latency | Quality | Flags |
+
+Modal:
+
+* poslednjih N slippage sampleova
+
+---
+
+# **9. HEALTH INTEGRACIJA**
+
+Dodaje:
+
+```
+latencyMonitor: OK/WARN/ERROR
+slippageTracker: OK/WARN/ERROR
+```
+
+Ako avgLatency > maxAllowedPingMs → WARN
+Ako WS pong >5s → ERROR
+Ako avgSlippage > block threshold globalno → ERROR
+
+---
+
+# **10. TEST SCENARIJI**
+
+## **Test 1: Latency monitor radi**
+
+* ping se registruje
+* API vraća očekivane vrednosti
+
+## **Test 2: Slippage tracking**
+
+* simulirani tradeovi → tracker izračunava avg/p95
+
+## **Test 3: MinMoveForProfit**
+
+* ručno povećati slippage → MinMove raste
+
+## **Test 4: ExecutionPenalty**
+
+* scoring se smanjuje proporcionalno kvalitetu egzekucije
+
+## **Test 5: BlockNewEntries**
+
+* p95Slippage>hardLimit → block
+
+## **Test 6: Dashboard**
+
+* Execution Quality panel prikazuje sve podatke u real-time
+
+---
+
+# **11. FINALNI REZULTAT FAZE 15**
+
+### Posle ove faze, sistem:
+
+#### ✔ Zna koliko je realno efikasan
+
+(mreža, slippage, spread, fill kvalitet)
+
+#### ✔ Automatski povećava minimalni pomak za profit
+
+(konačno realne TP distance)
+
+#### ✔ Automatski penalizuje scoring
+
+(loši simboli gube prioritet)
+
+#### ✔ Automatski smanjuje risk
+
+(kada execution pritisak postane prevelik)
+
+#### ✔ Automatski blokira simbole
+
+(koji troše profit slippageom)
+
+#### ✔ Dashboard pokazuje full execution health u realnom vremenu
+
+#### ✔ Profili simbola se prilagođavaju na osnovu istorije
+
+---
+
+Ako želiš, sada možemo odmah da pređemo na:
+
+👉 **FAZU 16 — OPTIMIZATION & PARAMETER SEARCH (MULTI-RUN, AUTO-TUNING)**
+
+Samo reci:
+
+### **DA — kreni FAZA 16**

@@ -611,8 +611,8 @@
             this.tradesUrl = "/monitor/api/trades";
             this.storageUrl = "/monitor/api/storage";
             this.summaryUrl = "/monitor/api/summary";
-            this.universeUrl = "/monitor/api/universe";
-            this.symbolsUrl = "/monitor/api/symbols/Prime";
+            this.universeUrl = "/api/universe";
+            this.symbolsUrl = "/api/universe";
 
             this.wsConnected = false;
             this.lastUpdate = Date.now();
@@ -889,18 +889,21 @@
                 const data = await response.json();
                 console.log("📊 Symbols data received:", data);
 
-                if (data.ok && data.symbols) {
+                if (data.symbols) {
+                    // Convert symbols object to array with full metadata
+                    const symbolsArray = Object.values(data.symbols);
+
                     // Filter symbols by category on frontend
-                    let filteredSymbols = data.symbols;
+                    let filteredSymbols = symbolsArray;
                     if (category !== 'All') {
-                        filteredSymbols = data.symbols.filter(symbol =>
-                            symbol.category && symbol.category.toLowerCase() === category.toLowerCase()
+                        filteredSymbols = symbolsArray.filter(symbol =>
+                            symbol.category && symbol.category === category
                         );
                     }
                     console.log(`✅ Valid symbols data (${filteredSymbols.length} symbols for ${category}), rendering...`);
                     this.renderSymbols(filteredSymbols, category);
-                } else if (!data.ok) {
-                    console.error("❌ Symbols API error:", data.error);
+                } else {
+                    console.error("❌ Symbols API error: Invalid response format", data);
                 }
             } catch (error) {
                 console.error(`💥 Failed to fetch ${category} symbols:`, error);

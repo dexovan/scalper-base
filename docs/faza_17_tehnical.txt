@@ -1,0 +1,765 @@
+Evo kompletne, završene **FAZE 17 – FULL INTEGRATION TESTING & FAILOVER**, spremne da je ubaciš u svoj master dokument.
+
+---
+
+========================================
+**PHASE 17 – FULL INTEGRATION TESTING & FAILOVER**
+(„NE SME DA SE RASPADNE NIKAD I NIJE MU DOVOLJAN SAMO RESTART“)
+**FINAL SPEC – VEOMA DETALJNO**
+===============================
+
+Ovom fazom sistem dobija **otpornost na realne kvarove**:
+
+* Ako **modul padne** → sistem to vidi, loguje, pali **SAFE MODE** i pokušava **recovery**.
+* Ako **Bybit / mreža poludi** → sistem prelazi u **RISK_OFF / SAFE MODE**, ne pravi nove pozicije.
+* Ako se **proces sruši i ponovo podigne** → sistem zna:
+
+  * koje su **pozicije zaista otvorene na berzi**,
+  * koje su bile **lokalne state mašine**,
+  * šta treba da **zaboravi**, a šta da **resyncuje**.
+
+Uz to dobijaš i **Integration Test okvir** koji proverava **ceo tok**, ne samo pojedinačni modul.
+
+---
+
+## 0. CILJ FAZE 17
+
+1. Definisati **standardne failure scenarije**:
+
+   * Bybit / exchange problemi
+   * Mrežni problemi
+   * Interni problemi modula
+   * Proces / restart problemi
+
+2. Uvesti **Failover & Recovery Engine**:
+
+   * **SAFE MODE** (blokiraj nove pozicije dok se sistem ne stabilizuje)
+   * Automatski **RecoveryPlan** (resync pozicija, naloga, stanja)
+   * **Preživljavanje restarta** procesa preko `process_state.json`
+
+3. Napraviti **Integration Test Runner**:
+
+   * Vrti kompletne scenarije od:
+     **market data → feature → scoring → state → execution → risk → logging → dashboard**
+   * Proverava da ceo sistem radi kao celina
+
+4. Sve povezati sa:
+
+   * **Health sistemom**
+   * **Alert Engine-om (Phase 16)**
+   * **Dashboard-om** (Failover status + Integration test panel)
+
+---
+
+## 1. NOVI FAJLOVI / STRUKTURA
+
+### 1.1 Novi izvori koda
+
+```text
+src/failover/failoverManager.js
+src/failover/recoveryPlan.js
+src/failover/processStateStore.js
+
+src/tests/integration/integrationRunner.js
+src/tests/integration/scenarios/*.js
+```
+
+### 1.2 Novi data fajlovi
+
+```text
+data/system/process_state.json
+data/system/recovery_plan.json
+
+data/tests/integration_reports/
+  run-YYYYMMDD-HHmmss.json
+```
+
+### 1.3 Izmene postojećih modula
+
+* `src/monitoring/health.js`
+
+  * dodaje statuse za **failoverManager** i **recoveryEngine**
+* `src/execution/executionEngine.js`
+
+  * koristi **failoverManager** (`safeMode`, recovery sync sa Bybit-om)
+* `src/risk/riskEngine.js`
+
+  * zna za globalni **SAFE_MODE/RISK_OFF** posle failover event-a
+* `web/routes/api-dashboard.js`
+
+  * dodaje:
+
+    * `/api/failover/status`
+    * `/api/tests/integration/scenarios`
+    * `/api/tests/integration/run`
+    * `/api/tests/integration/runs`
+* `web/public/js/dashboard.js`
+
+  * dodaje:
+
+    * **Failover/Recovery status** panel
+    * **Integration Testing** panel (minimalna verzija)
+
+---
+
+## 2. KLASIFIKACIJA FAILURE-A (ŠTA MORAMO PODRŽATI)
+
+Definišemo standardne tipove problema – radi Health, Alert, Failover, Dashboard integracije.
+
+### 2.1 Bybit / Exchange problemi
+
+* `EXCHANGE_UNAVAILABLE`
+
+  * REST/WS 5xx, rate limit error, kompletna nedostupnost
+* `PRIVATE_WS_DISCONNECTED`
+
+  * gubitak private WS (positions/orders feed)
+* `PUBLIC_WS_DEGRADED`
+
+  * česti reconnect-i, nedolazak market podataka (tickers/orderbook/trades)
+* `NON_SYNC_STATE`
+
+  * lokalno stanje pozicija / naloga ≠ stvarno stanje sa Bybit-a
+
+### 2.2 Mrežni problemi
+
+* `LATENCY_TOO_HIGH`
+
+  * iz Phase 15 (latency monitor) – prosek iznad praga
+* `PACKET_LOSS / INTERMITTENT`
+
+  * WS stalno reconnect-uje; health = WARN/ERROR
+
+### 2.3 Interni problemi
+
+* `MODULE_CRASH`
+
+  * FeatureEngine / RegimeEngine / ScoringEngine / StateMachine / ExecutionEngine baci neuhvaćen exception
+* `DATA_CORRUPTION`
+
+  * nevalidan JSON u `data/` fajlovima, parsing error
+* `CONFIG_INVALID`
+
+  * nevalidan config posle **hot-reload-a** (Phase 14)
+
+### 2.4 Proces / sistem problemi
+
+* `PROCESS_RESTART`
+
+  * Node proces restartovan (PM2, sistem)
+* `UNEXPECTED_SHUTDOWN`
+
+  * nagli prekid bez graceful shutdown-a
+
+---
+
+## 3. PROCESS STATE STORE – `src/failover/processStateStore.js`
+
+**Svrha:**
+„Crna kutija“ procesa – u svakom trenutku sistem zna:
+
+* u kom je **runMode-u**
+* koji su **simboli aktivni**
+* koje su **pozicije** i **nalozi** bili otvoreni
+* kakav je bio **zadnji failover događaj**
+
+### 3.1 Format `data/system/process_state.json`
+
+```jsonc
+ProcessState {
+  "lastUpdate": "2025-11-18T15:20:30.000Z",
+  "pid": 12345,
+  "runMode": "SIM" | "DRY_RUN" | "LIVE" | "REPLAY",
+  "phase": "IDLE" | "STARTING" | "RUNNING" | "STOPPING" | "RECOVERING",
+
+  "activeSymbols": ["BTCUSDT", "AI16ZUSDT"],
+
+  "openPositionsSnapshot": [ PositionSnapshot, ... ],
+  "openOrdersSnapshot": [ OrderSnapshot, ... ],
+
+  "lastRecoveryAt": "2025-11-18T15:19:00.000Z" | null,
+  "lastFailure": FailureEvent | null
+}
+```
+
+#### PositionSnapshot (skraćena pozicija)
+
+```jsonc
+PositionSnapshot {
+  "symbol": "BTCUSDT",
+  "side": "LONG" | "SHORT",
+  "entryPrice": 91234.5,
+  "qty": 0.01,
+  "leverage": 5,
+  "pnlUnrealized": 1.23,
+  "exchangePositionId": "123456789" // ili null
+}
+```
+
+#### OrderSnapshot
+
+```jsonc
+OrderSnapshot {
+  "symbol": "BTCUSDT",
+  "side": "BUY" | "SELL",
+  "clientOrderId": "AISCLP-20251118-...",
+  "exchangeOrderId": "abcd-1234" | null,
+  "price": 91234.5,
+  "qty": 0.01,
+  "status": "NEW" | "PARTIALLY_FILLED" | "FILLED" | "CANCELED"
+}
+```
+
+#### FailureEvent (isti tip koristi i FailoverManager)
+
+```jsonc
+FailureEvent {
+  "timestamp": "2025-11-18T15:19:55.000Z",
+  "type": "EXCHANGE_UNAVAILABLE" | "PRIVATE_WS_DISCONNECTED" | ...,
+  "source": "EXECUTION_ENGINE" | "MARKET_DATA_SERVICE" | ...,
+  "message": "Private WS disconnected",
+  "details": {} // arbitrary object, npr { "reconnectAttempts": 3 }
+}
+```
+
+### 3.2 ProcessStateStore API
+
+```js
+ProcessStateStore {
+  load(): Promise<ProcessState | null>;
+  save(state: ProcessState): Promise<void>;
+  update(partial: Partial<ProcessState>): Promise<void>;
+}
+```
+
+**Integracija:**
+
+* Na **startu procesa**:
+
+  * `processStateStore.load()` → failoverManager koristi informaciju da odluči da li treba recovery u startu.
+* Periodično (npr. svakih 5–15 sekundi) ili posle važnih eventa:
+
+  * `update({ openPositionsSnapshot, openOrdersSnapshot, phase: "RUNNING" })`
+* Pre shutdown-a (ako je graceful):
+
+  * `update({ phase: "STOPPING" })`
+
+---
+
+## 4. RECOVERY PLAN – `src/failover/recoveryPlan.js`
+
+**Svrha:**
+Definisan, strukturan plan *šta tačno treba uraditi* kada se desi veliki problem.
+
+### 4.1 Format `data/system/recovery_plan.json`
+
+```jsonc
+RecoveryPlan {
+  "lastGeneratedAt": "2025-11-18T15:19:59.000Z",
+  "pendingSteps": [ RecoveryStep, ... ],
+  "completedSteps": [ RecoveryStep, ... ]
+}
+```
+
+#### RecoveryStep
+
+```jsonc
+RecoveryStep {
+  "id": "step-001",
+  "type": "RESYNC_POSITIONS" | "RESYNC_ORDERS" | "CLEAR_LOCAL_STATE" |
+           "DISABLE_TRADING" | "RESYNC_CONFIG" | "RESYNC_EXCHANGE_CONNECTION",
+  "status": "PENDING" | "RUNNING" | "DONE" | "FAILED",
+  "createdAt": "2025-11-18T15:20:00.000Z",
+  "startedAt": "2025-11-18T15:20:05.000Z",
+  "finishedAt": "2025-11-18T15:20:10.000Z",
+  "details": {
+    "symbols": ["BTCUSDT", "AI16ZUSDT"]
+  },
+  "errorMessage": null
+}
+```
+
+### 4.2 Ko generiše RecoveryPlan?
+
+* **FailoverManager**:
+
+  * Nakon `FailureEvent` (npr. `NON_SYNC_STATE`, `EXCHANGE_UNAVAILABLE`, `PROCESS_RESTART`),
+  * kreira niz `RecoveryStep` koraka u zavisnosti od tipa problema.
+
+Primer:
+
+* `NON_SYNC_STATE`:
+
+  * `RESYNC_POSITIONS`
+  * `RESYNC_ORDERS`
+  * `CLEAR_LOCAL_STATE`
+* `PROCESS_RESTART`:
+
+  * `READ_PROCESS_STATE` (implicitno, preko `processStateStore`)
+  * `RESYNC_POSITIONS`
+  * `RESYNC_ORDERS`
+
+---
+
+## 5. FAILOVER MANAGER – `src/failover/failoverManager.js`
+
+**Svrha:**
+Centralni „mozak“ za:
+
+* SAFE MODE / RISK_OFF,
+* generisanje i izvođenje Recovery plana,
+* komunikaciju sa Execution / Risk / Dashboard / Health / Alerts.
+
+### 5.1 FailoverState
+
+```jsonc
+FailoverState {
+  "safeMode": true | false,
+  "reason": "EXCHANGE_UNAVAILABLE" | "PRIVATE_WS_DISCONNECTED" | ... | null,
+  "since": "2025-11-18T15:19:55.000Z" | null,
+
+  "lastFailure": FailureEvent | null,
+  "recoveryInProgress": true | false,
+  "currentPlan": RecoveryPlan | null
+}
+```
+
+### 5.2 API
+
+```js
+FailoverManager {
+  init(processStateStore: ProcessStateStore): Promise<void>;
+
+  reportFailure(event: FailureEvent): Promise<void>;
+  getState(): FailoverState;
+
+  // Safe mode kontrola
+  isSafeMode(): boolean;
+  enterSafeMode(reason: string, failureEvent?: FailureEvent): Promise<void>;
+  exitSafeMode(): Promise<void>;
+
+  // Recovery
+  generateRecoveryPlan(event: FailureEvent): Promise<RecoveryPlan>;
+  runRecoveryPlan(): Promise<void>;
+}
+```
+
+### 5.3 Tipičan flow (primer)
+
+1. **ExecutionEngine** detektuje `PRIVATE_WS_DISCONNECTED`.
+2. Kreira `FailureEvent` i pozove:
+   `failoverManager.reportFailure(event)`.
+3. FailoverManager:
+
+   * postavlja `safeMode = true`,
+   * piše u `process_state.json` → `phase="RECOVERING"`,
+   * generiše `RecoveryPlan`:
+
+     * `RESYNC_EXCHANGE_CONNECTION`
+     * `RESYNC_POSITIONS`
+     * `RESYNC_ORDERS`
+   * piše `recovery_plan.json`
+   * kreće `runRecoveryPlan()`:
+
+     * izvršava svaki step redom
+4. Kada je sve OK:
+
+   * `safeMode = false`
+   * `phase = "RUNNING"`
+5. Ako neki korak padne:
+
+   * `status="FAILED"`
+   * `safeMode` ostaje `true`
+   * alertEngine (Phase 16) dobija CRIT alert
+
+### 5.4 Korišćenje `safeMode` u modulima
+
+**ExecutionEngine** pre submit naloga:
+
+```js
+if (failoverManager.isSafeMode()) {
+  // reject new entries
+  return {
+    success: false,
+    reason: "SAFE_MODE_ACTIVE"
+  };
+}
+```
+
+**StateMachine**:
+
+* i dalje može da prati signale i interno menja state,
+* ali **ne sme** da generiše `ORDER_REQUEST` događaje ka ExecutionEngine-u ako je `safeMode=true`.
+
+---
+
+## 6. RECOVERY KORACI – KAKO IZGLEDAM IMPLEMENTACIONO
+
+### 6.1 `RESYNC_POSITIONS`
+
+* Poziva Bybit private REST `GET /positions` (ili ekvivalent).
+* Upoređuje sa `ProcessState.openPositionsSnapshot`.
+* Ako **na berzi postoji**, a lokalno ne:
+
+  * kreira novu lokalnu poziciju (PositionState) označenu kao `"EXTERNAL_POSITION_RECOVERED"`.
+* Ako **lokalno postoji**, a na berzi ne:
+
+  * zatvara lokalnu (status CLOSED),
+  * upisuje specijalan event `"POSITION_CLOSED_BY_EXCHANGE"` (opciono).
+* Loguje `POSITION_RESYNC` u `data/events/<symbol>.jsonl`.
+
+### 6.2 `RESYNC_ORDERS`
+
+* Poziva Bybit `GET /open-orders`.
+* Upoređuje sa `openOrdersSnapshot`.
+* Ako order postoji na berzi, a lokalno ne:
+
+  * dodaje u lokalni tracking kao `"EXTERNAL_ORDER_RECOVERED"`.
+* Ako lokalno postoji, a na berzi ne:
+
+  * postavlja status `CANCELED` + event `"ORDER_MISSING_ON_EXCHANGE"`.
+
+### 6.3 `CLEAR_LOCAL_STATE_CACHE`
+
+* Resetuje:
+
+  * stateMachine internu mapu po simbolima,
+  * `SymbolStateContext` za simbole bez aktivnih pozicija,
+  * WATCH / ARM / COOLDOWN state, gde je safe.
+
+### 6.4 `DISABLE_TRADING`
+
+* U runtime:
+
+  * `tradingEnabled = false` (u configEngine / riskEngine sloju).
+* Execution / Risk:
+
+  * blokiraju sve nove **entry** naloge,
+  * dozvoljavaju **reduceOnly / closing**.
+
+### 6.5 `RESYNC_CONFIG`
+
+* Ako je `CONFIG_INVALID`:
+
+  * učitava **fallback config** (hardcoded default),
+  * loguje CRIT failure,
+  * `safeMode = true` dok admin ne popravi config.
+* AlertEngine dobija alert `CONFIG_INVALID`.
+
+---
+
+## 7. INTEGRATION TEST RUNNER – `src/tests/integration/integrationRunner.js`
+
+**Svrha:**
+Framework za **end-to-end** testove – ceo pipeline, ne samo module.
+
+### 7.1 IntegrationScenario – struktura scenarija
+
+Fajlovi: `src/tests/integration/scenarios/*.js` export-uju:
+
+```js
+IntegrationScenario {
+  id: string,
+  name: string,
+  description: string,
+
+  setupEnv(configEngine, replayEngine, backtestEngine, failoverManager): Promise<void>,
+  run(): Promise<IntegrationResult>,
+  teardown(): Promise<void>
+}
+```
+
+### 7.2 IntegrationResult
+
+```jsonc
+IntegrationResult {
+  "scenarioId": "SCENARIO_HAPPY_PATH",
+  "startedAt": "2025-11-18T15:00:00.000Z",
+  "finishedAt": "2025-11-18T15:05:00.000Z",
+  "success": true,
+  "errors": [],
+  "metrics": {
+    "tradesExecuted": 12,
+    "alertsCount": 0,
+    "healthErrors": 0
+  }
+}
+```
+
+### 7.3 IntegrationRunner API
+
+```js
+IntegrationRunner {
+  listScenarios(): IntegrationScenarioMeta[];
+  runScenario(id: string): Promise<IntegrationRunReport>;
+  runAll(): Promise<IntegrationRunReport[]>;
+}
+```
+
+```jsonc
+IntegrationScenarioMeta {
+  "id": "SCENARIO_1",
+  "name": "Happy path – SIM mode",
+  "description": "Full pipeline, no failures, 10–15 min run."
+}
+```
+
+```jsonc
+IntegrationRunReport {
+  "runId": "run-20251118-150000",
+  "scenarioId": "SCENARIO_1",
+  "result": IntegrationResult
+}
+```
+
+Svi run-ovi idu u:
+
+```text
+data/tests/integration_reports/run-YYYYMMDD-HHmmss.json
+```
+
+---
+
+## 8. TIPIČNI SCENARIJI ZA INTEGRACIONE TESTOVE
+
+### Scenario 1 – Happy path (SIM mode, full pipeline)
+
+* Mode: `SIM`
+* Market feed: real-time ili replay (DRY_RUN)
+* Cilj:
+
+  * market → feature → scoring → state → (sim) execution → risk → logging → dashboard
+* Kriterijumi:
+
+  * **nema ERROR-a** u Health snapshot-u,
+  * **nema CRIT alert-a**,
+  * izvršeno ≥ X SIM trejdova.
+
+### Scenario 2 – Private WS disconnect + recovery
+
+* Simulira `PRIVATE_WS_DISCONNECTED`.
+* Očekivano:
+
+  * FailoverManager: `safeMode=true`
+  * Generisan `RecoveryPlan` (resync),
+  * Nakon ponovnog spajanja + resync:
+
+    * `safeMode=false`.
+
+### Scenario 3 – Process restart recovery
+
+* Pre crash-a:
+
+  * ima bar 1 otvorenu poziciju + order (SIM ili LIVE).
+* Proces se ubije (PM2 restart).
+* Novi proces:
+
+  * `processStateStore.load()`
+  * generiše recovery plan,
+  * radi `RESYNC_POSITIONS` + `RESYNC_ORDERS`.
+* Kriterijumi:
+
+  * nema duplih pozicija,
+  * nema „zombi“ naloga,
+  * lokalno stanje ≈ exchange stanje.
+
+### Scenario 4 – CONFIG_INVALID
+
+* Podmetne se nevalidan `config.json` (npr. string umesto number).
+* Validator vraća error.
+* Očekivano:
+
+  * `FailureEvent: CONFIG_INVALID`,
+  * failoverManager: `safeMode=true`,
+  * AlertEngine: CRIT alert,
+  * configEngine koristi fallback config.
+
+### Scenario 5 – Slippage spike / execution problemi
+
+* Podesi SlippageTracker tako da simulira ekstremno loš slippage.
+* Očekivano:
+
+  * ExecutionQuality obara score,
+  * blockNewEntries za pogođene simbole,
+  * ExecutionEngine odbija nove naloge (s razlogom).
+
+### Scenario 6 – Panic close
+
+* Otvorene pozicije (SIM).
+* Pozoveš `panicCloseAll` preko Execution API-ja.
+* Očekivano:
+
+  * sve pozicije zatvorene,
+  * svi nalozi CANCEL/filled,
+  * trade log ima closing trades,
+  * riskEngine osvežio heat i dailyPnL.
+
+---
+
+## 9. DASHBOARD – FAILOVER & INTEGRATION PANEL
+
+### 9.1 API – Failover status
+
+`GET /api/failover/status`:
+
+```jsonc
+{
+  "timestamp": "2025-11-18T15:21:00.000Z",
+  "safeMode": true,
+  "reason": "EXCHANGE_UNAVAILABLE",
+  "since": "2025-11-18T15:19:55.000Z",
+  "lastFailure": FailureEvent | null,
+  "recoveryInProgress": true,
+  "currentPlan": RecoveryPlan | null
+}
+```
+
+### 9.2 API – Integration test
+
+* `GET /api/tests/integration/scenarios`
+
+  * vraća listu scena
+* `POST /api/tests/integration/run`
+
+  * body: `{ "scenarioId": "SCENARIO_1" }`
+  * vraća: `{ "runId": "...", "scenarioId": "...", "success": true/false }`
+* `GET /api/tests/integration/runs`
+
+  * lista poslednjih N run-ova
+* `GET /api/tests/integration/runs/:runId`
+
+  * detaljan `IntegrationRunReport`
+
+### 9.3 UI
+
+* Header:
+
+  * badge: **SAFE MODE: ON/OFF**
+
+    * zeleno = OFF
+    * crveno = ON
+* Failover panel:
+
+  * `safeMode`, `reason`, `since`
+  * poslednji `FailureEvent`
+  * Current RecoveryPlan:
+
+    * lista koraka sa statusom (PENDING/RUNNING/DONE/FAILED)
+* Integration tests panel:
+
+  * tabela scenarija (id, name, description, dugme „Run“)
+  * tabela poslednjih run-ova:
+
+    * runId, scenario, success (✅ / ❌), vreme, broj grešaka
+
+---
+
+## 10. HEALTH SNAPSHOT – DOPUNA ZA FAZU 17
+
+U `HealthSnapshot.services` dodaju se:
+
+```jsonc
+"failoverManager": {
+  "status": "OK" | "WARN" | "ERROR",
+  "lastUpdateAt": "2025-11-18T15:21:00.000Z",
+  "message": "Safe mode ON due to EXCHANGE_UNAVAILABLE"
+},
+"recoveryEngine": {
+  "status": "OK" | "WARN" | "ERROR",
+  "lastUpdateAt": "2025-11-18T15:21:00.000Z",
+  "message": "Recovery plan running, step=RESYNC_POSITIONS"
+}
+```
+
+Primer logike:
+
+* Ako `safeMode=true` duže od X minuta:
+
+  * `status="WARN"` (ili `"OK"` ako tako želiš za planirani safe mode)
+* Ako `recoveryInProgress=true` predugo (npr. > 5 min):
+
+  * `status="WARN"` ili `"ERROR"` uz poruku.
+
+---
+
+## 11. SPECIJALNI TEST SCENARIJI ZA FAILOVER
+
+### Test A – Soft exchange outage
+
+* Simulira 5xx za REST + drop za WS.
+* Očekivano:
+
+  * `FailureEvent: EXCHANGE_UNAVAILABLE`,
+  * `safeMode=true`,
+  * Recovery pokušaji reconnect-a (po stepovima),
+  * posle uspeha:
+
+    * resync,
+    * `safeMode=false`.
+
+### Test B – Lokalni modul crash
+
+* Npr. namerni `throw` u FeatureEngine (test build).
+* Očekivano:
+
+  * `FailureEvent: MODULE_CRASH`,
+  * AlertEngine → CRIT alert,
+  * `safeMode=true`,
+  * optional: restart modula (u Phase 18 kada se module razbiju u više procesa).
+
+### Test C – Restart bez pozicija
+
+* `process_state.json` postoji, ali `openPositionsSnapshot=[]`.
+* RecoveryPlan minimalan (bez RESYNC pozicija).
+* `safeMode` vrlo brzo može nazad na `false`.
+
+---
+
+## 12. FINALNI REZULTAT FAZE 17
+
+Posle FAZE 17 tvoj sistem:
+
+* **Prepoznaje kada je loše**:
+
+  * ima jasnu taksonomiju failure-a (exchange, mreža, modul, config, proces).
+* Ima **FailoverManager** koji:
+
+  * pali **SAFE MODE** kad god nešto ne štima,
+  * generiše **RecoveryPlan**,
+  * pokušava da vrati sistem u normalu,
+  * sve loguje (šta, kad, zašto, šta je urađeno).
+* Ima **ProcessStateStore**:
+
+  * sistem pamti stanje pre pada,
+  * posle restarta zna šta treba da resync-uje.
+* Imaš **Integration Test Runner**:
+
+  * testira kompletne scenarije,
+  * generiše **integration_reports**,
+  * daje ti jasnu sliku da li ceo pipeline radi.
+
+Na Dashboard-u dobijaš:
+
+* **Failover status panel** – uvek znaš da li je sistem u SAFE MODE-u i zašto.
+* **Integration Testing panel** – možeš da pokreneš kompleksne testove jednim klikom.
+
+U praksi:
+
+> Ako u 3 ujutru Bybit poludi, WS padne, modul baci exception – sistem **neće slepo nastaviti da otvara pozicije**, nego će:
+>
+> * ući u **SAFE MODE**,
+> * poslati **ALERT** (Phase 16),
+> * generisati **RecoveryPlan**,
+> * pokušati da se oporavi,
+> * tek kad je siguran, izaći iz SAFE MODE.
+
+To je tačka kada tvoj AI Scalper prestaje da bude „pametan ali krhak“ i postaje **robustan trading sistem** koji može da živi dugo bez ručnog babysitting-a.
+
+========================================
+**KRAJ DOKUMENTA – PHASE 17**
+=============================
+
+Ako želiš, sledeći korak može biti:
+
+* kratki **“Phase 0–17” overview** (1–2 strane samo rezime), ili
+* da krenemo odmah na **Phase 18 – multi-process / distribucija modula**, ako je to sledeće u tvom planu.

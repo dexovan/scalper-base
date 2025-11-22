@@ -1,0 +1,937 @@
+Krećemo. 🙂
+Ovo je **FAZA 14 – kompletan programersko-tehnički plan rada**, u istom stilu kao 06–13, ali fokus na *Config Engine + Profile Engine + hot-reload*.
+
+---
+
+## 0. ARHITEKTURA I CILJEVI FAZE 14
+
+Šta FAZA 14 uvodi u postojeći sistem:
+
+1. **Centralni Config Engine**
+
+   * Jedan izvor istine: `configEngine` (više ne importujemo “goli” `CONFIG` objekat svuda).
+   * **Validacija** (`configValidator + configSchema`).
+   * **Hot-reload** iz `config.json` bez restarta PM2.
+   * **Event sistem**: svi moduli mogu da se subscribe-uju na `"CONFIG_UPDATED"`.
+   * **Verzionisanje i diff** svakog update-a (`versionStore` + fajlovi u `data/system`).
+
+2. **Symbol Profile Engine (auto-update)**
+
+   * Dnevno analizira logove (vola, pump, spoof, execution, TP/SL, risk).
+   * Generiše `data/profiles/<symbol>.json`.
+   * Na osnovu profila pravi *dynamic overrides* (risk, tpsl, execution...) preko ConfigEngine-a.
+
+3. **Config & Profile UI (Dashboard)**
+
+   * Novi panel u dashboard-u za:
+
+     * pregled globalnog config-a,
+     * pregled per-category i per-symbol override-a,
+     * pregled symbol profila,
+     * edit + “Save & Hot Reload”.
+
+4. **Health & Logging proširenja**
+
+   * `health.js` zna za `configEngine` i `profileEngine`.
+   * Sve promene config-a idu u `config_history.jsonl` + `config_version.json`.
+
+---
+
+## 1. NOVI FAJLOVI / STRUKTURA
+
+### 1.1 Novi moduli
+
+```text
+src/config/configEngine.js
+src/config/configSchema.js
+src/config/configValidator.js
+src/config/hotReload.js
+src/config/versionStore.js
+
+src/profiles/profileEngine.js
+src/profiles/profileUpdater.js
+```
+
+### 1.2 Novi/izmenjeni web fajlovi
+
+```text
+web/routes/api-config.js         // novi API sloj za config & profiles
+web/public/js/config-panel.js    // frontend logika za config/profile panel
+web/views/partials/config-panel.ejs  // (ili deo dashboard.ejs)
+```
+
+### 1.3 Novi data fajlovi
+
+```text
+data/system/config_version.json       // poslednja primenjena verzija
+data/system/config_history.jsonl      // istorija svih izmena (JSON Lines)
+data/profiles/<symbol>.json          // per-symbol profil (auto generisan)
+```
+
+---
+
+## 2. CENTRALNI CONFIG MODEL (config.json v2)
+
+### 2.1 Novi canonical `config.json` format
+
+`config.json` (root projekta) dobija v2 format (primer):
+
+```json
+{
+  "version": 2,
+  "execution": {
+    "mode": "SIM",
+    "maxSlippagePct": 0.08,
+    "maxSpreadPct": 0.05,
+    "minNotionalUsd": 5,
+    "maxNotionalUsd": 1000
+  },
+  "risk": {
+    "maxRiskPerTradePct": 1,
+    "maxPortfolioHeatPct": 6,
+    "maxDailyLossPct": 6,
+    "maxOpenPositions": 5,
+    "maxOpenPositionsPerSymbol": 2
+  },
+  "scoring": {
+    "watchThresholdLong": 0.45,
+    "watchThresholdShort": 0.45,
+    "armThresholdLong": 0.6,
+    "armThresholdShort": 0.6,
+    "minScoreToTrade": 0.5
+  },
+  "tpsl": {
+    "tp1Factor": 0.38,
+    "tp2Factor": 0.75,
+    "breakEvenBufferPct": 0.015,
+    "trailingActivationPct": 0.22,
+    "trailingDistancePct": 0.11
+  },
+  "regime": {
+    "allowNewEntriesInPump": false,
+    "riskMultiplierInNewsDriven": 0.5
+  },
+  "feature": {
+    "imbalanceWeight": 1.0,
+    "deltaWeight": 1.0,
+    "spoofWeight": -0.7,
+    "volatilityWeight": -0.4,
+    "pumpWeight": -1.2
+  },
+  "categories": {
+    "Prime": {
+      "defaultLeverage": 5,
+      "minDepthLevels": 80
+    },
+    "Normal": {
+      "defaultLeverage": 10,
+      "minDepthLevels": 50
+    },
+    "Wild": {
+      "defaultLeverage": 15,
+      "minDepthLevels": 20
+    }
+  },
+  "perSymbolOverrides": {
+    "BTCUSDT": {
+      "riskMultiplier": 0.6,
+      "tpsl": { "tp1Factor": 0.25 }
+    }
+  }
+}
+```
+
+> Napomena: env promenljive (API ključevi, DB putanje…) i dalje ostaju u `.env` / PM2 ecosystem.
+> ConfigEngine samo radi *trading parametre i behavior*.
+
+---
+
+## 3. CONFIG SCHEMA & VALIDATOR
+
+### 3.1 `src/config/configSchema.js`
+
+Ovde se definiše JSON-schema stil (ali ručno, bez obaveznog paketa):
+
+* Tipovi, minimalne/max vrednosti, required polja.
+
+Primer (pseudo):
+
+```js
+export const CONFIG_SCHEMA = {
+  version: { type: "number", required: true },
+  execution: {
+    type: "object",
+    required: true,
+    fields: {
+      mode: { type: "string", allowed: ["SIM", "DRY_RUN", "LIVE"], required: true },
+      maxSlippagePct: { type: "number", min: 0, max: 5 },
+      maxSpreadPct: { type: "number", min: 0, max: 5 },
+      minNotionalUsd: { type: "number", min: 0 },
+      maxNotionalUsd: { type: "number", min: 0 }
+    }
+  },
+  // ...risk, scoring, tpsl, regime, feature, categories, perSymbolOverrides...
+};
+```
+
+### 3.2 `src/config/configValidator.js`
+
+API:
+
+```js
+export class ConfigValidator {
+  constructor(schema) { ... }
+
+  validate(rawConfig) {
+    /** @returns {ValidationResult} */
+  }
+}
+```
+
+`ValidationResult`:
+
+```ts
+type ValidationError = {
+  path: string;       // npr "tpsl.tp1Factor"
+  expected: string;   // npr "number > 0"
+  received: string;   // npr "string('abc')"
+  message: string;
+};
+
+type ValidationResult = {
+  valid: boolean;
+  errors: ValidationError[];
+};
+```
+
+* Ako `valid === false` → **ConfigEngine** NE primenjuje novi config, već:
+
+  * loguje kritičnu grešku (centralni logger),
+  * ostavlja prethodni validni snapshot.
+
+---
+
+## 4. CONFIG ENGINE – src/config/configEngine.js
+
+### 4.1 Interna struktura
+
+```ts
+type ConfigSnapshot = {
+  version: number;
+  execution: {...};
+  risk: {...};
+  scoring: {...};
+  tpsl: {...};
+  regime: {...};
+  feature: {...};
+  categories: {...};
+  perSymbolOverrides: {...};
+  // meta:
+  versionCounter: number;
+  loadedAt: string;
+};
+```
+
+Interno:
+
+```js
+import EventEmitter from "events";
+import { CONFIG_SCHEMA } from "./configSchema.js";
+import { ConfigValidator } from "./configValidator.js";
+import { VersionStore } from "./versionStore.js";
+
+class ConfigEngine extends EventEmitter {
+  #currentConfig = null;
+  #validator = new ConfigValidator(CONFIG_SCHEMA);
+  #versionStore = new VersionStore();
+
+  async load(initialPath = "config.json") { ... }
+  getConfig() { ... }
+  async update(partialConfig) { ... }
+  async hotReload() { ... }
+}
+```
+
+### 4.2 `load()`
+
+Koraci:
+
+1. `fs.readFile(config.json)` → parse JSON.
+2. Validacija preko `ConfigValidator`.
+3. Normalizacija (npr. default vrednosti za polja koja nisu required).
+4. Ugraditi **env overrides** (npr. `process.env.EXEC_MODE` može override-ovati `execution.mode` ako želimo).
+5. Postaviti `versionCounter = (previous?.versionCounter || 0) + 1`.
+6. Snapshhot sa `loadedAt = new Date().toISOString()`.
+7. Ako postoji stari config → `versionStore.recordChange(old, new)`.
+8. Upisati **config_version.json** (poslednja primena).
+9. Emitovati `"CONFIG_UPDATED"` sa `this.#currentConfig`.
+
+### 4.3 `getConfig()`
+
+* Vraća **deep clone** trenutnog snapshot-a (da niko ne menja direktno referencu).
+* Npr. `structuredClone` ili `JSON.parse(JSON.stringify(...))`.
+
+### 4.4 `update(partialConfig)`
+
+* Koristi se iz API-ja `/api/config/update`.
+* Koraci:
+
+  1. Merge: `newRaw = deepMerge(currentConfig, partialConfig)`.
+  2. Validacija `validate(newRaw)`.
+  3. Ako ok → kao `load()`: set snapshot, versionCounter, recordChange, emit.
+  4. Upisati nazad u `config.json` (formatiran `JSON.stringify(newRaw, null, 2)`).
+
+### 4.5 `hotReload()`
+
+* Čita trenutno stanje iz `config.json` i radi isti flow kao `load()`, ali:
+
+  * **NE** upisuje config.json (jer je već izmenjen).
+  * Samo validira, updejtuje snapshot i emit.
+
+### 4.6 Event sistem
+
+Moduli rade:
+
+```js
+import { configEngine } from "../config/configEngine.js";
+
+configEngine.on("CONFIG_UPDATED", (config) => {
+  // update lokalnih parametara
+});
+```
+
+Svi kritični parametri (thresholds, weights, risk limits…) više se ne čitaju direktno iz statičkog objekta, već iz `configEngine.getConfig()` ili keširanog snapshota.
+
+---
+
+## 5. HOT RELOAD WATCHER – src/config/hotReload.js
+
+### 5.1 Svrha
+
+* FS watcher koji prati `config.json`.
+* Na svaku promenu (save u editoru):
+
+  * pozove `configEngine.hotReload()`
+  * upiše `data/system/config_version.json`.
+
+### 5.2 Implementacija (pseudo)
+
+```js
+import fs from "fs";
+import path from "path";
+import { configEngine } from "./configEngine.js";
+import { VersionStore } from "./versionStore.js";
+
+export function startConfigHotReloadWatcher() {
+  const configPath = path.resolve("config.json");
+
+  fs.watch(configPath, { persistent: true }, async (eventType) => {
+    if (eventType !== "change") return;
+    try {
+      await configEngine.hotReload();
+    } catch (err) {
+      // log error via logger
+    }
+  });
+}
+```
+
+### 5.3 `data/system/config_version.json`
+
+Sadržaj:
+
+```json
+{
+  "appliedAt": "2025-11-18T07:00:00.000Z",
+  "versionCounter": 112,
+  "hash": "sha256-abcdef123...",
+  "changes": [
+    { "key": "tpsl.tp1Factor", "old": 0.38, "new": 0.42 },
+    { "key": "risk.maxDailyLossPct", "old": 6, "new": 5 }
+  ]
+}
+```
+
+Hash se može računati npr. `crypto.createHash("sha256").update(JSON.stringify(config)).digest("hex")`.
+
+---
+
+## 6. VERSION STORE – src/config/versionStore.js
+
+### 6.1 Svrha
+
+* Drži istoriju svih promena konfiguracije.
+* Diffuje `oldConfig` vs `newConfig` i upisuje u `config_history.jsonl`.
+
+### 6.2 API
+
+```js
+export class VersionStore {
+  constructor(historyPath = "data/system/config_history.jsonl") { ... }
+
+  recordChange(oldConfig, newConfig) { ... }
+
+  listVersions() { ... }      // može čitati ceo .jsonl
+  getVersion(versionCounter) { ... }
+}
+```
+
+### 6.3 Diff algoritam
+
+* Rekurzivno upoređivanje: generiše listu `ChangeItem`:
+
+```ts
+type ChangeItem = {
+  key: string;      // npr "tpsl.tp1Factor"
+  oldValue: any;
+  newValue: any;
+};
+```
+
+`VersionRecord`:
+
+```ts
+type VersionRecord = {
+  timestamp: string;
+  versionCounter: number;
+  changes: ChangeItem[];
+};
+```
+
+Upis:
+
+* Svaki `VersionRecord` kao jedan red u `config_history.jsonl`.
+
+---
+
+## 7. INTEGRACIJA CONFIGENGINE → MODULI
+
+Za svaki ključni modul dodajemo `onConfigUpdated` hook:
+
+### 7.1 FeatureEngine
+
+* U `src/features/featureEngine.js`:
+
+  * U init:
+
+    ```js
+    let featureConfig = configEngine.getConfig().feature;
+
+    configEngine.on("CONFIG_UPDATED", (cfg) => {
+      featureConfig = cfg.feature;
+      // recalibrate lokanih weights, thresholds
+    });
+    ```
+
+  * Pri računanju feature-a (imbalance, delta…) koristi `featureConfig` umesto hardkodiranih vrednosti.
+
+### 7.2 RegimeEngine
+
+* `src/regime/regimeEngine.js`:
+
+  * Čita `config.regime` (i eventualno `config.feature`).
+  * thresholds za PUMP, MANIPULATED, NEWS upravljani iz config-a ili profila.
+
+### 7.3 ScoringEngine
+
+* `src/scoring/scoringEngine.js`:
+
+  * Umesto `CONFIG.scoring`, koristi `scoringConfig = configEngine.getConfig().scoring`.
+  * Weight-ovi, `watchThreshold`, `armThreshold`, `minScoreToTrade` dolaze iz config-a i dinamički se ažuriraju.
+
+### 7.4 StateMachine
+
+* `src/state/stateMachine.js`:
+
+  * Može koristiti config za:
+
+    * `maxWatchCandidates`,
+    * `maxArmCandidates`,
+    * eventualno timeouts i cooldown dužine.
+
+### 7.5 RiskEngine
+
+* `src/risk/riskEngine.js`:
+
+  * čita `config.risk` i per-symbol overrides (uključujući profile riskAdjustment).
+
+### 7.6 TPSLEngine
+
+* `src/execution/tpslEngine.js`:
+
+  * TPSL parametri (`tp1Factor`, `tp2Factor`, `breakEvenBufferPct`…) isključivo iz `config.tpsl`, plus per-symbol override.
+
+### 7.7 ExecutionEngine
+
+* `src/execution/executionEngine.js` / `orderRouter.js`:
+
+  * `executionConfig = config.execution`.
+  * `maxSlippagePct`, `maxSpreadPct`, `minNotionalUsd`, `maxNotionalUsd` dobijaju hot-reload.
+
+Sve ove module dorađujemo tako da **nikad direktno ne importuju starog “static CONFIG”**, već uvek rade preko ConfigEngine-a.
+
+---
+
+## 8. SYMBOL PROFILE ENGINE – src/profiles/profileEngine.js
+
+### 8.1 Struktura profila
+
+`data/profiles/<symbol>.json`:
+
+```json
+{
+  "symbol": "BTCUSDT",
+  "lastUpdated": "2025-11-18T10:00:00.000Z",
+
+  "volatilityStats": {
+    "avg1sRange": 0.05,
+    "avg15sRange": 0.45,
+    "highVolaThresholdPct": 0.12
+  },
+
+  "pumpStats": {
+    "eventsPerDay": 1.2,
+    "avgPumpMagnitudePct": 4.5,
+    "pumpRiskMultiplier": 0.8
+  },
+
+  "spoofStats": {
+    "avgSpoofScore": 0.3,
+    "spoofRiskMultiplier": 1.3
+  },
+
+  "executionStats": {
+    "avgSlippagePct": 0.04,
+    "avgSpreadPct": 0.07,
+    "recommendedMinMoveForProfitPct": 0.18
+  },
+
+  "tpSlStats": {
+    "avgMFE": 0.9,
+    "avgMAE": 0.3,
+    "tpslMultiplier": 3.0
+  },
+
+  "riskAdjustment": {
+    "recommendedRiskPct": 0.6,
+    "recommendedLeverage": 4
+  }
+}
+```
+
+### 8.2 `profileEngine.js` API
+
+```js
+export class ProfileEngine {
+  async getProfile(symbol) { ... }         // učita iz data/profiles, ili null
+  async getAllProfiles() { ... }          // lista profila
+  async saveProfile(profile) { ... }      // overwrite JSON
+}
+```
+
+Koristi se i od `profileUpdater` i od `configEngine` (za integraciju overrides).
+
+---
+
+## 9. PROFILE UPDATER – src/profiles/profileUpdater.js
+
+### 9.1 Svrha
+
+* Batch job (dnevno) koji:
+
+  1. Čita logove:
+
+     * `data/trades_log/day-YYYY-MM-DD.jsonl`
+     * `data/events/<symbol>.jsonl` (pump, spoofing, regime)
+     * `data/orders/day-YYYY-MM-DD.jsonl`
+  2. Za svaki simbol računa:
+
+     * volatilityStats
+     * pumpStats
+     * spoofStats
+     * executionStats
+     * tpSlStats
+     * riskAdjustment
+  3. Upisuje novi profil: `data/profiles/<symbol>.json`.
+  4. Po želji generiše i *per-symbol override* koji se automatski ubacuje u config (ili se koristi u runtime-u bez menja config.json).
+
+### 9.2 API
+
+```js
+export class ProfileUpdater {
+  constructor(profileEngine, logger, configEngine) { ... }
+
+  async runDailyUpdate({ symbols, fromDate, toDate, force }) { ... }
+}
+```
+
+Unutar `runDailyUpdate`:
+
+* Za svaki `symbol`:
+
+  * Iz trade loga izračunati:
+
+    * `avgMFE`, `avgMAE`, `avgWin`, `avgLoss`.
+  * Iz event loga:
+
+    * broj PUMP eventova i prosek magnitude → `pumpRiskMultiplier`.
+    * prosečan `spoofingScore` → `spoofRiskMultiplier`.
+  * Iz order loga:
+
+    * `avgSlippagePct`, `avgSpreadPct`.
+  * Izvola (može se uzeti iz metrics ili raw market data):
+
+    * `avg1sRange`, `avg15sRange`, `highVolaThresholdPct`.
+
+* Iz tih statistika:
+
+  ```text
+  recommendedMinMoveForProfitPct = avgSlippagePct + avgSpreadPct + feeCost
+  tpslMultiplier = avgMFE / max(avgMAE, eps)
+  recommendedRiskPct = baseRisk * pumpRiskMultiplier * (1 / spoofRiskMultiplier)
+  recommendedLeverage = defaultLeverage * (1 - avgSlippagePct)
+  ```
+
+* Upis profila:
+
+  ```js
+  await profileEngine.saveProfile(profile);
+  ```
+
+### 9.3 Integracija sa ConfigEngine
+
+Dve opcije implementacije (preporuka: **meki override u runtime-u**, ne pisanje u config.json):
+
+1. Profil se koristi direktno u modulima:
+
+   * npr. RiskEngine kada vidi `symbol=BTCUSDT`, pita `profileEngine.getProfile(symbol)` i primeni `riskAdjustment`.
+2. Ili `profileUpdater` generiše `autoOverrides` i prosleđuje `configEngine.update({ perSymbolOverrides: {...} })`.
+
+Prva verzija je bezbednija (ne prlja config.json automatski).
+
+---
+
+## 10. API ZA CONFIG & PROFILE – web/routes/api-config.js
+
+### 10.1 GET `/api/config`
+
+Response:
+
+```json
+{
+  "timestamp": "2025-11-18T10:00:00.000Z",
+  "config": { ...ConfigSnapshot... },
+  "history": [
+    {
+      "timestamp": "2025-11-18T08:00:00.000Z",
+      "versionCounter": 110,
+      "changes": [...]
+    },
+    ...
+  ]
+}
+```
+
+* `history` može biti limitiran (npr. zadnjih 20 verzija).
+
+### 10.2 POST `/api/config/update`
+
+Body: `partialConfig` objekat, npr:
+
+```json
+{
+  "tpsl": { "tp1Factor": 0.42 },
+  "risk": { "maxDailyLossPct": 5 }
+}
+```
+
+Server:
+
+1. `configEngine.update(partialConfig)`.
+2. Ako ok → status 200, vrati novi snapshot.
+3. Ako error (validacija) → 400 + lista grešaka.
+
+### 10.3 GET `/api/profiles`
+
+Response:
+
+```json
+{
+  "timestamp": "...",
+  "profiles": [ SymbolProfile, ... ]
+}
+```
+
+### 10.4 GET `/api/profiles/:symbol`
+
+* Vraća jedan `SymbolProfile` ili 404.
+
+### 10.5 POST `/api/profiles/update`
+
+Body:
+
+```json
+{
+  "symbols": ["BTCUSDT","AI16ZUSDT"],
+  "force": true
+}
+```
+
+Server:
+
+* poziva `profileUpdater.runDailyUpdate({ symbols, force })`
+* vraća info koliko profila je ažurirano.
+
+---
+
+## 11. DASHBOARD CONFIG & PROFILE UI
+
+### 11.1 Partial view – `web/views/partials/config-panel.ejs`
+
+UI elementi:
+
+* **Global config panel:**
+
+  * Execution (mode, maxSlippagePct, maxSpreadPct…)
+  * Risk (maxRiskPerTradePct, maxDailyLossPct…)
+  * Scoring thresholds
+  * TPSL parametri
+
+* **Per-category:**
+
+  * Prime/Normal/Wild default leverage i minDepthLevels.
+
+* **Per-symbol:**
+
+  * drop-down za simbol
+  * prikaz override-a (npr. riskMultiplier, tpsl.tp1Factor)
+
+* **Profile view:**
+
+  * Za selektovani simbol:
+
+    * volatilityStats
+    * pumpStats
+    * spoofStats
+    * executionStats
+    * tpSlStats
+    * riskAdjustment
+  * Dugme “Recalculate profile now” → POST `/api/profiles/update`.
+
+* Dugme “Save & Hot Reload” → POST `/api/config/update`.
+
+### 11.2 Frontend JS – `web/public/js/config-panel.js`
+
+Glavne funkcije:
+
+```js
+const ConfigPanel = {
+  currentConfig: null,
+  currentProfiles: [],
+
+  async init() {
+    await this.loadConfig();
+    await this.loadProfiles();
+    this.bindEvents();
+  },
+
+  async loadConfig() {
+    const res = await fetch("/api/config");
+    const data = await res.json();
+    this.currentConfig = data.config;
+    renderConfigForm(data.config, data.history);
+  },
+
+  async loadProfiles() {
+    const res = await fetch("/api/profiles");
+    const data = await res.json();
+    this.currentProfiles = data.profiles;
+    renderProfileList(data.profiles);
+  },
+
+  async saveConfig(partialConfig) {
+    const res = await fetch("/api/config/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(partialConfig)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      this.currentConfig = data.config;
+      showSuccess("Config updated and hot-reloaded");
+    } else {
+      showError("Validation error: " + JSON.stringify(data.errors));
+    }
+  }
+};
+```
+
+Integracija u dashboard:
+
+* Novi tab: **“Config & Profiles”**.
+* U dashboard JS (Phase 11) u `init()` pozvati `ConfigPanel.init()` ako je korisnik admin.
+
+---
+
+## 12. HEALTH INTEGRACIJA
+
+`src/monitoring/health.js`:
+
+* Dodaje:
+
+```js
+healthSnapshot.services.configEngine = {
+  status: "OK" | "WARN" | "ERROR",
+  lastUpdateAt: configEngine.getConfig().loadedAt,
+  message: null // ili poslednja greška validacije
+};
+
+healthSnapshot.services.profileEngine = {
+  status: "OK" | "WARN",
+  lastUpdateAt: lastProfilesUpdateAt,
+  message: "Profiles updated for 42 symbols" // npr
+};
+```
+
+Dashboard (Phase 11):
+
+* Global health panel prikazuje:
+
+  * `ConfigEngine: OK vCounter=123`
+  * `ProfileEngine: OK (42 symbols, last update 2025-11-18 03:00)`.
+
+---
+
+## 13. PLAN IMPLEMENTACIJE – REDOSLED KORAKA
+
+**Korak 1 – Skeleton**
+
+* Napraviti nove fajlove u `src/config` i `src/profiles` sa praznim klasama & TODO komentarima.
+* Dodati minimalni `ConfigEngine` koji samo učita `config.json` i expose-uje `getConfig()` bez validacije.
+
+**Korak 2 – Config schema + validator**
+
+* Implementirati `CONFIG_SCHEMA` i `ConfigValidator`.
+* Uvezati u `ConfigEngine.load()` i `update()`.
+
+**Korak 3 – VersionStore + config_history**
+
+* Implementirati diff i pisanje u `config_history.jsonl`.
+* Uvesti `versionCounter` i `config_version.json`.
+
+**Korak 4 – Hot reload watcher**
+
+* Implementirati `startConfigHotReloadWatcher()` i pozvati je iz glavnog entrypoint-a (npr. `index.js` ili `monitorApi.js`).
+
+**Korak 5 – Refaktor modula na ConfigEngine**
+
+* Postepeno:
+
+  * Feature → Regime → Scoring → State → Risk → TPSL → Execution.
+* Izbaciti direktnu upotrebu starog `CONFIG` objekta.
+
+**Korak 6 – ProfileEngine + ProfileUpdater**
+
+* Implementirati profile format, učitavanje / snimanje.
+* Implementirati minimalni `ProfileUpdater` koji radi:
+
+  * basic volatility + avg slippage/spread + osnovni riskAdjustment.
+
+**Korak 7 – Integracija profila u runtime**
+
+* RiskEngine: koristi `riskAdjustment` ako profil postoji.
+* TPSL: koristi `tpSlStats.tpslMultiplier` / `recommendedMinMoveForProfitPct` ako ima smisla.
+
+**Korak 8 – API config/profile**
+
+* `web/routes/api-config.js` sa endpoint-ima:
+
+  * `/api/config`
+  * `/api/config/update`
+  * `/api/profiles`
+  * `/api/profiles/:symbol`
+  * `/api/profiles/update`.
+
+**Korak 9 – Dashboard UI**
+
+* `config-panel.ejs` + `config-panel.js`.
+* Integracija u glavni dashboard (novi tab).
+
+**Korak 10 – Health & test scenariji**
+
+* Dodati config/profile u `health`.
+* Proći kroz test scenarije ispod.
+
+---
+
+## 14. TEST SCENARIJI (CHECKLIST)
+
+1. **Valid config load**
+
+   * ispravan `config.json` → `configEngine.load()`
+   * health: `configEngine: OK`.
+
+2. **Invalid config (type error)**
+
+   * stavi `tpsl.tp1Factor: "abc"`
+   * `hotReload` mora odbiti novi config; ostaje stari; health pokazuje `WARN/ERROR`.
+
+3. **Hot reload**
+
+   * promeni `tpsl.tp1Factor` u fajlu.
+   * Event `"CONFIG_UPDATED"` se emituje.
+   * TPSL modul koristi novu vrednost bez restarta PM2.
+
+4. **Per-symbol override**
+
+   * U config.json dodaj `perSymbolOverrides.BTCUSDT.riskMultiplier = 0.6`.
+   * RiskEngine za BTCUSDT računa manji risk (npr. 60% defaulta).
+
+5. **Profile auto-update**
+
+   * napravi test trade log i events za 1 simbol.
+   * pokreni `ProfileUpdater.runDailyUpdate({ symbols: ["BTCUSDT"], force: true })`.
+   * proveri `data/profiles/BTCUSDT.json`.
+
+6. **Profil + risk**
+
+   * nakon update-a profila, RiskEngine treba da uzme `riskAdjustment.recommendedRiskPct` u obzir.
+
+7. **Dashboard config editor**
+
+   * otvori tab, promeni neku vrednost, klikni Save.
+   * API `/api/config/update` vrati novi config, event se širi, moduli vide novu vrednost.
+
+8. **History**
+
+   * posle više promena, `config_history.jsonl` ima više redova,
+   * `/api/config` vraća history list.
+
+---
+
+## 15. REZULTAT FAZE 14
+
+Posle implementacije ove faze:
+
+* **Config je živ**:
+  menjanje parametara = edit + Save → ceo engine dobija nove vrednosti u realtime-u, bez restarta.
+
+* **Sve je validirano i verzionisano**:
+  nema random grešaka zbog pogrešnog tipa; sve promene su auditovane.
+
+* **Sistem se adaptira po simbolu**:
+  BTC, AI16Z, memecoini – svako dobija svoj risk, TP/SL i execution ponašanje na osnovu istorijskih podataka.
+
+* **Dashboard ti daje moć kontrole**:
+  podešavaš risk, scoring, tpsl, execution…
+  vidiš profile statistiku i istoriju config verzija.
+
+* **Spremno za budući ML layer**:
+  Config + Profiles su struktuisani, mereni i logovani – savršena baza da kasnije AI predlaže optimalne parametre.
+
+---
+
+Ako želiš, sledeći korak može biti:
+
+* da zajedno napravimo **konkretan skeleton koda za `configEngine.js`** (sa realnim importima i exportima) ili
+* da uradimo **plan FAZE 15** ako je već definisana.

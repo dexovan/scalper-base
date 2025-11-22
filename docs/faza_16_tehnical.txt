@@ -1,0 +1,441 @@
+Perfektno.
+Sada ti isporučujem **FAZU 16 – ALERTI, NOTIFIKACIJE & LJUDSKA KONTROLA** u **završnom, ultra-detaljnom, produkcijskom formatu**, potpuno kompatibilnu sa tvojim AI Scalper sistemom (Faze 1–15).
+
+---
+
+# ✅ **PHASE 16 – ALERTI, NOTIFIKACIJE & LJUDSKA KONTROLA**
+
+**(TELEGRAM / DASHBOARD ALERT CENTER / SYSTEM OVERSIGHT)**
+
+Ova faza daje tvom AI Scalper-u *glas i ljudski kontrolni sloj*.
+Upravo ovde tvoj sistem postaje „real-time upozoravajući trading asistent“.
+
+On:
+
+* vidi PUMP / NEWS / MANIPULATION
+* vidi RISK_OFF / GLOBAL_PANIC / DAILY_LOSS_LIMIT_HIT
+* vidi EXECUTION FAILURE / SLIPPAGE SPIKES
+* vidi HEALTH WARNINGS (WS reconnect loop, marketData freeze…)
+* na sve to šalje *pametne, filtrirane, rate-limited* alert-e na Telegram + Dashboard
+* ti dobijaš brzu sliku situacije i kontrolu
+
+---
+
+# 0️⃣ CILJ FAZE 16
+
+Implementirati kompletan ALERT SISTEM koji:
+
+### **1. Prima događaje iz svih kritičnih modula**
+
+* Risk Engine (loss limit, heat, panic)
+* Regime Engine (pump, news-driven, manipulation)
+* Execution Engine (fail, slippage panic, panic-close)
+* Health Monitor (services WARN/ERROR)
+* Config Engine (invalid load)
+* Replay / Backtest (error/run completion — opcionalno)
+
+### **2. Odlučuje da li se šalje alert**
+
+Na osnovu:
+
+* nivoa (INFO / WARN / CRIT)
+* kategorije (RISK / PUMP / EXECUTION / HEALTH / SYSTEM)
+* rate limita
+* korisničkih preference (alert_config.json)
+
+### **3. Šalje preko Telegram kanala**
+
+* potpuno formatirane profesionalne poruke
+
+### **4. Prikazuje sve u Dashboard Alert Center**
+
+* lista alert-a
+* ack sistem
+* filteri
+* badge u header-u
+* sistemska istorija
+
+### **5. Integracija u celi trading engine**
+
+Svaki modul sada može emitovati AlertEvent.
+
+---
+
+# 1️⃣ STRUKTURA KODA KOJU FAZA 16 UVODI
+
+## **1.1 Novi fajlovi**
+
+```
+src/alerts/
+  alertEngine.js
+  alertConfig.js
+  alertRouter.js
+  alertTypes.js
+
+  channels/
+    telegramChannel.js
+    emailChannel.js  (stub)
+```
+
+## **1.2 Novi data fajlovi**
+
+```
+data/alerts/alert_log.jsonl
+data/system/alert_config.json
+```
+
+## **1.3 Izmene u postojeću arhitekturu**
+
+* **riskEngine → emit risk alert-e**
+* **regimeEngine → emit pump/news/manipulation alert-e**
+* **executionEngine → emit panic/slippage/execution-failure alert-e**
+* **healthMonitor → emit SERVICE_WARN / SERVICE_DOWN alert-e**
+* **dashboard API → dodaje alert rute**
+* **dashboard UI → dobija “Alert Center”**
+
+---
+
+# 2️⃣ TIPOVI ALERTA (STANDARDIZACIJA)
+
+```
+AlertEvent {
+  id: string,
+  timestamp: string,
+
+  level: "INFO" | "WARN" | "CRIT",
+  category: "RISK" | "PUMP" | "NEWS" | "EXECUTION" | "HEALTH" | "SYSTEM",
+  source: "REGIME_ENGINE" | "RISK_ENGINE" | "EXECUTION_ENGINE" | ...,
+  code: string,     // npr "DAILY_LOSS_LIMIT_HIT"
+
+  message: string,
+  details: object,
+
+  symbol?: string | null,
+  runMode: string, // LIVE | SIM | DRY_RUN | REPLAY
+
+  acknowledged: boolean,
+  channelsDispatched: string[]
+}
+```
+
+---
+
+# 3️⃣ ALERT CONFIG (kontrola ponašanja sistema)
+
+`data/system/alert_config.json`
+
+### Globalni deo:
+
+```
+{
+  "global": {
+    "enabled": true,
+    "minLevel": "WARN",
+    "defaultChannels": ["TELEGRAM"],
+    "rateLimit": {
+      "maxAlertsPerMinute": 10,
+      "maxAlertsPerHour": 200
+    }
+  },
+```
+
+### perCategory deo:
+
+```
+  "perCategory": {
+    "PUMP": {
+      "enabled": true,
+      "minLevel": "INFO",
+      "channels": ["DASHBOARD"]
+    },
+    "RISK": {
+      "enabled": true,
+      "minLevel": "WARN",
+      "channels": ["TELEGRAM"]
+    }
+  },
+```
+
+### perCode deo:
+
+```
+  "perCode": {
+    "DAILY_LOSS_LIMIT_HIT": {
+      "enabled": true,
+      "minLevel": "CRIT",
+      "channels": ["TELEGRAM"]
+    }
+  }
+}
+```
+
+---
+
+# 4️⃣ ALERT ENGINE
+
+Ovo je mozak.
+
+```
+AlertEngine {
+  init(alertConfig)
+  handleAlert(event)
+  getRecentAlerts(limit)
+  getConfig()
+  updateConfig(partialConfig)
+}
+```
+
+### Funkcionalnosti:
+
+✔ Filtrira alert-e
+✔ Primjenjuje minLevel
+✔ Gleda perCategory i perCode override
+✔ Rate limiting
+✔ Poziva alertRouter
+✔ Upisuje u alert_log.jsonl
+✔ Drži u memoriji poslednjih N alert-a
+✔ Šalje Dashboard-u
+
+---
+
+# 5️⃣ TELEGRAM KANAL
+
+## 5.1 ENV promenljive
+
+```
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+## 5.2 Format poruke (kompletan, profesionalan)
+
+### **CRIT / RISK**
+
+```
+🚨 [CRIT][RISK] DAILY_LOSS_LIMIT_HIT
+
+Mode: LIVE
+Equity: 12,847.50 USDT
+Daily PnL: -7.2% (limit: 6.0%)
+
+Akcija: Trading je deaktiviran (RISK_OFF).
+
+Time: 2025-11-18 14:23:45 UTC
+Source: RISK_ENGINE
+```
+
+### **INFO / PUMP**
+
+```
+🔥 [INFO][PUMP] PUMP_DETECTED
+
+Symbol: AIUSDT
+Intensity: 0.87
+Regime: PUMPING
+Action: New LONG entries disabled.
+
+Time: ...
+```
+
+## 5.3 Sve je već spremno i formatirano (bez klikanja, čist tekst).
+
+---
+
+# 6️⃣ KAKO MODULI EMITUJU ALERT-E
+
+## **6.1 Risk Engine**
+
+**DAILY_LOSS_LIMIT_HIT**
+**PORTFOLIO_HEAT_HIGH**
+**GLOBAL_RISK_OFF**
+**PAPER_HANDS_PROTECTION_TRIGGERED**
+
+## **6.2 Regime Engine**
+
+**PUMP_DETECTED**
+**NEWS_SPIKE**
+**MANIPULATION_DETECTED**
+**GLOBAL_PANIC**
+
+## **6.3 Execution Engine**
+
+**EXECUTION_FAILURE**
+**PANIC_CLOSE_TRIGGERED**
+**SLIPPAGE_PANIC_SPIKE**
+
+## **6.4 Health Monitor**
+
+**SERVICE_DOWN**
+**SERVICE_WARN**
+**MARKET_DATA_STALL**
+**WS_RECONNECT_LOOP**
+
+---
+
+# 7️⃣ DASHBOARD – ALERT CENTER
+
+U sidebar-u → nova sekcija:
+
+```
+🔔 Alert Center
+```
+
+## 7.1 Elementi:
+
+* tabela alert-a
+* kolone:
+
+  * vreme
+  * level (boje)
+  * kategorija
+  * kod
+  * simbol
+  * status (ack / unack)
+* filteri:
+
+  * level: INFO/WARN/CRIT
+  * kategorija
+  * simbol
+* akcije:
+
+  * “Acknowledge selected”
+  * “Mark all as read”
+
+## 7.2 Badge u header-u
+
+Ako ima 12 alert-a neack →
+na ikoni zvona stoji **12** (max prikazano 99).
+
+---
+
+# 8️⃣ API ENDPOINTI
+
+### **GET /api/alerts/recent**
+
+```
+{
+  timestamp,
+  alerts: [...]
+}
+```
+
+### **POST /api/alerts/acknowledge**
+
+```
+{
+  ids: [...]
+}
+```
+
+### **GET /api/alerts/config**
+
+### **POST /api/alerts/config**
+
+* validacija
+* merge
+* snimanje u alert_config.json
+* hot reload
+
+---
+
+# 9️⃣ LOGGING ALERTA
+
+`data/alerts/alert_log.jsonl`
+
+Svaki alert → jedan JSON red.
+
+Retention (Phase 12 proširenje):
+
+```
+CONFIG.retention.alertsDays = 30
+```
+
+---
+
+# 🔟 HEALTH INTEGRACIJA
+
+Health snapshot dobija:
+
+```
+alertEngine: { status, lastUpdateAt }
+telegramChannel: { status, lastUpdateAt, message }
+```
+
+Primer ERROR stanja:
+
+* Telegram token nedostaje
+* Telegram ne prima poruke
+* alertEngine ne može upisati alert log
+
+---
+
+# 1️⃣1️⃣ TEST SCENARIJI (PRODUCTION-READY)
+
+### **Test risk engine**
+
+* simuliraj daily loss limit
+* proveri telegram + dashboard
+
+### **Test pump alert**
+
+* generiši pump signal
+* ide samo na dashboard (prema config-u)
+
+### **Test rate limit**
+
+* 10 alert-a za 3 sekunde
+* vidi da samo 3 stignu
+
+### **Test health alert**
+
+* sruši WS konekciju
+* HealthMonitor šalje SERVICE_DOWN alert
+
+### **Test ack sistem**
+
+* naklikaj acknowledge
+* badge nestaje
+* alert.marked = true
+
+---
+
+# 1️⃣2️⃣ FINALNI REZULTAT FAZE 16
+
+Posle ove faze tvoj sistem:
+
+### ✔ ima profesionalan „alert pipeline“
+
+(ne postoji scalp bot sa ovakvom arhitekturom)
+
+### ✔ zna da ti javlja čim se desi:
+
+* pump
+* slippage spike
+* daily loss limit
+* panic-close
+* WS reconnect storm
+* marketData freeze
+* health degradacija
+
+### ✔ sve je vizualizovano u dashboard-u
+
+### ✔ Telegram te upozorava odmah
+
+(bez kašnjenja, rate-limited, formatirano)
+
+### ✔ moći ćeš u sledećim fazama da dodaš i:
+
+* PANIC CLOSE putem Telegram komande
+* Pause/Resume komande
+* Real-time control via chat
+
+---
+
+Ako želiš, odmah mogu da nastavim sa:
+
+👉 **PHASE 17 – PANIC ENGINE & SELF-RECOVERY**
+(tvoj bot dobija „self-healing“, panic states, safety circuits)
+
+Samo reci:
+
+**DA — kreni FAZU 17**
