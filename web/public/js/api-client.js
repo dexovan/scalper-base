@@ -739,23 +739,35 @@ export class DashboardAPI {
             // Get health status for preview
             const healthResponse = await fetch('/api/microstructure/health');
             if (healthResponse.ok) {
-                const healthData = await healthResponse.json();
+                const data = await healthResponse.json();
+                debugLog("🔍 Microstructure stats data:", data);
+
+                // API returns: { ok: true, health: { status, activeSymbols, healthySymbols }, symbols: [...] }
+                const health = data.health || {};
+                const symbols = data.symbols || [];
+
+                // Calculate events per second from trade counts
+                const totalTrades = symbols.reduce((sum, s) => sum + (s.tradesCount || 0), 0);
+                const eventsPerSecond = Math.floor(totalTrades / 60); // Rough estimate
 
                 // Update preview cards (new dashboard)
                 const symbolsPreview = document.getElementById('micro-symbols-preview');
                 const ratePreview = document.getElementById('micro-rate-preview');
                 const healthPreview = document.getElementById('micro-health-preview');
 
-                if (symbolsPreview && healthData.activeSymbols !== undefined) {
-                    symbolsPreview.textContent = healthData.activeSymbols;
+                if (symbolsPreview) {
+                    symbolsPreview.textContent = health.activeSymbols || 0;
                 }
-                if (ratePreview && healthData.eventsPerSecond !== undefined) {
-                    ratePreview.textContent = healthData.eventsPerSecond;
+                if (ratePreview) {
+                    ratePreview.textContent = eventsPerSecond;
                 }
                 if (healthPreview) {
-                    const isHealthy = healthData.status === 'healthy';
-                    healthPreview.textContent = isHealthy ? 'OK' : 'Warn';
-                    healthPreview.className = isHealthy ? 'text-lg font-bold text-green-400' : 'text-lg font-bold text-amber-400';
+                    const status = (health.status || '').toUpperCase();
+                    const isHealthy = status === 'HEALTHY';
+                    healthPreview.textContent = isHealthy ? 'OK' : (status === 'DEGRADED' ? 'Warn' : 'Err');
+                    healthPreview.className = isHealthy ?
+                        'text-lg font-bold text-green-400' :
+                        (status === 'DEGRADED' ? 'text-lg font-bold text-amber-400' : 'text-lg font-bold text-red-400');
                 }
 
                 // OLD dashboard IDs (keep for compatibility if old dashboard still exists)
@@ -765,14 +777,16 @@ export class DashboardAPI {
                 const oldHealth = document.getElementById('micro-health');
                 const oldHealthDetails = document.getElementById('micro-health-details');
 
-                if (oldSymbolsCount) oldSymbolsCount.textContent = healthData.activeSymbols || '-';
-                if (oldSymbolsStatus) oldSymbolsStatus.textContent = `${healthData.lastProcessed || 0} active`;
-                if (oldDataRate) oldDataRate.textContent = `${healthData.eventsPerSecond || 0} evt/s`;
+                if (oldSymbolsCount) oldSymbolsCount.textContent = health.activeSymbols || '-';
+                if (oldSymbolsStatus) oldSymbolsStatus.textContent = `${health.healthySymbols || 0} active`;
+                if (oldDataRate) oldDataRate.textContent = `${eventsPerSecond} evt/s`;
                 if (oldHealth) {
-                    oldHealth.textContent = healthData.status === 'healthy' ? 'Good' : 'Warning';
+                    const status = (health.status || '').toUpperCase();
+                    oldHealth.textContent = status === 'HEALTHY' ? 'Good' : 'Warning';
                 }
                 if (oldHealthDetails) {
-                    oldHealthDetails.textContent = healthData.status === 'healthy' ? 'All systems operational' : 'Check system logs';
+                    const status = (health.status || '').toUpperCase();
+                    oldHealthDetails.textContent = status === 'HEALTHY' ? 'All systems operational' : 'Check system logs';
                 }
             }
 
