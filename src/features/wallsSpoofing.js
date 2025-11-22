@@ -166,20 +166,33 @@ class WallsSpoofingEngine {
 
         if (avgQuantity === 0) return [];
 
-        // DEBUG: Log detection attempt periodically
-        if (!this._wallDetectionLogged) {
-            this._wallDetectionLogged = true;
-            console.log(`[WALLS DEBUG] Detection attempt on ${side} side:`, {
+        // DEBUG: Log detection attempt with more frequency for diagnostics
+        if (!this._wallDetectionCount) this._wallDetectionCount = 0;
+        this._wallDetectionCount++;
+
+        // Log every 100 calls to see actual data being processed
+        if (this._wallDetectionCount % 100 === 1) {
+            const sample = entries.slice(0, 5).map(([p, q]) => ({
+                price: parseFloat(p),
+                qty: parseFloat(q),
+                usd: parseFloat(p) * parseFloat(q),
+                strength: parseFloat(q) / avgQuantity
+            }));
+            console.log(`[WALLS DEBUG ${this._wallDetectionCount}] ${side} side:`, {
                 levels: entries.length,
-                avgQuantity,
+                avgQuantity: avgQuantity.toFixed(4),
                 currentPrice,
                 wallMultiplier: this.config.wallMultiplier,
                 minWallSize: this.config.minWallSize,
-                sample: entries.slice(0, 3).map(([p, q]) => ({ price: p, qty: q, usd: p * q }))
+                maxDistanceFromPrice: this.config.spoofing.maxDistanceFromPrice,
+                sample
             });
         }
 
         // Find walls (quantities significantly above average)
+        let wallCandidatesChecked = 0;
+        let wallCandidatesFailed = { strength: 0, minSize: 0, distance: 0 };
+
         for (let i = 0; i < Math.min(entries.length, 20); i++) { // Check top 20 levels
             const [price, qty] = entries[i];
             const priceNum = parseFloat(price);
@@ -188,25 +201,45 @@ class WallsSpoofingEngine {
             // Check if this qualifies as a wall
             const strength = qtyNum / avgQuantity;
             const usdValue = qtyNum * priceNum;
+            const distancePercent = Math.abs(priceNum - currentPrice) / currentPrice;
 
-            if (strength >= this.config.wallMultiplier && usdValue >= this.config.minWallSize) {
-                // Calculate distance from current price
-                const distancePercent = Math.abs(priceNum - currentPrice) / currentPrice;
+            wallCandidatesChecked++;
 
-                // Only track walls within reasonable distance
-                if (distancePercent <= this.config.spoofing.maxDistanceFromPrice) {
-                    walls.push({
-                        side,
-                        price: priceNum,
-                        size: qtyNum,
-                        usdValue,
-                        strength,
-                        distanceFromPrice: distancePercent,
-                        level: i,
-                        timestamp: Date.now()
-                    });
+            if (strength >= this.config.wallMultiplier) {
+                if (usdValue >= this.config.minWallSize) {
+                    // Only track walls within reasonable distance
+                    if (distancePercent <= this.config.spoofing.maxDistanceFromPrice) {
+                        walls.push({
+                            side,
+                            price: priceNum,
+                            size: qtyNum,
+                            usdValue,
+                            strength,
+                            distanceFromPrice: distancePercent,
+                            level: i,
+                            timestamp: Date.now()
+                        });
+                    } else {
+                        wallCandidatesFailed.distance++;
+                    }
+                } else {
+                    wallCandidatesFailed.minSize++;
                 }
+            } else {
+                wallCandidatesFailed.strength++;
             }
+        }
+
+        // Log wall detection results periodically
+        if (walls.length > 0 || this._wallDetectionCount % 100 === 1) {
+            console.log(`[WALLS DEBUG ${this._wallDetectionCount}] ${side} result:`, {
+                wallsFound: walls.length,
+                candidatesChecked: wallCandidatesChecked,
+                failedStrength: wallCandidatesFailed.strength,
+                failedMinSize: wallCandidatesFailed.minSize,
+                failedDistance: wallCandidatesFailed.distance,
+                walls: walls.slice(0, 2).map(w => ({ price: w.price, usd: w.usdValue.toFixed(2), strength: w.strength.toFixed(2) }))
+            });
         }
 
         // Sort by strength (strongest first)
