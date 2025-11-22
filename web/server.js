@@ -80,6 +80,9 @@ app.set("views", path.join(__dirname, "views"));
 app.use(expressLayouts);
 app.set("layout", "layout");
 
+// Ignore favicon requests to prevent 404 errors in console
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
