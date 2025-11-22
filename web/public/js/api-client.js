@@ -1066,16 +1066,21 @@ export class DashboardAPI {
                 const symbolsDetailEl = document.getElementById('metric-symbols-detail');
                 const dataRateEl = document.getElementById('metric-data-rate');
 
-                // Handle different response structures
-                const activeSymbols = micro.activeSymbols || micro.data?.activeSymbols || 0;
-                const lastProcessed = micro.lastProcessed || micro.data?.lastProcessed || 0;
-                const eventsPerSecond = micro.eventsPerSecond || micro.data?.eventsPerSecond || 0;
+                // API returns: { ok: true, health: { activeSymbols, healthySymbols }, symbols: [...] }
+                const healthData = micro.health || {};
+                const activeSymbols = healthData.activeSymbols || 0;
+                const healthySymbols = healthData.healthySymbols || 0;
+
+                // Get symbols data for metrics
+                const symbolsData = micro.symbols || [];
+                const totalTrades = symbolsData.reduce((sum, s) => sum + (s.tradesCount || 0), 0);
+                const eventsPerSecond = Math.floor(totalTrades / 60); // Rough estimate
 
                 if (activeSymbolsEl) {
                     activeSymbolsEl.textContent = activeSymbols;
                 }
                 if (symbolsDetailEl) {
-                    symbolsDetailEl.textContent = `${lastProcessed} tracking`;
+                    symbolsDetailEl.textContent = `${healthySymbols} tracking`;
                 }
                 if (dataRateEl) {
                     dataRateEl.textContent = `${eventsPerSecond} evt/s`;
