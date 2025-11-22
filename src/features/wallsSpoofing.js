@@ -56,6 +56,13 @@ class WallsSpoofingEngine {
      * @returns {Object} Walls and spoofing analysis
      */
     analyzeWallsAndSpoofing(orderbookData, recentTrades = [], currentPrice = 0) {
+        // DEBUG: Log every call periodically
+        if (!this._analyzeCallCount) this._analyzeCallCount = 0;
+        this._analyzeCallCount++;
+        if (this._analyzeCallCount % 50 === 1) {
+            console.log(`[WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})`);
+        }
+
         try {
             if (!this.isValidData(orderbookData, currentPrice)) {
                 // DEBUG: Log validation failure

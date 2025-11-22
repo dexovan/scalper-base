@@ -235,6 +235,13 @@ class FeatureEngine {
     async updateFeaturesForSymbol(symbol) {
         const startTime = Date.now();
 
+        // DEBUG: Log update calls periodically
+        if (!this._updateCallCount) this._updateCallCount = 0;
+        this._updateCallCount++;
+        if (this._updateCallCount % 100 === 1) {
+            console.log(`[FEATURE ENGINE DEBUG] updateFeaturesForSymbol called (count: ${this._updateCallCount}, symbol: ${symbol})`);
+        }
+
         try {
             // Get required data from microstructure
             const microstructureData = await this.getMicrostructureData(symbol);
