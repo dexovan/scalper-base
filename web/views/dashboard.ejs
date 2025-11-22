@@ -888,10 +888,15 @@
                 console.log("🔍 Parsing symbols JSON...");
                 const data = await response.json();
                 console.log("📊 Symbols data received:", data);
+                console.log("📊 Symbols keys:", Object.keys(data));
+                console.log("📊 data.symbols type:", typeof data.symbols);
+                console.log("📊 data.symbols:", data.symbols);
 
                 if (data.symbols) {
                     // Convert symbols object to array with full metadata
                     const symbolsArray = Object.values(data.symbols);
+                    console.log(`📊 Symbols array length: ${symbolsArray.length}`);
+                    console.log(`📊 First symbol:`, symbolsArray[0]);
 
                     // Filter symbols by category on frontend
                     let filteredSymbols = symbolsArray;
@@ -904,6 +909,7 @@
                     this.renderSymbols(filteredSymbols, category);
                 } else {
                     console.error("❌ Symbols API error: Invalid response format", data);
+                    this.renderSymbolsError(`No symbols data available`);
                 }
             } catch (error) {
                 console.error(`💥 Failed to fetch ${category} symbols:`, error);
