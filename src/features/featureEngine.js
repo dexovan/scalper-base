@@ -111,7 +111,8 @@ class FeatureEngine {
             }
 
             // Start periodic save
-            this.startPeriodicSave();
+            // DISABLED: Disk persistence fills disk too fast (500+ symbols × 10KB each = 5MB every 10s = 1.8GB/hour!)
+            // this.startPeriodicSave();
 
             this.isInitialized = true;
             this.logger.info('Feature Engine initialized successfully');
@@ -505,6 +506,15 @@ class FeatureEngine {
      * Persistence and utility methods
      */
     async saveAllStates() {
+        // DISABLED: Disk persistence fills disk too fast!
+        // With 500 symbols × ~10KB per state = 5MB per save
+        // At 10s interval = 1.8GB per hour = 43GB per day!
+        // FeatureStates are already in RAM (this.featureStates Map)
+        // Only write to disk on manual request or shutdown if needed
+        this.logger.debug('saveAllStates() called but DISABLED to prevent disk fill');
+        return;
+
+        /* ORIGINAL CODE - DISABLED:
         try {
             const savePromises = [];
 
@@ -520,6 +530,7 @@ class FeatureEngine {
         } catch (error) {
             this.logger.error('Failed to save feature states:', error);
         }
+        */
     }
 
     async ensureDataDirectory() {
@@ -533,9 +544,15 @@ class FeatureEngine {
     }
 
     startPeriodicSave() {
+        // DISABLED: Prevent disk fill - features kept in RAM only
+        this.logger.info('Periodic save DISABLED - feature states kept in memory only');
+        return;
+
+        /* ORIGINAL CODE - DISABLED:
         this.saveIntervalId = setInterval(async () => {
             await this.saveAllStates();
         }, this.config.saveInterval);
+        */
     }
 
     startPerformanceMonitoring() {
