@@ -1122,13 +1122,13 @@
                         data: [],
                         borderColor: '#3b82f6',
                         backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 2,
+                        borderWidth: 4,  // Increased from 2 for visibility
                         fill: true,
                         tension: 0.1,
-                        pointRadius: 3,
+                        pointRadius: 5,  // Increased from 3 for visibility
                         pointBackgroundColor: '#3b82f6',
                         pointBorderColor: '#fff',
-                        pointBorderWidth: 1
+                        pointBorderWidth: 2  // Increased from 1
                     }]
                 },
                 options: {
@@ -1204,7 +1204,13 @@
                         }
                     },
                     elements: {
-                        point: { radius: 0 }
+                        point: {
+                            radius: 3,  // Make points visible (was 0!)
+                            hoverRadius: 5
+                        },
+                        line: {
+                            borderWidth: 2
+                        }
                     },
                     onHover: (event, activeElements) => {
                         event.native.target.style.cursor = activeElements.length > 0 ? 'crosshair' : 'default';
