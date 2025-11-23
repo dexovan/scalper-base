@@ -1039,22 +1039,24 @@
                         price: lastCandle.close || lastCandle.price // For line chart compatibility
                     });
                 } else if (config.aggregation === 'weighted') {
-                    // Volume-weighted average
+                    // Volume-weighted average - support both API formats
                     const totalVolume = bucket.reduce((sum, c) => sum + (c.volume || 1), 0);
-                    const weightedPrice = bucket.reduce((sum, c) => sum + c.price * (c.volume || 1), 0) / totalVolume;
+                    const weightedPrice = bucket.reduce((sum, c) => sum + (c.close || c.price) * (c.volume || 1), 0) / totalVolume;
 
                     aggregated.push({
                         timestamp: new Date(parseInt(bucketKey)),
                         price: weightedPrice,
+                        close: weightedPrice,  // Add close field
                         volume: totalVolume
                     });
                 } else {
-                    // Simple average
-                    const avgPrice = bucket.reduce((sum, c) => sum + c.price, 0) / bucket.length;
+                    // Simple average - support both API formats (close from API, price from trades)
+                    const avgPrice = bucket.reduce((sum, c) => sum + (c.close || c.price), 0) / bucket.length;
 
                     aggregated.push({
                         timestamp: new Date(parseInt(bucketKey)),
                         price: avgPrice,
+                        close: avgPrice,  // Add close field for consistency
                         volume: bucket.reduce((sum, c) => sum + (c.volume || 0), 0)
                     });
                 }
@@ -1292,7 +1294,10 @@
             console.log('📊 Chart data prepared:', {
                 pointsCount: data.length,
                 firstPoint: data[0],
-                lastPoint: data[data.length - 1]
+                lastPoint: data[data.length - 1],
+                yValues: data.map(d => d.y),
+                yMin: Math.min(...data.map(d => d.y)),
+                yMax: Math.max(...data.map(d => d.y))
             });
 
             // Update chart with performance optimization
