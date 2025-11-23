@@ -265,7 +265,8 @@ async function connectWS(symbolsOverride = null) {
       };
 
       latestTickers.set(symbol, tickerData);
-      console.log(`💰 Ticker ${symbol}: $${tickerData.price} (${latestTickers.size} total)`);
+      // FULLY DISABLED: Console spam (500 symbols × 100 events/s = 50,000 logs/s = GIGABYTES!)
+      // console.log(`💰 Ticker ${symbol}: $${tickerData.price} (${latestTickers.size} total)`);
 
       // DISABLED: Ticker disk storage fills disk too fast
       // Write to file periodically (every ticker update)
