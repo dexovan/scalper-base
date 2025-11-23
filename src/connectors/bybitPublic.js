@@ -422,6 +422,10 @@ export async function initPublicConnection(options = {}) {
   OrderbookManager.initMicrostructure();
   console.log("✅ OrderbookManager microstructure initialized");
 
+  // Start periodic stats writing for dashboard
+  OrderbookManager.startStatsPersistence();
+  console.log("✅ Stats persistence started");
+
   manualClose = false;
   wsStatus.reconnectAttempts = 0;
 

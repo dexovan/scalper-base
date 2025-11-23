@@ -12,7 +12,7 @@ import HealthStatus, {
 } from "../../src/monitoring/health.js";
 
 import metrics from "../../src/core/metrics.js";
-import { getOrderbookSummary, getRecentTrades, getCandles, getStats } from "../../src/microstructure/OrderbookManager.js";
+import { getOrderbookSummary, getRecentTrades, getCandles } from "../../src/microstructure/OrderbookManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,7 +24,23 @@ const router = express.Router();
 --------------------------------------------------------- */
 router.get("/stats", (req, res) => {
   try {
-    const orderbookStats = getStats();
+    // Read stats from file written by engine process
+    const fs = require('fs');
+    const path = require('path');
+    const statsPath = path.join(process.cwd(), 'data', 'stats.json');
+
+    let orderbookStats = { activeSymbols: 0, totalOrderbookUpdates: 0, totalTradeUpdates: 0 };
+
+    // Try to read from file if it exists
+    if (fs.existsSync(statsPath)) {
+      try {
+        const rawData = fs.readFileSync(statsPath, 'utf8');
+        orderbookStats = JSON.parse(rawData);
+      } catch (err) {
+        console.error('[API] Failed to read stats.json:', err.message);
+      }
+    }
+
     const engineMetrics = metrics.getSummary();
 
     // Calculate event rate (updates per second)

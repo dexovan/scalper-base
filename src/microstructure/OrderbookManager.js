@@ -505,6 +505,45 @@ function getStats() {
 }
 
 // ================================================================
+// STATS PERSISTENCE
+// ================================================================
+
+let statsWriteInterval = null;
+
+/**
+ * Start periodic stats writing to file for dashboard access
+ */
+function startStatsPersistence() {
+  const fs = require('fs');
+  const path = require('path');
+
+  const statsPath = path.join(process.cwd(), 'data', 'stats.json');
+
+  // Write stats every 2 seconds
+  statsWriteInterval = setInterval(() => {
+    try {
+      const stats = getStats();
+      fs.writeFileSync(statsPath, JSON.stringify(stats, null, 2));
+    } catch (err) {
+      console.error('[OrderbookManager] Failed to write stats:', err.message);
+    }
+  }, 2000);
+
+  console.log('[OrderbookManager] Stats persistence started, writing to data/stats.json every 2s');
+}
+
+/**
+ * Stop stats persistence
+ */
+function stopStatsPersistence() {
+  if (statsWriteInterval) {
+    clearInterval(statsWriteInterval);
+    statsWriteInterval = null;
+    console.log('[OrderbookManager] Stats persistence stopped');
+  }
+}
+
+// ================================================================
 // EXPORTS
 // ================================================================
 
@@ -518,6 +557,8 @@ export {
   getCandles,
   getActiveSymbols,
   getStats,
+  startStatsPersistence,
+  stopStatsPersistence,
   flushSnapshotsToDisk
 };
 
@@ -531,5 +572,7 @@ export default {
   getCandles,
   getActiveSymbols,
   getStats,
+  startStatsPersistence,
+  stopStatsPersistence,
   flushSnapshotsToDisk
 };
