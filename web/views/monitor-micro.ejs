@@ -1099,9 +1099,13 @@
                         data: [],
                         borderColor: '#3b82f6',
                         backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 1,
+                        borderWidth: 2,
                         fill: true,
-                        tension: 0.1
+                        tension: 0.1,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#3b82f6',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 1
                     }]
                 },
                 options: {
@@ -1143,7 +1147,7 @@
                         },
                         y: {
                             beginAtZero: false,  // Don't force zero baseline
-                            grace: '5%',  // Add 5% padding to min/max
+                            grace: '10%',  // Add 10% padding to min/max for better visibility
                             grid: {
                                 color: '#374151',
                                 display: true
