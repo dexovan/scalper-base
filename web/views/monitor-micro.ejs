@@ -26,6 +26,7 @@
     <!-- Chart.js for real-time charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
 
     <style>
         .orderbook-table {
@@ -1000,10 +1001,6 @@
         function aggregateCandles(candles, timeframe) {
             const config = getTimeframeConfig(timeframe);
 
-            // TEMPORARILY DISABLED: Return raw candles without aggregation for debugging
-            console.log('⚠️ Aggregation DISABLED for debugging - returning raw candles');
-            return candles || [];
-
             if (config.aggregation === 'none' || !candles || candles.length === 0) {
                 return candles || [];
             }
@@ -1115,20 +1112,22 @@
             });
 
             charts.candles = new Chart(ctx, {
-                type: 'line',
+                type: 'candlestick',
                 data: {
                     datasets: [{
-                        label: 'Price',
+                        label: currentSymbol || 'Price',
                         data: [],
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 4,  // Increased from 2 for visibility
-                        fill: true,
-                        tension: 0.1,
-                        pointRadius: 5,  // Increased from 3 for visibility
-                        pointBackgroundColor: '#3b82f6',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2  // Increased from 1
+                        borderColor: {
+                            up: '#10b981',     // Green for bullish
+                            down: '#ef4444',   // Red for bearish
+                            unchanged: '#6b7280'
+                        },
+                        backgroundColor: {
+                            up: 'rgba(16, 185, 129, 0.3)',
+                            down: 'rgba(239, 68, 68, 0.3)',
+                            unchanged: 'rgba(107, 114, 128, 0.3)'
+                        },
+                        borderWidth: 2
                     }]
                 },
                 options: {
@@ -1152,30 +1151,50 @@
                     },
                     scales: {
                         x: {
-                            type: 'linear',  // Changed from 'time' to test if time scale is the issue
+                            type: 'linear',
                             grid: {
-                                color: '#374151',
-                                display: true
-                            },
-                            ticks: {
-                                color: '#9ca3af',
-                                maxTicksLimit: 10,
-                                callback: function(value) {
-                                    const date = new Date(value);
-                                    return date.toLocaleTimeString();
-                                }
-                            }
-                        },
-                        y: {
-                            beginAtZero: false,  // Don't force zero baseline
-                            grace: '10%',  // Add 10% padding to min/max for better visibility
-                            grid: {
-                                color: '#374151',
-                                display: true
+                                color: 'rgba(55, 65, 81, 0.5)',
+                                borderColor: '#4b5563',
+                                tickColor: '#4b5563',
+                                drawBorder: true,
+                                drawTicks: true,
+                                lineWidth: 1
                             },
                             ticks: {
                                 color: '#9ca3af',
                                 maxTicksLimit: 8,
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    const date = new Date(value);
+                                    return date.toLocaleTimeString('en-US', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                        hour12: false
+                                    });
+                                }
+                            }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            grace: '5%',
+                            position: 'right',  // Price on right side (trading style)
+                            grid: {
+                                color: 'rgba(55, 65, 81, 0.3)',
+                                borderColor: '#4b5563',
+                                tickColor: '#4b5563',
+                                drawBorder: true,
+                                lineWidth: 1
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                maxTicksLimit: 10,
+                                font: {
+                                    size: 11,
+                                    weight: '500'
+                                },
                                 callback: function(value) {
                                     return parseFloat(value).toFixed(4);
                                 }
@@ -1188,26 +1207,27 @@
                             enabled: true,
                             mode: 'index',
                             intersect: false,
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            titleColor: '#f3f4f6',
+                            bodyColor: '#d1d5db',
+                            padding: 12,
                             callbacks: {
                                 label: function(context) {
-                                    return `Price: ${parseFloat(context.parsed.y).toFixed(4)}`;
+                                    const d = context.raw;
+                                    return [
+                                        `Open:  ${d.o.toFixed(4)}`,
+                                        `High:  ${d.h.toFixed(4)}`,
+                                        `Low:   ${d.l.toFixed(4)}`,
+                                        `Close: ${d.c.toFixed(4)}`
+                                    ];
+                                },
+                                title: function(context) {
+                                    const date = new Date(context[0].parsed.x);
+                                    return date.toLocaleTimeString();
                                 }
                             }
-                        },
-                        decimation: {
-                            enabled: true,
-                            algorithm: 'lttb',
-                            samples: 100,
-                            threshold: 200
-                        }
-                    },
-                    elements: {
-                        point: {
-                            radius: 3,  // Make points visible (was 0!)
-                            hoverRadius: 5
-                        },
-                        line: {
-                            borderWidth: 2
                         }
                     },
                     onHover: (event, activeElements) => {
@@ -1338,17 +1358,20 @@
                 allClosePrices: aggregatedCandles.map(c => c.close || c.price)
             });
 
-            const data = aggregatedCandles.map(candle => {
-                const x = new Date(candle.timestamp || candle.bucketStart).getTime();
-                const y = parseFloat(candle.close || candle.price);
-                return { x, y };
-            });
+            // Map to candlestick format: { x, o, h, l, c }
+            const data = aggregatedCandles.map(candle => ({
+                x: new Date(candle.timestamp || candle.bucketStart).getTime(),
+                o: parseFloat(candle.open || candle.close || candle.price),
+                h: parseFloat(candle.high || candle.close || candle.price),
+                l: parseFloat(candle.low || candle.close || candle.price),
+                c: parseFloat(candle.close || candle.price)
+            }));
 
             console.log('📊 Chart data prepared:', {
                 pointsCount: data.length,
                 firstPoint: data[0],
                 lastPoint: data[data.length - 1],
-                allData: data,  // Show ALL data points
+                sample: data.slice(0, 3)
                 yValues: data.map(d => d.y),
                 yMin: Math.min(...data.map(d => d.y)),
                 yMax: Math.max(...data.map(d => d.y))
