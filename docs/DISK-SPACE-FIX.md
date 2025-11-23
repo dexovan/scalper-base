@@ -94,6 +94,60 @@ crontab -e
 
 ### Deployment Steps
 
+**CRITICAL: 18GB PM2 Logs Found!**
+
+The main disk consumer is PM2 logs (18GB out of 21GB used). Follow these steps:
+
+1. **Run emergency manual cleanup:**
+
+```bash
+cd ~/scalper-base
+git pull origin master
+chmod +x scripts/*.sh
+./scripts/cleanup-pm2-logs-manual.sh
+```
+
+This will truncate all PM2 logs and free up ~18GB immediately.
+
+2. **Setup PM2 with log rotation:**
+
+```bash
+pm2 delete all
+pm2 start ecosystem.config.js
+pm2 save
+pm2 list
+```
+
+3. **Verify logs are controlled:**
+
+```bash
+# Check log sizes (should be <10MB each)
+ls -lh ~/.pm2/logs/
+
+# Monitor in real-time
+watch -n 5 'du -sh ~/.pm2/logs && df -h /'
+```
+
+4. **Setup cron for daily cleanup (manual):**
+
+```bash
+crontab -e
+# Add these two lines:
+0 2 * * * /home/aiuser/scalper-base/scripts/cleanup-pm2-logs.sh >> /home/aiuser/cleanup.log 2>&1
+0 3 * * * /home/aiuser/scalper-base/scripts/cleanup-data.sh >> /home/aiuser/cleanup.log 2>&1
+```
+
+**OR use the automated deployment script:**
+
+```bash
+cd ~/scalper-base
+git pull
+chmod +x scripts/deploy-disk-fix.sh
+./scripts/deploy-disk-fix.sh
+```
+
+### Original Deployment Steps (Legacy)
+
 1. **Pull latest changes:**
 
 ```bash

@@ -1,7 +1,7 @@
 // PM2 Ecosystem Configuration
 // Prevents log files from filling disk with automatic rotation
 
-module.exports = {
+export default {
   apps: [
     {
       name: "engine",

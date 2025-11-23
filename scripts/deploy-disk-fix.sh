@@ -22,15 +22,8 @@ chmod +x scripts/cleanup-data.sh
 
 # 3. Run immediate cleanup
 echo ""
-echo "3️⃣ Running immediate cleanup..."
-echo "   Flushing PM2 logs..."
-pm2 flush
-
-echo "   Cleaning old PM2 logs..."
-./scripts/cleanup-pm2-logs.sh
-
-echo "   Cleaning old data files..."
-./scripts/cleanup-data.sh
+echo "3️⃣ Running EMERGENCY cleanup of 18GB PM2 logs..."
+./scripts/cleanup-pm2-logs-manual.sh
 
 # 4. Restart PM2 with new ecosystem config
 echo ""
@@ -42,12 +35,14 @@ pm2 save
 # 5. Setup cron jobs
 echo ""
 echo "5️⃣ Setting up cron jobs..."
-(crontab -l 2>/dev/null | grep -v "cleanup-pm2-logs.sh" | grep -v "cleanup-data.sh"; \
- echo "0 2 * * * /home/aiuser/scalper-base/scripts/cleanup-pm2-logs.sh >> /home/aiuser/cleanup.log 2>&1"; \
- echo "0 3 * * * /home/aiuser/scalper-base/scripts/cleanup-data.sh >> /home/aiuser/cleanup.log 2>&1") | crontab -
-
-echo "✅ Cron jobs added:"
-crontab -l | grep cleanup
+echo "⚠️ Note: Cron needs manual setup due to permissions"
+echo ""
+echo "Run these commands manually:"
+echo "  crontab -e"
+echo "  # Add these lines:"
+echo "  0 2 * * * /home/aiuser/scalper-base/scripts/cleanup-pm2-logs.sh >> /home/aiuser/cleanup.log 2>&1"
+echo "  0 3 * * * /home/aiuser/scalper-base/scripts/cleanup-data.sh >> /home/aiuser/cleanup.log 2>&1"
+echo ""
 
 # 6. Show current disk usage
 echo ""
