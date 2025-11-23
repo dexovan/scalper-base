@@ -82,30 +82,27 @@ async function startEngine() {
     // evt = { type: "ticker" | "trade", timestamp, symbol, payload }
 
     if (evt.type === "ticker") {
-      const lastPrice = evt.payload.lastPrice || evt.payload.price || "";
+      // FULLY DISABLED: Console.log spam fills logs at 50,000+ logs/second = GIGABYTES/hour!
+      // Even 0.01% sampling still generates too many logs (193MB in minutes!)
+      // All ticker processing happens silently now
 
-      // DISABLED: Console.log spam fills logs (500 symbols × 100 updates/s = 50,000 logs/s = GIGABYTES!)
-      // Only log sampling for debugging (0.01% = ~5 logs/second)
-      if (Math.random() < 0.0001) {
-        console.log("[TICKER SAMPLE]", evt.symbol, lastPrice);
-      }
+      // const lastPrice = evt.payload.lastPrice || evt.payload.price || "";
+      // console.log("[TICKER]", evt.symbol, lastPrice);
 
       // DISABLED: Tickers disk storage fills disk too fast
       // KORAK 2: Save ticker data to CSV file
       // saveTicker(evt.symbol, evt.payload);
 
     } else if (evt.type === "trade") {
-      // Bybit v5 trade fields: S=side, p=price, v=volume, L=tick_direction
-      const side = evt.payload.S;           // "Buy" | "Sell"
-      const price = evt.payload.p;          // "91750.20"
-      const qty = evt.payload.v;            // "0.027"
-      const tickDir = evt.payload.L;        // "PlusTick" | "MinusTick" | "ZeroPlusTick" | "ZeroMinusTick"
+      // FULLY DISABLED: Console.log spam fills logs at hundreds of logs/second!
+      // Even 0.1% sampling still generates too many logs (193MB in minutes!)
+      // All trade processing happens silently now
 
-      // DISABLED: Console.log spam fills logs (hundreds of trades/s = MEGABYTES!)
-      // Only log sampling for debugging (0.1% = ~1 log/second)
-      if (Math.random() < 0.001) {
-        console.log("[TRADE SAMPLE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
-      }
+      // const side = evt.payload.S;
+      // const price = evt.payload.p;
+      // const qty = evt.payload.v;
+      // const tickDir = evt.payload.L;
+      // console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
 
       // DISABLED: Trades disk storage fills disk too fast (15GB+ in days!)
       // KORAK 2: Save trade data to CSV file

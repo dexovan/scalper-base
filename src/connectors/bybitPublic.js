@@ -252,7 +252,8 @@ async function connectWS(symbolsOverride = null) {
       // If ticker price is 0 or null, use latest trade price as fallback
       if (price === 0 && latestTradePrices.has(symbol)) {
         price = latestTradePrices.get(symbol);
-        console.log(`🔄 Using trade price fallback for ${symbol}: $${price}`);
+        // DISABLED: Console spam (can log hundreds of times/second)
+        // console.log(`🔄 Using trade price fallback for ${symbol}: $${price}`);
       }
 
       const tickerData = {
@@ -310,7 +311,8 @@ async function connectWS(symbolsOverride = null) {
               timestamp: nowISO()
             };
             latestTickers.set(symbol, updatedTicker);
-            console.log(`🚀 Updated ${symbol} ticker from trade: $${tradePrice}`);
+            // DISABLED: Console spam (logs hundreds of times/second for 500 symbols)
+            // console.log(`🚀 Updated ${symbol} ticker from trade: $${tradePrice}`);
             // DISABLED: Ticker disk storage fills disk too fast
             // writeTickersToFile();
           }
