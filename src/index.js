@@ -104,7 +104,9 @@ async function startEngine() {
     }
   });
 
-  refreshUniversePeriodically();
+  // DISABLED: Universe refresh writes to disk every 15s (500+ symbols × 1KB = 500KB+ per write = 2MB/min = 2.9GB/day!)
+  // refreshUniversePeriodically();
+  console.log("⚠️ [ENGINE] Universe periodic refresh DISABLED - preventing disk fill");
 
   // KORAK 2: Display storage stats
   const storageStats = await getStorageStats();

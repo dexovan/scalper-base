@@ -61,6 +61,11 @@ async function loadExistingUniverse() {
 }
 
 async function saveUniverseSnapshot() {
+  // DISABLED: Prevent disk fill - universe kept in memory only
+  console.log("⚠️ [UNIVERSE] saveUniverseSnapshot() DISABLED - universe kept in RAM only");
+  return;
+
+  /* ORIGINAL CODE - DISABLED TO PREVENT DISK FILL:
   try {
     ensureDirExists(DATA_DIR);
     const snapshot = JSON.stringify(UniverseState, null, 2);
@@ -68,6 +73,7 @@ async function saveUniverseSnapshot() {
   } catch (err) {
     console.error("❌ [UNIVERSE] Failed to write snapshot:", err.message);
   }
+  */
 }
 
 function computeStats() {
