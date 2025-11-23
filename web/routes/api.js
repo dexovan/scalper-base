@@ -2,6 +2,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import http from "http";
 import { fileURLToPath } from "url";
 import paths from "../../src/config/paths.js";
 
@@ -22,22 +23,56 @@ const router = express.Router();
 /* ---------------------------------------------------------
    GET /api/engine/health – Proxy to engine microstructure health
 --------------------------------------------------------- */
-router.get("/engine/health", async (req, res) => {
-  try {
-    // Proxy request to engine process on port 8090
-    const fetch = (await import('node-fetch')).default;
-    const engineResponse = await fetch('http://localhost:8090/api/microstructure/health');
-    const data = await engineResponse.json();
+router.get("/engine/health", (req, res) => {
+  // Proxy request to engine process on port 8090 using native http module
+  const options = {
+    hostname: 'localhost',
+    port: 8090,
+    path: '/api/microstructure/health',
+    method: 'GET',
+    timeout: 5000
+  };
 
-    return res.json(data);
-  } catch (error) {
-    console.error('[API] Failed to fetch engine health:', error.message);
-    return res.status(500).json({
+  const proxyReq = http.request(options, (proxyRes) => {
+    let data = '';
+
+    proxyRes.on('data', (chunk) => {
+      data += chunk;
+    });
+
+    proxyRes.on('end', () => {
+      try {
+        const jsonData = JSON.parse(data);
+        res.json(jsonData);
+      } catch (error) {
+        console.error('[API] Failed to parse engine response:', error.message);
+        res.status(500).json({
+          ok: false,
+          error: 'Invalid response from engine',
+          message: error.message
+        });
+      }
+    });
+  });
+
+  proxyReq.on('error', (error) => {
+    console.error('[API] Failed to connect to engine:', error.message);
+    res.status(500).json({
       ok: false,
       error: 'Failed to connect to engine',
       message: error.message
     });
-  }
+  });
+
+  proxyReq.on('timeout', () => {
+    proxyReq.destroy();
+    res.status(504).json({
+      ok: false,
+      error: 'Engine request timeout'
+    });
+  });
+
+  proxyReq.end();
 });
 
 /* ---------------------------------------------------------
