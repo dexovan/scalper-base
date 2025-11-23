@@ -166,7 +166,14 @@
             <div class="space-y-6">
                 <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-semibold text-slate-200">Micro Candles</h3>
+                        <div class="flex items-center space-x-2">
+                            <h3 class="text-lg font-semibold text-slate-200">Micro Candles</h3>
+                            <button onclick="showHelpModal('microCandles')" class="text-blue-400 hover:text-blue-300 transition-colors">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
                         <div class="flex space-x-2">
                             <select id="timeframe-selector" class="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
                                 <option value="1s">1s (Ultra High-Freq)</option>
@@ -2143,6 +2150,141 @@
 
                             <div class="bg-slate-800 p-4 rounded-lg">
                                 <p class="text-sm text-slate-400"><strong>💡 Pro tip:</strong> Kombineuj Volume Profile sa Orderbook - ako HVN odgovara velikom Bid/Ask "zidu", to je ULTRA jak support/resistance za scalp entry/exit.</p>
+                            </div>
+                        </div>
+                    `
+                },
+
+                microCandles: {
+                    title: '🕯️ Micro Candles - Visokofrekventna analiza cene',
+                    content: `
+                        <div class="space-y-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-green-400 mb-2">Šta su Micro Candles?</h3>
+                                <p class="text-slate-400">Micro Candles su <strong>candlestick dijagram na vrlo kratkim timeframe-ovima</strong> (1s - 15m). Omogućavaju praćenje price action-a u realnom vremenu za ultra-brze scalp pozicije.</p>
+                            </div>
+
+                            <div class="border-l-4 border-blue-500 pl-4">
+                                <h4 class="font-semibold text-blue-400 mb-2">Timeframe opcije - Šta znače</h4>
+                                <div class="space-y-3 text-sm">
+                                    <div>
+                                        <p class="font-semibold text-cyan-400">1s (Ultra High-Freq)</p>
+                                        <ul class="list-disc list-inside ml-4 text-slate-400">
+                                            <li>Svaka svećica = 1 sekunda trgovanja</li>
+                                            <li><span class="text-green-400">Idealno za:</span> Ultra-brzе scalp pozicije (5-15s hold)</li>
+                                            <li><span class="text-red-400">Rizik:</span> Ekstremna volatilnost, много noise-a</li>
+                                            <li><span class="text-yellow-400">Preporuka:</span> Samo za veoma likvidne parove (BTC, ETH)</li>
+                                        </ul>
+                                    </div>
+
+                                    <div>
+                                        <p class="font-semibold text-cyan-400">5s (High-Freq) - DEFAULT</p>
+                                        <ul class="list-disc list-inside ml-4 text-slate-400">
+                                            <li>Svaka svećica = 5 sekundi</li>
+                                            <li><span class="text-green-400">Idealno za:</span> Brze scalp pozicije (30s - 2min hold)</li>
+                                            <li><span class="text-green-400">Najčešće korišćen:</span> Dobar balans između brzine i čitljivosti</li>
+                                            <li><span class="text-yellow-400">Preporuka:</span> Najbolji izbor za većinu scalp strategija</li>
+                                        </ul>
+                                    </div>
+
+                                    <div>
+                                        <p class="font-semibold text-cyan-400">15s (Med-Freq)</p>
+                                        <ul class="list-disc list-inside ml-4 text-slate-400">
+                                            <li>Svaka svećica = 15 sekundi</li>
+                                            <li><span class="text-green-400">Idealno za:</span> Srednji scalp (2-5min hold)</li>
+                                            <li>Manje noise-a, jasniji trendovi</li>
+                                        </ul>
+                                    </div>
+
+                                    <div>
+                                        <p class="font-semibold text-cyan-400">30s - 1m (Low-Freq)</p>
+                                        <ul class="list-disc list-inside ml-4 text-slate-400">
+                                            <li>Svaka svećica = 30s ili 1 minuta</li>
+                                            <li><span class="text-green-400">Idealno za:</span> Sporiji scalp (5-15min hold)</li>
+                                            <li>Najbolje za identifikaciju clear pattern-a</li>
+                                        </ul>
+                                    </div>
+
+                                    <div>
+                                        <p class="font-semibold text-cyan-400">5m - 15m (Smooth/Trend)</p>
+                                        <ul class="list-disc list-inside ml-4 text-slate-400">
+                                            <li>Svaka svećica = 5 ili 15 minuta</li>
+                                            <li><span class="text-green-400">Idealno za:</span> Trend identifikaciju, ne za ultra-scalp</li>
+                                            <li>Koristi za big picture pre ulaska u scalp</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-l-4 border-purple-500 pl-4">
+                                <h4 class="font-semibold text-purple-400 mb-2">Razumevanje osa dijagrama</h4>
+                                <div class="space-y-2 text-sm">
+                                    <div>
+                                        <p class="font-semibold text-yellow-400">X-osa (donja - horizontalna)</p>
+                                        <ul class="list-disc list-inside ml-4 text-slate-400">
+                                            <li><strong>Značenje:</strong> Timestamp (vreme) kada je svaka svećica započela</li>
+                                            <li>Prikazuje se kao Unix timestamp ili formatovan datum/vreme</li>
+                                            <li><strong>Primer:</strong> "1763895103" ili "10:51:43"</li>
+                                            <li>Levo = starije vreme, Desno = novije vreme</li>
+                                        </ul>
+                                    </div>
+
+                                    <div>
+                                        <p class="font-semibold text-yellow-400">Y-osa (levo - vertikalna)</p>
+                                        <ul class="list-disc list-inside ml-4 text-slate-400">
+                                            <li><strong>Značenje:</strong> Cena (Price) u USD ili USDT</li>
+                                            <li>Gorе = viša cena, Dole = niža cena</li>
+                                            <li><strong>Primer:</strong> Za BTC može biti 85,800 - 86,000</li>
+                                            <li>Auto-scale: automatski se prilagođava min/max ceni u dijagramu</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-l-4 border-green-500 pl-4">
+                                <h4 class="font-semibold text-green-400 mb-2">Kako čitati svećice (Candles)</h4>
+                                <div class="space-y-2 text-sm">
+                                    <ul class="list-disc list-inside text-slate-400">
+                                        <li><strong class="text-green-400">Zelena/Bijela svećica:</strong> Close > Open (cena porasla u tom periodu) - BULLISH</li>
+                                        <li><strong class="text-red-400">Crvena/Crna svećica:</strong> Close < Open (cena pala u tom periodu) - BEARISH</li>
+                                        <li><strong>Telo svećice:</strong> Razlika između Open i Close cene</li>
+                                        <li><strong>Gornji fitilj (wick):</strong> Najviša cena (High) dostignuta u tom periodu</li>
+                                        <li><strong>Donji fitilj:</strong> Najniža cena (Low) dostignuta u tom periodu</li>
+                                        <li><strong>Duže telo:</strong> Jači trend (više kupaca/prodavaca)</li>
+                                        <li><strong>Duži fitilji:</strong> Više rejections na tim nivoima (support/resistance)</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="border-l-4 border-orange-500 pl-4">
+                                <h4 class="font-semibold text-orange-400 mb-2">Šta je pogodno za Scalping</h4>
+                                <div class="space-y-2 text-sm">
+                                    <ul class="list-disc list-inside text-slate-400">
+                                        <li><span class="text-green-400">✅ Male svećice sa malim body-em:</span> Niska volatilnost, predikativan market</li>
+                                        <li><span class="text-green-400">✅ Konzistentne zelene/crvene sekvence:</span> Clear trend, lako pratiti momentum</li>
+                                        <li><span class="text-green-400">✅ 5s-15s timeframe:</span> Dovoljan detalj bez previše noise-a</li>
+                                        <li><span class="text-red-400">❌ Velike svećice sa dugim fitiljima:</span> Visoka volatilnost, teško kontrolisati SL</li>
+                                        <li><span class="text-red-400">❌ Haotičan pattern (gore-dole-gore):</span> Nema jasnog trenda, čekaj</li>
+                                        <li><span class="text-yellow-400">⚠️ Doji svećice (Open ≈ Close):</span> Indecizija, moguć reversal ili konsolidacija</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="border-l-4 border-cyan-500 pl-4">
+                                <h4 class="font-semibold text-cyan-400 mb-2">Scalping strategije sa Micro Candles</h4>
+                                <div class="space-y-2 text-sm">
+                                    <ul class="list-disc list-inside text-slate-400">
+                                        <li><strong>Trend Following:</strong> Ako vidiš 5-10 zelenih svećica uzastopno na 5s = LONG, postavi SL ispod najniže svećice</li>
+                                        <li><strong>Breakout Scalp:</strong> Ako cena probije prethodni High sa velikom zelenom svećicom = momentum entry</li>
+                                        <li><strong>Support/Resistance Bounce:</strong> Donji fitilj na istoj ceni 3x uzastopno = jak support, ulazi LONG</li>
+                                        <li><strong>Mean Reversion:</strong> Nakon 10+ svećica u jednom smeru, očekuj reversal - pripremi se za kontra poziciju</li>
+                                        <li><strong>Volume Confirmation:</strong> Veliki volumen + velika zelena svećica = validan bullish signal</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="bg-slate-800 p-4 rounded-lg">
+                                <p class="text-sm text-slate-400"><strong>🎯 Pro setup:</strong> Koristi <strong>5s timeframe</strong>, posmatraj pattern od 50-100 svećica (~4-8min historije). Traži clear trendove sa 5+ zelenih ili crvenih svećica uzastopno. Entry na pullback, TP nakon 0.02-0.05% pomera, SL na 0.03% ispod entry.</p>
                             </div>
                         </div>
                     `
