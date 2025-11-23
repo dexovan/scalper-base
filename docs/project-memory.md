@@ -1,7 +1,274 @@
 # SCALPER-BASE PROJECT MEMORY
 
-**Last Updated:** 2025-11-23 00:08 (MAJOR FIX: Wall/Spoofing Detection - orderbook.50)
+**Last Updated:** 2025-11-23 01:50 (CRITICAL: Disk Space Emergency - Console.log Spam Elimination)
 **Purpose:** Persistent knowledge base for critical problems, solutions, and best practices
+
+---
+
+## 🚨 CRITICAL FIX: Disk Space Emergency - Console.log Spam (2025-11-23)
+
+### Problem
+
+**Disk filling at catastrophic rate:**
+
+- Initial state: 77% full (28GB/38GB used)
+- Growth rate: **7-8MB per 10 seconds = 2.5-2.9GB/hour**
+- Cause: Massive console.log spam from high-frequency event handlers
+- Impact: Server would fill disk in ~4 hours without intervention
+
+**Root causes identified:**
+
+1. **500 symbols × 100+ events/second = 50,000+ console.log calls/second**
+2. Multiple locations logging every ticker/trade/orderbook/feature update
+3. No log rotation configured
+4. Even 0.01% sampling generated 193MB in minutes!
+
+### Emergency Cleanup
+
+**Phase 1: Immediate disk recovery**
+
+```bash
+# Freed 18GB from ~/.pm2/logs/
+./scripts/cleanup-pm2-logs-manual.sh
+# Result: 77% → 9% (28GB → 3.2GB)
+```
+
+### Console.log Spam Sources Eliminated
+
+**Location 1: `src/index.js` (lines 86, 99)**
+
+- **Issue**: Logged EVERY ticker and trade event for all 500 symbols
+- **Impact**: 50,000+ logs/second
+- **Fix**: Completely disabled console.log for ticker/trade events
+- **Commits**: cccd6b9 (sampling attempt), dc6434a (full disable)
+
+```javascript
+// DISABLED (WAS SPAMMING):
+// console.log('💰 Ticker update:', symbol, price);
+// console.log('📈 Trade:', symbol, tradeData);
+```
+
+**Location 2: `src/connectors/bybitPublic.js` (line 268)**
+
+- **Issue**: Logged ticker for EVERY symbol update
+- **Impact**: 50,000+ logs/second
+- **Fix**: Disabled ticker confirmation log
+- **Commit**: 0d52f9e
+
+```javascript
+// DISABLED (WAS SPAMMING):
+// console.log(`💰 Ticker ${symbol}: $${tickerData.price} (${latestTickers.size} total)`);
+```
+
+**Location 3: `src/http/monitorApi.js` (lines 81, 85, 102, 135)**
+
+- **Issue**: Logged EVERY event from WebSocket with full JSON.stringify payload
+- **Impact**: 200,000+ logs/second (4 logs per event!)
+- **Fix**: Disabled all event logging in monitorApi
+- **Commit**: 6041de5
+
+```javascript
+// DISABLED (WAS SPAMMING):
+// console.log("📡 MonitorAPI received event:", eventData?.type, eventData?.symbol);
+// console.log("📊 Processing ticker for", symbol, "payload:", JSON.stringify(payload, null, 2));
+// console.log("🔍 Price extraction:", {...largeObject});
+// console.log("💾 Stored ticker for", symbol, "price:", price);
+```
+
+**Location 4: `src/features/wallsSpoofing.js` (lines 63, 72, 92, 187, 239)**
+
+- **Issue**: Debug logs for EVERY orderbook update and wall detection
+- **Impact**: 10,000+ logs/second
+- **Fix**: Disabled all wall detection debug console.log
+- **Commit**: c321eee
+
+```javascript
+// DISABLED (WAS SPAMMING):
+// if (this._analyzeCallCount % 10 === 1) {
+//     console.log(`🔍 [WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})`);
+// }
+// console.log(`🔍 [WALLS DEBUG ${count}] ${side} side:`, JSON.stringify({...}));
+// console.log(`🔍 [WALLS DEBUG ${count}] ${side} result:`, JSON.stringify({...}));
+```
+
+**Location 5: `src/features/featureEngine.js` (line 242)**
+
+- **Issue**: Logged every feature update call
+- **Impact**: 10,000+ logs/second
+- **Fix**: Disabled feature update debug log
+- **Commit**: c321eee
+
+```javascript
+// DISABLED (WAS SPAMMING):
+// if (this._updateCallCount % 10 === 1) {
+//     console.log(`🔍 [FEATURE ENGINE DEBUG] updateFeaturesForSymbol called (count: ${this._updateCallCount})`);
+// }
+```
+
+**Location 6: `src/connectors/bybitPublic.js` (lines 340-342)**
+
+- **Issue**: 5% sampling of BTCUSDT orderbook updates
+- **Impact**: Moderate spam
+- **Fix**: Disabled orderbook debug logs
+- **Commit**: fe245d1
+
+```javascript
+// DISABLED (WAS SPAMMING):
+// if (symbol === 'BTCUSDT' && Math.random() < 0.05) {
+//   console.log(`🔍 [ORDERBOOK DEBUG] ${symbol}: type=${msg.type}, bids=${bidCount}, asks=${askCount}`);
+// }
+```
+
+**Location 7: `src/microstructure/OrderbookManager.js` (line 289)**
+
+- **Issue**: 0.1% sampling of candle updates
+- **Impact**: Low but unnecessary spam
+- **Fix**: Disabled candle debug logs
+- **Commit**: fe245d1
+
+```javascript
+// DISABLED (WAS SPAMMING):
+// if (Math.random() < 0.001) {
+//   console.log(`🕯️ [CANDLE DEBUG] Updating candles for ${symbol}`);
+// }
+```
+
+**Location 8: `src/features/wallsSpoofing.js` (line 326)**
+
+- **Issue**: logger.info for EVERY spoof detection (500+ events in log)
+- **Impact**: Moderate spam from legitimate events
+- **Fix**: Added 1% sampling to logger.info
+- **Commit**: 7780fc5
+
+```javascript
+// BEFORE (SPAMMING):
+this.logger.info('Spoof detected:', { wallId, duration, ... });
+
+// AFTER (SAMPLED):
+if (Math.random() < 0.01) {
+    this.logger.info('Spoof detected:', { wallId, duration, ... });
+}
+```
+
+### PM2 Log Rotation Setup
+
+**Installed pm2-logrotate module:**
+
+```bash
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 50M      # Rotate at 50MB
+pm2 set pm2-logrotate:retain 10         # Keep 10 old files
+pm2 set pm2-logrotate:compress true     # Compress old logs
+```
+
+**Configuration:**
+
+- Automatic rotation when log reaches 50MB
+- Keeps 10 compressed rotations (~5MB each compressed)
+- Maximum disk usage: ~550MB (10 × 50MB + current)
+- Daily rotation at midnight (rotateInterval: 0 0 \* \* \*)
+
+### Results
+
+**Before fixes:**
+
+- Growth rate: **7-8MB/10s = 2.5-2.9GB/hour**
+- Disk would fill in 4 hours
+- 50,000-200,000 console.log calls per second
+
+**After fixes:**
+
+- Growth rate: **~24KB/64s = 32MB/day**
+- With rotation: Max 550MB disk usage
+- Only legitimate logger.info events (1% sampled)
+- **99.99% reduction in log spam!**
+
+### How to Re-enable Logging (If Needed for Debugging)
+
+**⚠️ WARNING: Only enable temporarily and watch disk usage!**
+
+**To enable ticker logs:**
+
+```javascript
+// src/index.js line 86
+console.log("💰 Ticker update:", symbol, price);
+
+// src/connectors/bybitPublic.js line 268
+console.log(`💰 Ticker ${symbol}: $${tickerData.price}`);
+```
+
+**To enable wall detection debug:**
+
+```javascript
+// src/features/wallsSpoofing.js line 63
+if (this._analyzeCallCount % 100 === 1) {
+  // Log only 1%!
+  console.log(`🔍 [WALLS DEBUG] analyzeWallsAndSpoofing called`);
+}
+```
+
+**To enable feature engine debug:**
+
+```javascript
+// src/features/featureEngine.js line 242
+if (this._updateCallCount % 100 === 1) {
+  // Log only 1%!
+  console.log(`🔍 [FEATURE ENGINE DEBUG] updateFeaturesForSymbol`);
+}
+```
+
+**To enable spoof detection logging (full):**
+
+```javascript
+// src/features/wallsSpoofing.js line 326
+// Remove sampling:
+this.logger.info('Spoof detected:', { wallId, duration, ... });
+```
+
+**CRITICAL: After enabling any logging:**
+
+1. Monitor disk: `watch -n 2 'du -sh ~/.pm2/logs && df -h /'`
+2. If logs grow >100MB/hour, disable immediately!
+3. Always use pm2 flush after testing: `pm2 flush`
+
+### Key Learnings
+
+1. **High-frequency event handlers MUST NOT use console.log**
+
+   - 500 symbols × 100 events/s = 50,000 operations/s
+   - Even 0.01% sampling = 5 events/s = too much over time
+
+2. **Logger.info is NOT free**
+
+   - Legitimate events can still spam (500 spoof detections)
+   - Always use sampling for high-frequency events
+
+3. **PM2 log rotation is MANDATORY**
+
+   - Without rotation, logs will eventually fill disk
+   - Configure max_size, retain, and compress
+
+4. **Multiple log locations compound the problem**
+
+   - We had ~8 different locations logging same events
+   - Each added 10,000-200,000 logs/s
+
+5. **Sampling percentages:**
+   - 0.01% still generated 193MB in minutes
+   - 1% is maximum safe for high-frequency events
+   - Consider disabling entirely for production
+
+### Commits Summary
+
+```
+7780fc5 - Add 1% sampling to 'Spoof detected' logger.info
+fe245d1 - FINAL SILENCE - Disable ORDERBOOK + CANDLE DEBUG
+c321eee - Disable wallsSpoofing + featureEngine console.log spam
+0d52f9e - Disable line 268 ticker console.log (MISSED)
+6041de5 - Disable monitorApi.js console.log spam (EMERGENCY)
+dc6434a - Completely disable ALL console.log for ticker/trade events
+cccd6b9 - Attempted 0.01% sampling (failed - too much)
+```
 
 ---
 
