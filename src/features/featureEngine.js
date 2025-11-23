@@ -27,7 +27,7 @@ import FeeLeverageEngine from './feeLeverageEngine.js';
 import PumpPreSignalsEngine from './pumpPreSignals.js';
 
 import logger from '../utils/logger.js';
-import { getUniverseSymbols } from '../market/universe_v2.js';
+import { getUniverseSymbols, getSymbolMeta } from '../market/universe_v2.js';
 import { getOrderbookSummary, getRecentTrades, getCandles } from '../microstructure/OrderbookManager.js';
 
 class FeatureEngine {
@@ -761,8 +761,7 @@ class FeatureEngine {
 
     async getSymbolMetadata(symbol) {
         try {
-            // Import universe_v2 dynamically to get real symbol metadata
-            const { getSymbolMeta } = await import('../market/universe_v2.js');
+            // Use static import (already imported at top)
             const universeMeta = getSymbolMeta(symbol);
 
             if (universeMeta) {
@@ -778,6 +777,7 @@ class FeatureEngine {
             }
 
             // Fallback if symbol not in universe
+            this.logger.warn(`Symbol ${symbol} not found in universe, using fallback`);
             return {
                 maxLeverage: 1,  // No leverage if not in universe
                 makerFee: 0.0001,
@@ -785,7 +785,7 @@ class FeatureEngine {
                 minNotional: 10
             };
         } catch (error) {
-            this.logger.warn(`Failed to get symbol metadata for ${symbol}:`, error);
+            this.logger.error(`Failed to get symbol metadata for ${symbol}:`, error);
             // Fallback on error
             return {
                 maxLeverage: 1,
