@@ -1,6 +1,8 @@
 // src/microstructure/OrderbookManager.js
 import CONFIG from "../config/index.js";
 import * as jsonStore from "../storage/jsonStore.js";
+import fs from "fs";
+import path from "path";
 
 // ================================================================
 // STATE & SYMBOL MANAGEMENT
@@ -514,9 +516,6 @@ let statsWriteInterval = null;
  * Start periodic stats writing to file for dashboard access
  */
 function startStatsPersistence() {
-  const fs = require('fs');
-  const path = require('path');
-
   const statsPath = path.join(process.cwd(), 'data', 'stats.json');
 
   // Write stats every 2 seconds
