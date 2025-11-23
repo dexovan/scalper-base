@@ -1000,6 +1000,10 @@
         function aggregateCandles(candles, timeframe) {
             const config = getTimeframeConfig(timeframe);
 
+            // TEMPORARILY DISABLED: Return raw candles without aggregation for debugging
+            console.log('⚠️ Aggregation DISABLED for debugging - returning raw candles');
+            return candles || [];
+
             if (config.aggregation === 'none' || !candles || candles.length === 0) {
                 return candles || [];
             }
@@ -1334,15 +1338,17 @@
                 allClosePrices: aggregatedCandles.map(c => c.close || c.price)
             });
 
-            const data = aggregatedCandles.map(candle => ({
-                x: new Date(candle.timestamp || candle.bucketStart).getTime(),  // Use timestamp instead of Date object
-                y: parseFloat(candle.close || candle.price)
-            }));
+            const data = aggregatedCandles.map(candle => {
+                const x = new Date(candle.timestamp || candle.bucketStart).getTime();
+                const y = parseFloat(candle.close || candle.price);
+                return { x, y };
+            });
 
             console.log('📊 Chart data prepared:', {
                 pointsCount: data.length,
                 firstPoint: data[0],
                 lastPoint: data[data.length - 1],
+                allData: data,  // Show ALL data points
                 yValues: data.map(d => d.y),
                 yMin: Math.min(...data.map(d => d.y)),
                 yMax: Math.max(...data.map(d => d.y))
