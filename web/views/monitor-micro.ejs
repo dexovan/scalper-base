@@ -24,9 +24,8 @@
     </script>
 
     <!-- Chart.js for real-time charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
     <style>
         .orderbook-table {
@@ -175,9 +174,6 @@
                             </button>
                         </div>
                         <div class="flex space-x-2">
-                            <button id="chart-type-toggle" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs transition-colors font-semibold" title="Toggle between Line and Candlestick">
-                                🕯️ Candles
-                            </button>
                             <select id="timeframe-selector" class="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
                                 <option value="1s">1s (Ultra High-Freq)</option>
                                 <option value="5s" selected>5s (High-Freq)</option>
@@ -370,7 +366,7 @@
         // Global variables
         let currentSymbol = null;
         let charts = {};
-        let chartType = 'candlestick'; // 'line' or 'candlestick'
+        let chartType = 'line'; // 'line' or 'candlestick'
         let updateIntervals = {};
         let lastUpdateTimes = {};
         let performanceMetrics = {
@@ -1681,28 +1677,6 @@
 
             // Note: checkAlerts removed - will be added back when we have symbol context
         }
-
-        // Chart type toggle button
-        document.getElementById('chart-type-toggle').addEventListener('click', function() {
-            // Toggle between candlestick and line
-            chartType = chartType === 'candlestick' ? 'line' : 'candlestick';
-
-            // Update button text
-            this.textContent = chartType === 'candlestick' ? '🕯️ Candles' : '📈 Line';
-            this.title = chartType === 'candlestick' ? 'Switch to Line Chart' : 'Switch to Candlestick Chart';
-
-            // Visual feedback
-            this.style.backgroundColor = '#059669';
-            setTimeout(() => {
-                this.style.backgroundColor = '';
-            }, 300);
-
-            // Reinitialize chart with new type
-            if (currentSymbol) {
-                initializeCharts();
-                loadMicroCandles(currentSymbol);
-            }
-        });
 
         // Enhanced timeframe selector with info
         document.getElementById('timeframe-selector').addEventListener('change', function() {
