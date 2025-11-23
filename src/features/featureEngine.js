@@ -441,7 +441,7 @@ class FeatureEngine {
                 volatilityScore: state.volatility?.volatilityScore || 0,
                 pumpLikelihoodScore: state.pumpSignals?.pumpLikelihoodScore || 0,
                 defaultLeverage: state.feeLeverage?.defaultLeverage || 0,
-                maxLeverage: state.feeLeverage?.metadata?.maxAvailable || 0,
+                maxLeverage: state.feeLeverage?.metadata?.leverageConstraints?.maxAvailable || 0,
                 overallRiskScore: state.overallRiskScore || 0,
                 marketCondition: state.marketCondition || 'UNKNOWN'
             });
