@@ -332,16 +332,16 @@ async function connectWS(symbolsOverride = null) {
       const orderbookData = Array.isArray(msg.data) ? msg.data[0] : msg.data;
 
       if (orderbookData) {
-        // DEBUG: Log message type to see if Bybit sends snapshot vs delta indicator
-        const bidCount = (orderbookData.b || orderbookData.bids || []).length;
-        const askCount = (orderbookData.a || orderbookData.asks || []).length;
-
-        if (symbol === 'BTCUSDT' && Math.random() < 0.05) { // Log 5% of BTCUSDT updates
-          console.log(`🔍 [ORDERBOOK DEBUG] ${symbol}: type=${msg.type}, bids=${bidCount}, asks=${askCount}`);
-          if (msg.type === 'snapshot' || bidCount + askCount > 30) {
-            console.log(`🔍 [ORDERBOOK DEBUG] SNAPSHOT detected! Total levels: ${bidCount + askCount}`);
-          }
-        }
+        // FULLY DISABLED: Console spam (even 5% sampling = too much!)
+        // const bidCount = (orderbookData.b || orderbookData.bids || []).length;
+        // const askCount = (orderbookData.a || orderbookData.asks || []).length;
+        //
+        // if (symbol === 'BTCUSDT' && Math.random() < 0.05) { // Log 5% of BTCUSDT updates
+        //   console.log(`🔍 [ORDERBOOK DEBUG] ${symbol}: type=${msg.type}, bids=${bidCount}, asks=${askCount}`);
+        //   if (msg.type === 'snapshot' || bidCount + askCount > 30) {
+        //     console.log(`🔍 [ORDERBOOK DEBUG] SNAPSHOT detected! Total levels: ${bidCount + askCount}`);
+        //   }
+        // }
 
         // Bybit sends:
         // - type: "snapshot" = full orderbook (first message after subscribe)
