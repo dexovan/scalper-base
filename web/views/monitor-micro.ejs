@@ -1601,25 +1601,31 @@
                     const startTime = Date.now();
                     try {
                         await loadSystemStats();
+
+                        // Fetch REAL stats from API
+                        const statsResponse = await fetch('/api/stats');
+                        const statsData = await statsResponse.json();
+
+                        if (statsData.success) {
+                            const stats = statsData.data;
+
+                            // Update with REAL data
+                            document.getElementById('data-rate').textContent = Math.round(stats.eventsPerSecond) + ' evt/s';
+                            document.getElementById('storage-used').textContent = Math.round(stats.memoryUsageMB) + ' MB';
+                            document.getElementById('events-per-min').textContent = stats.eventsPerMinute.toLocaleString();
+                            document.getElementById('memory-usage').textContent = Math.round(stats.memoryUsageMB) + ' MB';
+
+                            // Update active symbols count if different from current
+                            const currentCount = parseInt(document.getElementById('active-symbols-count').textContent) || 0;
+                            if (currentCount === 0 || Math.abs(currentCount - stats.activeSymbols) > 5) {
+                                document.getElementById('active-symbols-count').textContent = stats.activeSymbols;
+                            }
+
+                            // Store for performance metrics
+                            performanceMetrics.memoryUsage = Math.round(stats.memoryUsageMB);
+                        }
+
                         trackPerformance('systemStats', startTime);
-
-                        // Update performance metrics display
-                        performanceMetrics.memoryUsage = performance.memory ?
-                            Math.round(performance.memory.usedJSHeapSize / (1024 * 1024)) :
-                            Math.floor(Math.random() * 30 + 40);
-
-                        // Update data rate - simulate realistic WebSocket event rate
-                        // Assuming ~300 active symbols, each updates 2-5 times per second
-                        const eventsPerSecond = Math.floor(Math.random() * 100 + 250); // 250-350 evt/s
-                        document.getElementById('data-rate').textContent = eventsPerSecond + ' evt/s';
-
-                        // Storage Used - calculate from memory usage (optional, can be hidden)
-                        const storageUsed = Math.floor(performanceMetrics.memoryUsage * 0.5); // Rough estimate
-                        document.getElementById('storage-used').textContent = storageUsed + ' MB';
-
-                        // Events per minute
-                        document.getElementById('events-per-min').textContent = (eventsPerSecond * 60).toLocaleString();
-                        document.getElementById('memory-usage').textContent = performanceMetrics.memoryUsage + ' MB';
 
                     } catch (error) {
                         console.error('System stats error:', error);

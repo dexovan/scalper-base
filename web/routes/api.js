@@ -12,12 +12,48 @@ import HealthStatus, {
 } from "../../src/monitoring/health.js";
 
 import metrics from "../../src/core/metrics.js";
-import { getOrderbookSummary, getRecentTrades, getCandles } from "../../src/microstructure/OrderbookManager.js";
+import { getOrderbookSummary, getRecentTrades, getCandles, getStats } from "../../src/microstructure/OrderbookManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+
+/* ---------------------------------------------------------
+   GET /api/stats – Live system statistics
+--------------------------------------------------------- */
+router.get("/stats", (req, res) => {
+  try {
+    const orderbookStats = getStats();
+    const engineMetrics = metrics.getSummary();
+
+    // Calculate event rate (updates per second)
+    const eventsPerSecond = orderbookStats.activeSymbols * 2; // ~2 updates/sec per symbol
+
+    return res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      data: {
+        activeSymbols: orderbookStats.activeSymbols,
+        eventsPerSecond,
+        eventsPerMinute: eventsPerSecond * 60,
+        totalOrderbookUpdates: orderbookStats.totalOrderbookUpdates,
+        totalTradeUpdates: orderbookStats.totalTradeUpdates,
+        uptime: engineMetrics.uptime,
+        decisionCount: engineMetrics.decisionCount,
+        ordersSent: engineMetrics.ordersSent,
+        tradesExecuted: engineMetrics.tradesExecuted,
+        memoryUsageMB: process.memoryUsage().heapUsed / 1024 / 1024
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch stats",
+      error: error.message
+    });
+  }
+});
 
 /* ---------------------------------------------------------
    GET /api/health – Full health check

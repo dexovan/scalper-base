@@ -478,6 +478,32 @@ function getActiveSymbols() {
   return Object.keys(state.symbols);
 }
 
+/**
+ * Get statistics for dashboard
+ */
+function getStats() {
+  const activeSymbols = Object.keys(state.symbols);
+  let totalOrderbookUpdates = 0;
+  let totalTradeUpdates = 0;
+
+  // Calculate total updates
+  for (const [symbol, symbolState] of Object.entries(state.symbols)) {
+    if (symbolState.orderbook.lastUpdateAt) {
+      totalOrderbookUpdates++;
+    }
+    if (symbolState.trades && symbolState.trades.length > 0) {
+      totalTradeUpdates += symbolState.trades.length;
+    }
+  }
+
+  return {
+    activeSymbols: activeSymbols.length,
+    totalOrderbookUpdates,
+    totalTradeUpdates,
+    lastUpdateAt: Date.now()
+  };
+}
+
 // ================================================================
 // EXPORTS
 // ================================================================
@@ -491,6 +517,7 @@ export {
   getRecentTrades,
   getCandles,
   getActiveSymbols,
+  getStats,
   flushSnapshotsToDisk
 };
 
@@ -503,5 +530,6 @@ export default {
   getRecentTrades,
   getCandles,
   getActiveSymbols,
+  getStats,
   flushSnapshotsToDisk
 };
