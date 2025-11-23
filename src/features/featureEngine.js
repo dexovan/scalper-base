@@ -758,13 +758,40 @@ class FeatureEngine {
     }
 
     async getSymbolMetadata(symbol) {
-        // Placeholder - would integrate with actual symbol metadata
-        return {
-            maxLeverage: 20,
-            makerFee: 0.0001,
-            takerFee: 0.0004,
-            minNotional: 10
-        };
+        try {
+            // Import universe_v2 dynamically to get real symbol metadata
+            const { getSymbolMeta } = await import('../market/universe_v2.js');
+            const universeMeta = getSymbolMeta(symbol);
+
+            if (universeMeta) {
+                // Return real metadata from universe
+                return {
+                    maxLeverage: universeMeta.maxLeverage || 1,
+                    makerFee: 0.0001,  // Default fees (Bybit standard)
+                    takerFee: 0.0004,
+                    minNotional: 10,
+                    category: universeMeta.category,
+                    status: universeMeta.status
+                };
+            }
+
+            // Fallback if symbol not in universe
+            return {
+                maxLeverage: 1,  // No leverage if not in universe
+                makerFee: 0.0001,
+                takerFee: 0.0004,
+                minNotional: 10
+            };
+        } catch (error) {
+            this.logger.warn(`Failed to get symbol metadata for ${symbol}:`, error);
+            // Fallback on error
+            return {
+                maxLeverage: 1,
+                makerFee: 0.0001,
+                takerFee: 0.0004,
+                minNotional: 10
+            };
+        }
     }
 
     createEmptyFeatureState(symbol) {
