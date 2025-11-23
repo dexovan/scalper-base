@@ -1152,20 +1152,18 @@
                     },
                     scales: {
                         x: {
-                            type: 'time',
-                            time: {
-                                unit: 'second',
-                                displayFormats: {
-                                    second: 'HH:mm:ss'
-                                }
-                            },
+                            type: 'linear',  // Changed from 'time' to test if time scale is the issue
                             grid: {
                                 color: '#374151',
                                 display: true
                             },
                             ticks: {
                                 color: '#9ca3af',
-                                maxTicksLimit: 10
+                                maxTicksLimit: 10,
+                                callback: function(value) {
+                                    const date = new Date(value);
+                                    return date.toLocaleTimeString();
+                                }
                             }
                         },
                         y: {
@@ -1227,11 +1225,11 @@
             // TEST: Add dummy data immediately to verify chart rendering
             const now = Date.now();
             const testData = [
-                { x: new Date(now - 60000), y: 100 },
-                { x: new Date(now - 45000), y: 105 },
-                { x: new Date(now - 30000), y: 103 },
-                { x: new Date(now - 15000), y: 108 },
-                { x: new Date(now), y: 107 }
+                { x: now - 60000, y: 100 },  // Use timestamps instead of Date objects
+                { x: now - 45000, y: 105 },
+                { x: now - 30000, y: 103 },
+                { x: now - 15000, y: 108 },
+                { x: now, y: 107 }
             ];
             console.log('🧪 TEST: Adding dummy data to chart:', testData);
             charts.candles.data.datasets[0].data = testData;
@@ -1348,7 +1346,7 @@
             });
 
             const data = aggregatedCandles.map(candle => ({
-                x: new Date(candle.timestamp || candle.bucketStart),
+                x: new Date(candle.timestamp || candle.bucketStart).getTime(),  // Use timestamp instead of Date object
                 y: parseFloat(candle.close || candle.price)
             }));
 
