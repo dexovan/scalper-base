@@ -131,9 +131,15 @@
         <!-- Microstructure Monitor -->
         <div class="rounded-lg border border-slate-800 bg-gradient-to-br from-blue-950/20 to-slate-900/60 p-4 hover:border-blue-700/50 transition-colors">
             <div class="flex items-start justify-between mb-3">
-                <div>
+                <div class="flex items-center gap-2">
                     <h3 class="text-base font-semibold text-slate-200">Microstructure Monitor</h3>
-                    <p class="text-xs text-slate-400 mt-1">FAZA 3 - Real-time market data</p>
+                    <button onclick="showMicrostructureInfo()" class="text-slate-400 hover:text-blue-400 transition-colors" title="Više informacija">
+                        <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 16v-4M12 8h.01"/>
+                        </svg>
+                    </button>
+                    <p class="text-xs text-slate-400 mt-1 ml-auto">FAZA 3 - Real-time market data</p>
                 </div>
                 <div class="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
                     <svg class="w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -233,11 +239,185 @@
 
 </div>
 
+<!-- Microstructure Info Modal -->
+<div id="microstructure-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-slate-900 rounded-lg border border-slate-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-slate-900 border-b border-slate-700 px-6 py-4 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-slate-100">📊 Microstructure Monitor - Detaljno Objašnjenje</h2>
+            <button onclick="hideMicrostructureInfo()" class="text-slate-400 hover:text-slate-200 transition-colors">
+                <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="p-6 space-y-6">
+            <!-- Main Description -->
+            <div>
+                <h3 class="text-lg font-semibold text-blue-400 mb-2">Šta je Microstructure Monitor?</h3>
+                <p class="text-slate-300 leading-relaxed">
+                    Microstructure Monitor je sistem za praćenje <strong>mikrostrukture tržišta u realnom vremenu</strong>.
+                    Prati dubinu orderbook-a (knjige naloga), trade flow (protok trgovina), orderbook imbalance (neravnotežu),
+                    i detektuje <strong>market manipulation patterns</strong> kao što su spoofing i walls.
+                </p>
+            </div>
+
+            <!-- Purpose -->
+            <div>
+                <h3 class="text-lg font-semibold text-blue-400 mb-2">Čemu služi?</h3>
+                <ul class="space-y-2 text-slate-300">
+                    <li class="flex items-start gap-2">
+                        <span class="text-emerald-400 mt-1">✓</span>
+                        <span><strong>Detekcija manipulacije:</strong> Identifikuje spoofing (lažne naloge), wash trading, pump & dump šeme</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="text-emerald-400 mt-1">✓</span>
+                        <span><strong>Analiza likvidnosti:</strong> Meri dubinu orderbook-a i identifikuje "walls" (velike naloge koji blokiraju cenu)</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="text-emerald-400 mt-1">✓</span>
+                        <span><strong>Trade flow analiza:</strong> Prati agresivne kupovine/prodaje i meri pritisak na cenu</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="text-emerald-400 mt-1">✓</span>
+                        <span><strong>Orderbook imbalance:</strong> Meri neravnotežu između bid/ask strana (predviđa kratkoročne cenovne pokrete)</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Metrics Explanation -->
+            <div>
+                <h3 class="text-lg font-semibold text-blue-400 mb-3">Objašnjenje Metrika</h3>
+
+                <div class="space-y-4">
+                    <!-- Symbols -->
+                    <div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="w-2 h-2 rounded-full bg-blue-400"></div>
+                            <h4 class="font-semibold text-slate-200">Symbols</h4>
+                        </div>
+                        <p class="text-sm text-slate-300">
+                            <strong>Broj simbola</strong> koji se trenutno prate. Sistem procesira orderbook podatke za ~500 simbola istovremeno.
+                            Prikazuje koliko simbola <strong>ima aktivne podatke</strong> u poslednjih 30 sekundi.
+                        </p>
+                    </div>
+
+                    <!-- Events/s -->
+                    <div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                            <h4 class="font-semibold text-slate-200">Events/s (Događaji po sekundi)</h4>
+                        </div>
+                        <p class="text-sm text-slate-300 mb-2">
+                            <strong>Brzina procesiranja podataka</strong> - koliko orderbook update-a i trade-ova sistem procesira svake sekunde.
+                        </p>
+                        <ul class="text-xs text-slate-400 space-y-1 ml-4">
+                            <li>• <strong>50-150 events/s:</strong> Normalan market flow</li>
+                            <li>• <strong>200-500 events/s:</strong> Povećana aktivnost (velike vesti, volatilnost)</li>
+                            <li>• <strong>500+ events/s:</strong> Ekstremna aktivnost (market crash, pump)</li>
+                        </ul>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="w-2 h-2 rounded-full bg-green-400"></div>
+                            <h4 class="font-semibold text-slate-200">Status</h4>
+                        </div>
+                        <p class="text-sm text-slate-300 mb-2">
+                            <strong>Zdravlje sistema</strong> - pokazuje da li WebSocket konekcija radi i da li stižu podaci.
+                        </p>
+                        <ul class="text-xs text-slate-400 space-y-1 ml-4">
+                            <li>• <strong class="text-green-400">OK:</strong> Sistem radi normalno, podaci stižu</li>
+                            <li>• <strong class="text-amber-400">DEGRADED:</strong> Sporije procesiranje ili manji broj simbola</li>
+                            <li>• <strong class="text-red-400">ERROR:</strong> WebSocket pao ili nema podataka</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- What You Get -->
+            <div>
+                <h3 class="text-lg font-semibold text-blue-400 mb-2">Šta dobijamo iz ovog monitora?</h3>
+                <div class="bg-gradient-to-r from-blue-950/40 to-slate-800/40 rounded-lg p-4 border border-blue-800/30">
+                    <ul class="space-y-2 text-slate-300 text-sm">
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">1.</span>
+                            <span><strong>Real-time orderbook depth:</strong> Koliko nivoa dubine ima svaki simbol (idealno 20-50 nivoa)</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">2.</span>
+                            <span><strong>Wall detection scores:</strong> Detektuje velike "zidove" u orderbook-u koji blokiraju cenu</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">3.</span>
+                            <span><strong>Spoofing detection:</strong> Identifikuje lažne naloge koji se stavljaju i povlače da manipulišu cenu</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">4.</span>
+                            <span><strong>Trade flow metrics:</strong> Agresivne kupovine vs prodaje, volume pressure, momentum</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">5.</span>
+                            <span><strong>Orderbook imbalance:</strong> Neravnoteža bid/ask koja predviđa kratkoročne cenovne pokrete</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <span class="text-blue-400 font-bold">6.</span>
+                            <span><strong>Data quality validation:</strong> Proverava da li su podaci ispravni (format, dubina, fresshness)</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Technical Details -->
+            <div>
+                <h3 class="text-lg font-semibold text-blue-400 mb-2">Tehnički Detalji</h3>
+                <div class="text-sm text-slate-400 space-y-1">
+                    <p>• <strong>Data source:</strong> Bybit WebSocket API (orderbook.50 + publicTrade)</p>
+                    <p>• <strong>Update frequency:</strong> Real-time (snapshot + delta updates)</p>
+                    <p>• <strong>Processing:</strong> Map-based delta merge za održavanje pune dubine orderbook-a</p>
+                    <p>• <strong>Symbols tracked:</strong> ~500 USDT perpetual futures</p>
+                    <p>• <strong>Storage:</strong> In-memory orderbook state (brzo pristupanje)</p>
+                </div>
+            </div>
+        </div>
+        <div class="sticky bottom-0 bg-slate-900 border-t border-slate-700 px-6 py-4">
+            <button onclick="hideMicrostructureInfo()" class="w-full px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors">
+                Zatvori
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Dashboard API Client -->
 <script type="module">
     import { DashboardAPI } from '/js/api-client.js';
 
     let globalDashboard = null;
+
+    // Modal functions
+    window.showMicrostructureInfo = function() {
+        document.getElementById('microstructure-modal').classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+    };
+
+    window.hideMicrostructureInfo = function() {
+        document.getElementById('microstructure-modal').classList.add('hidden');
+        document.body.style.overflow = 'auto';
+    };
+
+    // Close modal on ESC key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideMicrostructureInfo();
+        }
+    });
+
+    // Close modal on backdrop click
+    document.getElementById('microstructure-modal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'microstructure-modal') {
+            hideMicrostructureInfo();
+        }
+    });
 
     // Make refresh function globally available
     window.refreshFeatureData = function() {
