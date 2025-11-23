@@ -1010,7 +1010,8 @@
             // Group candles by timeframe buckets
             const buckets = {};
             candles.forEach(candle => {
-                const timestamp = new Date(candle.timestamp).getTime();
+                // Support both timestamp and bucketStart fields
+                const timestamp = new Date(candle.timestamp || candle.bucketStart).getTime();
                 const bucketKey = Math.floor(timestamp / bucketSize) * bucketSize;
 
                 if (!buckets[bucketKey]) {
@@ -1024,15 +1025,18 @@
                 const bucket = buckets[bucketKey];
 
                 if (config.aggregation === 'ohlc') {
-                    // OHLC aggregation
+                    // OHLC aggregation - support both API formats
+                    const firstCandle = bucket[0];
+                    const lastCandle = bucket[bucket.length - 1];
+
                     aggregated.push({
                         timestamp: new Date(parseInt(bucketKey)),
-                        open: bucket[0].price,
-                        high: Math.max(...bucket.map(c => c.price)),
-                        low: Math.min(...bucket.map(c => c.price)),
-                        close: bucket[bucket.length - 1].price,
-                        volume: bucket.reduce((sum, c) => sum + (c.volume || 0), 0),
-                        price: bucket[bucket.length - 1].price // For line chart compatibility
+                        open: firstCandle.open || firstCandle.price,
+                        high: firstCandle.high || Math.max(...bucket.map(c => c.close || c.price)),
+                        low: firstCandle.low || Math.min(...bucket.map(c => c.close || c.price)),
+                        close: lastCandle.close || lastCandle.price,
+                        volume: firstCandle.volume || bucket.reduce((sum, c) => sum + (c.volume || 0), 0),
+                        price: lastCandle.close || lastCandle.price // For line chart compatibility
                     });
                 } else if (config.aggregation === 'weighted') {
                     // Volume-weighted average
