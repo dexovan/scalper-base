@@ -12,8 +12,7 @@ import HealthStatus, {
 } from "../../src/monitoring/health.js";
 
 import metrics from "../../src/core/metrics.js";
-
-
+import { getOrderbookSummary, getRecentTrades, getCandles } from "../../src/microstructure/OrderbookManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,6 +114,88 @@ router.get("/health/services/:serviceName", (req, res) => {
   }
 });
 
+/* ---------------------------------------------------------
+   GET /api/symbol/:symbol/orderbook – Real orderbook data
+--------------------------------------------------------- */
+router.get("/symbol/:symbol/orderbook", async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const depth = parseInt(req.query.depth) || 10;
+
+    const orderbook = getOrderbookSummary(symbol, depth);
+
+    if (!orderbook || !orderbook.bids || !orderbook.asks) {
+      return res.json({
+        success: false,
+        message: `No orderbook data available for ${symbol}`
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: orderbook
+    });
+  } catch (error) {
+    console.error(`Error fetching orderbook for ${req.params.symbol}:`, error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch orderbook",
+      error: error.message
+    });
+  }
+});
+
+/* ---------------------------------------------------------
+   GET /api/symbol/:symbol/trades – Recent trades
+--------------------------------------------------------- */
+router.get("/symbol/:symbol/trades", async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+
+    const trades = getRecentTrades(symbol, limit);
+
+    return res.json({
+      success: true,
+      data: trades || []
+    });
+  } catch (error) {
+    console.error(`Error fetching trades for ${req.params.symbol}:`, error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch trades",
+      error: error.message
+    });
+  }
+});
+
+/* ---------------------------------------------------------
+   GET /api/symbol/:symbol/candles/:timeframe – Candle data
+--------------------------------------------------------- */
+router.get("/symbol/:symbol/candles/:timeframe", async (req, res) => {
+  try {
+    const { symbol, timeframe } = req.params;
+    const limit = parseInt(req.query.limit) || 100;
+
+    const candles = getCandles(symbol, timeframe, limit);
+
+    return res.json({
+      ok: true,
+      symbol,
+      timeframe,
+      candles: candles || [],
+      count: candles ? candles.length : 0,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error(`Error fetching candles for ${req.params.symbol}:`, error);
+    return res.status(500).json({
+      ok: false,
+      message: "Failed to fetch candles",
+      error: error.message
+    });
+  }
+});
 
 
 
