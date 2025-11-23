@@ -323,12 +323,15 @@ class WallsSpoofingEngine {
 
                     tracker.disappeared = true;
 
-                    this.logger.info('Spoof detected:', {
-                        wallId,
-                        duration,
-                        maxApproach: tracker.maxPriceApproach,
-                        initialSize: tracker.initialSize
-                    });
+                    // SAMPLING: Only log 1% of spoof events to prevent log spam
+                    if (Math.random() < 0.01) {
+                        this.logger.info('Spoof detected:', {
+                            wallId,
+                            duration,
+                            maxApproach: tracker.maxPriceApproach,
+                            initialSize: tracker.initialSize
+                        });
+                    }
                 }
             }
         }
