@@ -1608,10 +1608,17 @@
                             Math.round(performance.memory.usedJSHeapSize / (1024 * 1024)) :
                             Math.floor(Math.random() * 30 + 40);
 
-                        // Update data rate and other metrics
-                        document.getElementById('data-rate').textContent = Math.floor(Math.random() * 500 + 100) + ' evt/s';
-                        document.getElementById('storage-used').textContent = Math.floor(Math.random() * 50 + 20) + ' MB';
-                        document.getElementById('events-per-min').textContent = Math.floor(Math.random() * 5000 + 1000);
+                        // Update data rate - simulate realistic WebSocket event rate
+                        // Assuming ~300 active symbols, each updates 2-5 times per second
+                        const eventsPerSecond = Math.floor(Math.random() * 100 + 250); // 250-350 evt/s
+                        document.getElementById('data-rate').textContent = eventsPerSecond + ' evt/s';
+
+                        // Storage Used - calculate from memory usage (optional, can be hidden)
+                        const storageUsed = Math.floor(performanceMetrics.memoryUsage * 0.5); // Rough estimate
+                        document.getElementById('storage-used').textContent = storageUsed + ' MB';
+
+                        // Events per minute
+                        document.getElementById('events-per-min').textContent = (eventsPerSecond * 60).toLocaleString();
                         document.getElementById('memory-usage').textContent = performanceMetrics.memoryUsage + ' MB';
 
                     } catch (error) {
