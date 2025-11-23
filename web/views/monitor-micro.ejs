@@ -1112,22 +1112,23 @@
             });
 
             charts.candles = new Chart(ctx, {
-                type: 'candlestick',
+                type: 'line',
                 data: {
                     datasets: [{
                         label: currentSymbol || 'Price',
                         data: [],
-                        borderColor: {
-                            up: '#10b981',     // Green for bullish
-                            down: '#ef4444',   // Red for bearish
-                            unchanged: '#6b7280'
-                        },
-                        backgroundColor: {
-                            up: 'rgba(16, 185, 129, 0.3)',
-                            down: 'rgba(239, 68, 68, 0.3)',
-                            unchanged: 'rgba(107, 114, 128, 0.3)'
-                        },
-                        borderWidth: 2
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointHoverBackgroundColor: '#10b981',
+                        pointHoverBorderColor: '#fff'
                     }]
                 },
                 options: {
@@ -1208,24 +1209,24 @@
                             mode: 'index',
                             intersect: false,
                             backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                            borderColor: '#374151',
-                            borderWidth: 1,
-                            titleColor: '#f3f4f6',
-                            bodyColor: '#d1d5db',
+                            borderColor: '#10b981',
+                            borderWidth: 2,
+                            titleColor: '#10b981',
+                            bodyColor: '#f3f4f6',
                             padding: 12,
+                            displayColors: false,
                             callbacks: {
                                 label: function(context) {
-                                    const d = context.raw;
-                                    return [
-                                        `Open:  ${d.o.toFixed(4)}`,
-                                        `High:  ${d.h.toFixed(4)}`,
-                                        `Low:   ${d.l.toFixed(4)}`,
-                                        `Close: ${d.c.toFixed(4)}`
-                                    ];
+                                    return `Price: ${context.parsed.y.toFixed(4)}`;
                                 },
                                 title: function(context) {
                                     const date = new Date(context[0].parsed.x);
-                                    return date.toLocaleTimeString();
+                                    return date.toLocaleString('en-US', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                        hour12: false
+                                    });
                                 }
                             }
                         }
@@ -1358,13 +1359,10 @@
                 allClosePrices: aggregatedCandles.map(c => c.close || c.price)
             });
 
-            // Map to candlestick format: { x, o, h, l, c }
+            // Map to line chart format: { x, y }
             const data = aggregatedCandles.map(candle => ({
                 x: new Date(candle.timestamp || candle.bucketStart).getTime(),
-                o: parseFloat(candle.open || candle.close || candle.price),
-                h: parseFloat(candle.high || candle.close || candle.price),
-                l: parseFloat(candle.low || candle.close || candle.price),
-                c: parseFloat(candle.close || candle.price)
+                y: parseFloat(candle.close || candle.price)
             }));
 
             console.log('📊 Chart data prepared:', {
@@ -1373,8 +1371,8 @@
                 lastPoint: data[data.length - 1],
                 sample: data.slice(0, 3),
                 priceRange: {
-                    min: Math.min(...data.map(d => d.l)),
-                    max: Math.max(...data.map(d => d.h))
+                    min: Math.min(...data.map(d => d.y)),
+                    max: Math.max(...data.map(d => d.y))
                 }
             });
 
