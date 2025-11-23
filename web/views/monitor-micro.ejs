@@ -1602,27 +1602,33 @@
                     try {
                         await loadSystemStats();
 
-                        // Fetch REAL stats from API
-                        const statsResponse = await fetch('/api/stats');
-                        const statsData = await statsResponse.json();
+                        // Fetch REAL stats from engine (same endpoint as main dashboard)
+                        const healthResponse = await fetch('http://5.223.76.141:8090/api/microstructure/health');
+                        const healthData = await healthResponse.json();
 
-                        if (statsData.success) {
-                            const stats = statsData.data;
+                        if (healthData.ok) {
+                            const health = healthData.health;
+                            const symbols = healthData.symbols || [];
+
+                            // Calculate events per second from trade counts
+                            const totalTrades = symbols.reduce((sum, s) => sum + (s.tradesCount || 0), 0);
+                            const eventsPerSecond = Math.floor(totalTrades / 60);
 
                             // Update with REAL data
-                            document.getElementById('data-rate').textContent = Math.round(stats.eventsPerSecond) + ' evt/s';
-                            document.getElementById('storage-used').textContent = Math.round(stats.memoryUsageMB) + ' MB';
-                            document.getElementById('events-per-min').textContent = stats.eventsPerMinute.toLocaleString();
-                            document.getElementById('memory-usage').textContent = Math.round(stats.memoryUsageMB) + ' MB';
+                            document.getElementById('data-rate').textContent = eventsPerSecond + ' evt/s';
+                            document.getElementById('events-per-min').textContent = (eventsPerSecond * 60).toLocaleString();
 
-                            // Update active symbols count if different from current
+                            // Update active symbols count
                             const currentCount = parseInt(document.getElementById('active-symbols-count').textContent) || 0;
-                            if (currentCount === 0 || Math.abs(currentCount - stats.activeSymbols) > 5) {
-                                document.getElementById('active-symbols-count').textContent = stats.activeSymbols;
+                            if (currentCount === 0 || Math.abs(currentCount - health.activeSymbols) > 5) {
+                                document.getElementById('active-symbols-count').textContent = health.activeSymbols;
                             }
 
-                            // Store for performance metrics
-                            performanceMetrics.memoryUsage = Math.round(stats.memoryUsageMB);
+                            // Memory tracking (estimated from process)
+                            const memoryMB = Math.round(process.memoryUsage ? process.memoryUsage().heapUsed / 1024 / 1024 : 0);
+                            document.getElementById('storage-used').textContent = memoryMB + ' MB';
+                            document.getElementById('memory-usage').textContent = memoryMB + ' MB';
+                            performanceMetrics.memoryUsage = memoryMB;
                         }
 
                         trackPerformance('systemStats', startTime);
