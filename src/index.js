@@ -83,7 +83,12 @@ async function startEngine() {
 
     if (evt.type === "ticker") {
       const lastPrice = evt.payload.lastPrice || evt.payload.price || "";
-      console.log("[TICKER]", evt.symbol, lastPrice);
+
+      // DISABLED: Console.log spam fills logs (500 symbols × 100 updates/s = 50,000 logs/s = GIGABYTES!)
+      // Only log sampling for debugging (0.01% = ~5 logs/second)
+      if (Math.random() < 0.0001) {
+        console.log("[TICKER SAMPLE]", evt.symbol, lastPrice);
+      }
 
       // DISABLED: Tickers disk storage fills disk too fast
       // KORAK 2: Save ticker data to CSV file
@@ -96,7 +101,11 @@ async function startEngine() {
       const qty = evt.payload.v;            // "0.027"
       const tickDir = evt.payload.L;        // "PlusTick" | "MinusTick" | "ZeroPlusTick" | "ZeroMinusTick"
 
-      console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
+      // DISABLED: Console.log spam fills logs (hundreds of trades/s = MEGABYTES!)
+      // Only log sampling for debugging (0.1% = ~1 log/second)
+      if (Math.random() < 0.001) {
+        console.log("[TRADE SAMPLE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
+      }
 
       // DISABLED: Trades disk storage fills disk too fast (15GB+ in days!)
       // KORAK 2: Save trade data to CSV file
