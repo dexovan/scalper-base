@@ -225,7 +225,7 @@
                             <p class="text-xs text-slate-400">${new Date(sym.lastUpdateAt).toLocaleTimeString() || 'N/A'}</p>
                         </div>
                     </div>
-                    <div class="grid grid-cols-4 gap-3 text-xs">
+                    <div class="grid grid-cols-5 gap-3 text-xs">
                         <div>
                             <p class="text-slate-500 mb-1">TOB Imbalance</p>
                             <p class="font-semibold ${getImbalanceColor(sym.tobImbalance)}">
@@ -233,7 +233,11 @@
                             </p>
                         </div>
                         <div>
-                            <p class="text-slate-500 mb-1">Spoofing Score</p>
+                            <p class="text-slate-500 mb-1">Leverage</p>
+                            <p class="font-semibold text-violet-400">${sym.defaultLeverage || 0}x / ${sym.maxLeverage || 0}x</p>
+                        </div>
+                        <div>
+                            <p class="text-slate-500 mb-1">Spoofing</p>
                             <p class="font-semibold text-amber-400">${(sym.spoofingScore || 0).toFixed(2)}</p>
                         </div>
                         <div>
