@@ -1080,12 +1080,18 @@
         }
 
         // Initialize charts with performance optimizations
+        let chartsInitialized = false;
+
         function initializeCharts() {
             console.trace('🎨 initializeCharts() called from:');
-            console.log('🎨 Initializing charts...');
+            console.log('🎨 Initializing charts...', { chartsInitialized });
 
-            // Destroy existing charts first
-            destroyCharts();
+            // Only destroy if already initialized (prevent destroying on first load)
+            if (chartsInitialized) {
+                console.log('🔄 Charts already initialized, destroying old charts...');
+                destroyCharts();
+            }
+            chartsInitialized = true;
 
             const ctx = document.getElementById('micro-candles-chart');
 
@@ -1277,13 +1283,21 @@
         function updateCandleChart(candles) {
             console.log('📊 updateCandleChart called with:', {
                 hasChart: !!charts.candles,
+                chartDestroyed: charts.candles?.$context === undefined,
                 candlesCount: candles?.length || 0,
                 firstCandle: candles?.[0],
                 lastCandle: candles?.[candles?.length - 1]
             });
 
             if (!charts.candles) {
-                console.error('❌ Charts.candles not initialized!');
+                console.error('❌ Charts.candles is null/undefined!');
+                console.log('Available charts:', Object.keys(charts));
+                return;
+            }
+
+            // Check if chart was destroyed
+            if (!charts.candles.ctx || charts.candles.ctx.canvas === null) {
+                console.error('❌ Chart was destroyed! Canvas is null.');
                 return;
             }
 
