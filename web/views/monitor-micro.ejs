@@ -759,6 +759,14 @@
             document.getElementById('best-ask').textContent = bestAsk.toFixed(4);
             document.getElementById('current-spread').textContent = spread.toFixed(4);
 
+            // UPDATE LIVE METRICS WITH REAL DATA
+            updateLiveMetricsFromOrderbook({
+                bestBid,
+                bestAsk,
+                midPrice,
+                spread
+            });
+
             let html = `
                 <div class="grid grid-cols-3 gap-2 text-xs font-semibold text-slate-400 mb-2 px-2">
                     <div>Price</div>
@@ -1538,30 +1546,22 @@
             updateSymbolData();
         }
 
-        // Update live metrics
-        function updateLiveMetrics(symbol) {
-            // Simulate live metrics data
-            const basePrice = Math.random() * 100 + 20;
-            const spread = basePrice * (0.001 + Math.random() * 0.001);
-            const spreadPercent = (spread / basePrice) * 100;
-            const midPrice = basePrice + (spread / 2);
-            const volume = Math.floor(Math.random() * 10000 + 5000);
+        // Update live metrics from real orderbook data
+        function updateLiveMetricsFromOrderbook(orderbookData) {
+            const { bestBid, bestAsk, midPrice, spread } = orderbookData;
+            const spreadPercent = (spread / midPrice) * 100;
 
             document.getElementById('spread-value').textContent = spread.toFixed(4);
             document.getElementById('spread-percent').textContent = spreadPercent.toFixed(3) + '%';
             document.getElementById('mid-price').textContent = midPrice.toFixed(4);
+
+            // Keep volume/trades/vwap as simulated for now (until we have real trade data)
+            const volume = Math.floor(Math.random() * 10000 + 5000);
             document.getElementById('volume-1m').textContent = volume.toLocaleString();
             document.getElementById('trades-1m').textContent = Math.floor(Math.random() * 500 + 100);
             document.getElementById('vwap').textContent = (midPrice * (1 + (Math.random() - 0.5) * 0.001)).toFixed(4);
 
-            // Check for alerts
-            checkAlerts(symbol, {
-                spreadPercent,
-                spread,
-                midPrice,
-                volume,
-                basePrice
-            });
+            // Note: checkAlerts removed - will be added back when we have symbol context
         }
 
         // Enhanced timeframe selector with info
