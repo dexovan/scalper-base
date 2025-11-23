@@ -78,11 +78,13 @@ export function attachRealtimeListeners(bybitPublic) {
   console.log("🔗 attachRealtimeListeners: Setting up event listeners");
 
   bybitPublic.on('event', (eventData) => {
-    console.log("📡 MonitorAPI received event:", eventData?.type, eventData?.symbol);
+    // FULLY DISABLED: Console spam (50,000+ logs/second = GIGABYTES!)
+    // console.log("📡 MonitorAPI received event:", eventData?.type, eventData?.symbol);
     const { type, symbol, payload } = eventData;
 
     if (type === 'ticker') {
-      console.log("📊 Processing ticker for", symbol, "payload:", JSON.stringify(payload, null, 2));
+      // FULLY DISABLED: Console spam (logs every ticker for 500 symbols = 50,000+ logs/s!)
+      // console.log("📊 Processing ticker for", symbol, "payload:", JSON.stringify(payload, null, 2));
 
       // Try different possible price fields from Bybit ticker
       let price = null;
@@ -99,16 +101,17 @@ export function attachRealtimeListeners(bybitPublic) {
       } else if (payload.bid1Price) price = parseFloat(payload.bid1Price);
       else if (payload.ask1Price) price = parseFloat(payload.ask1Price);
 
-      console.log("🔍 Price extraction:", {
-        lastPrice: payload.lastPrice,
-        price: payload.price,
-        c: payload.c,
-        indexPrice: payload.indexPrice,
-        markPrice: payload.markPrice,
-        bid1Price: payload.bid1Price,
-        ask1Price: payload.ask1Price,
-        finalPrice: price
-      });      // Extract 24h data from WebSocket payload (if available)
+      // FULLY DISABLED: Console spam - this logs entire payload for every ticker!
+      // console.log("🔍 Price extraction:", {
+      //   lastPrice: payload.lastPrice,
+      //   price: payload.price,
+      //   c: payload.c,
+      //   indexPrice: payload.indexPrice,
+      //   markPrice: payload.markPrice,
+      //   bid1Price: payload.bid1Price,
+      //   ask1Price: payload.ask1Price,
+      //   finalPrice: price
+      // });      // Extract 24h data from WebSocket payload (if available)
       let change24h = null;
       if (payload.price24hPcnt) change24h = parseFloat(payload.price24hPcnt);
       else if (payload.priceChangePercent) change24h = parseFloat(payload.priceChangePercent);
@@ -132,7 +135,8 @@ export function attachRealtimeListeners(bybitPublic) {
       };
 
       latestTickers.set(symbol, tickerData);
-      console.log("💾 Stored ticker for", symbol, "price:", price, "total tickers:", latestTickers.size);
+      // FULLY DISABLED: Console spam (logs every ticker = 50,000+ logs/s!)
+      // console.log("💾 Stored ticker for", symbol, "price:", price, "total tickers:", latestTickers.size);
     }    if (type === 'trade') {
       const trade = {
         symbol,
