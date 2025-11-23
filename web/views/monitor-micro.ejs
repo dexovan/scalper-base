@@ -121,7 +121,14 @@
                 <!-- Real-time Orderbook -->
                 <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-semibold text-slate-200">Live Orderbook</h3>
+                        <div class="flex items-center space-x-2">
+                            <h3 class="text-lg font-semibold text-slate-200">Live Orderbook</h3>
+                            <button onclick="showHelpModal('orderbook')" class="text-blue-400 hover:text-blue-300 transition-colors">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
                         <div class="text-xs text-slate-500" id="orderbook-timestamp">-</div>
                     </div>
 
@@ -183,7 +190,16 @@
 
                 <!-- Volume Profile -->
                 <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-                    <h3 class="text-lg font-semibold mb-4 text-slate-200">Volume Profile</h3>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-2">
+                            <h3 class="text-lg font-semibold text-slate-200">Volume Profile</h3>
+                            <button onclick="showHelpModal('volumeProfile')" class="text-blue-400 hover:text-blue-300 transition-colors">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
                     <div class="h-32">
                         <canvas id="volume-profile-chart"></canvas>
                     </div>
@@ -196,7 +212,14 @@
                 <!-- Trade Flow -->
                 <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-semibold text-slate-200">Trade Flow</h3>
+                        <div class="flex items-center space-x-2">
+                            <h3 class="text-lg font-semibold text-slate-200">Trade Flow</h3>
+                            <button onclick="showHelpModal('tradeFlow')" class="text-blue-400 hover:text-blue-300 transition-colors">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
                         <div class="text-xs text-slate-500">Real-time</div>
                     </div>
 
@@ -209,7 +232,16 @@
 
                 <!-- Market Metrics -->
                 <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-                    <h3 class="text-lg font-semibold mb-4 text-slate-200">Live Metrics</h3>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-2">
+                            <h3 class="text-lg font-semibold text-slate-200">Live Metrics</h3>
+                            <button onclick="showHelpModal('liveMetrics')" class="text-blue-400 hover:text-blue-300 transition-colors">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
                     <div id="market-metrics" class="space-y-3 text-sm">
                         <div class="flex justify-between">
                             <span class="text-slate-400">Spread:</span>
@@ -1888,6 +1920,241 @@
                 loadMicroCandles(currentSymbol);
             }
             loadSystemStats();
+        });
+
+        // HELP MODAL SYSTEM
+        function showHelpModal(topic) {
+            const helpContent = getHelpContent(topic);
+
+            const modal = document.createElement('div');
+            modal.id = 'help-modal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4';
+            modal.onclick = (e) => { if (e.target === modal) closeHelpModal(); };
+
+            modal.innerHTML = `
+                <div class="bg-slate-900 border border-slate-700 rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+                    <div class="sticky top-0 bg-slate-800 border-b border-slate-700 p-4 flex items-center justify-between">
+                        <h2 class="text-xl font-bold text-slate-100">${helpContent.title}</h2>
+                        <button onclick="closeHelpModal()" class="text-slate-400 hover:text-slate-200 transition-colors">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="p-6 space-y-6 text-slate-300">
+                        ${helpContent.content}
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+        }
+
+        function closeHelpModal() {
+            const modal = document.getElementById('help-modal');
+            if (modal) modal.remove();
+        }
+
+        function getHelpContent(topic) {
+            const content = {
+                orderbook: {
+                    title: '📖 Live Orderbook - Šta je i kako se koristi',
+                    content: `
+                        <div class="space-y-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-green-400 mb-2">Šta je Orderbook?</h3>
+                                <p class="text-slate-400">Orderbook (knjiga naloga) prikazuje sve aktivne <span class="text-green-400">BUY</span> i <span class="text-red-400">SELL</span> naloge za određeni simbol. Gornji deo (crveno) su ASKS (prodavci), donji deo (zeleno) su BIDS (kupci).</p>
+                            </div>
+
+                            <div class="border-l-4 border-blue-500 pl-4">
+                                <h4 class="font-semibold text-blue-400 mb-2">Spread - Ključna metrika</h4>
+                                <p class="mb-2"><span class="font-mono bg-slate-800 px-2 py-1 rounded">Spread = Ask - Bid</span></p>
+                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                    <li><span class="text-green-400">Manji spread (0.01 - 0.10)</span> = likvidniji market, idealno za scalping</li>
+                                    <li><span class="text-yellow-400">Srednji spread (0.10 - 0.50)</span> = umeren, može se raditi scalp ali oprezno</li>
+                                    <li><span class="text-red-400">Veliki spread (>0.50)</span> = illikvidan market, IZBEGAVATI za scalp</li>
+                                </ul>
+                            </div>
+
+                            <div>
+                                <h4 class="font-semibold text-purple-400 mb-2">Šta pratiti za Scalping</h4>
+                                <ul class="list-disc list-inside space-y-2 text-sm">
+                                    <li><strong>Spread stabilnost:</strong> Ako se spread naglo širi, ČEKAJ - volatilnost raste</li>
+                                    <li><strong>Size nivoi:</strong> Velike količine (>10 BTC za BTCUSDT) mogu biti "zidovi" - otpor/podrška</li>
+                                    <li><strong>Best Bid/Ask:</strong> Ako se brzo menjaju - visoka aktivnost, dobro za scalp</li>
+                                    <li><strong>Total USD vrednost:</strong> Nivoi sa >$500k su jaki support/resistance</li>
+                                </ul>
+                            </div>
+
+                            <div class="bg-slate-800 p-4 rounded-lg">
+                                <p class="text-sm text-slate-400"><strong>💡 Savjet:</strong> Za scalping traži simbole sa spread-om manjim od 0.05% cene (za BTC ~$85k = spread <$42). Stabilniji spread = predvidljiviji ulaz/izlaz.</p>
+                            </div>
+                        </div>
+                    `
+                },
+
+                tradeFlow: {
+                    title: '💱 Trade Flow - Praćenje trejd aktivnosti',
+                    content: `
+                        <div class="space-y-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-green-400 mb-2">Šta je Trade Flow?</h3>
+                                <p class="text-slate-400">Trade Flow prikazuje <strong>izvršene trades</strong> u real-time. Svaki red je stvarna transakcija između kupca i prodavca.</p>
+                            </div>
+
+                            <div>
+                                <h4 class="font-semibold text-blue-400 mb-2">Simboli i njihovo značenje</h4>
+                                <ul class="list-none space-y-2">
+                                    <li><span class="text-green-400">↗</span> <strong>BUY (Taker Buy):</strong> Agresivan kupac, kupio po ASK ceni - bullish signal</li>
+                                    <li><span class="text-red-400">↘</span> <strong>SELL (Taker Sell):</strong> Agresivan prodavac, prodao po BID ceni - bearish signal</li>
+                                </ul>
+                            </div>
+
+                            <div class="border-l-4 border-purple-500 pl-4">
+                                <h4 class="font-semibold text-purple-400 mb-2">Cifre - Price, Size, Time</h4>
+                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                    <li><strong>Price:</strong> Cena po kojoj je trade izvršen</li>
+                                    <li><strong>Size:</strong> Količina koja je trejdovana (veće = važnije)</li>
+                                    <li><strong>Time:</strong> Vreme izvršenja</li>
+                                </ul>
+                            </div>
+
+                            <div>
+                                <h4 class="font-semibold text-yellow-400 mb-2">Šta pratiti za Scalping</h4>
+                                <ul class="list-disc list-inside space-y-2 text-sm">
+                                    <li><strong>Sekvence:</strong> Ako imaš 5-10 uzastopnih BUY ↗ - jak bullish momentum, razmisli o LONG poziciji</li>
+                                    <li><strong>Velike količine:</strong> Trade sa >5 BTC (za BTCUSDT) = institucionalci, prati pravac</li>
+                                    <li><strong>Brzina:</strong> Ako su trades češći (svake sekunde) = visoka volatilnost, dobro za scalp</li>
+                                    <li><strong>Price clustering:</strong> Ako se trades izvršavaju na istom price nivou = strong support/resistance</li>
+                                </ul>
+                            </div>
+
+                            <div class="bg-slate-800 p-4 rounded-lg">
+                                <p class="text-sm text-slate-400"><strong>⚡ Scalp strategija:</strong> Ako vidiš naglu promenu smera (5x BUY → 5x SELL) = moguć reversal, pripremi kontra poziciju ili zatvori postojeću.</p>
+                            </div>
+                        </div>
+                    `
+                },
+
+                liveMetrics: {
+                    title: '📊 Live Metrics - Ključni Market Indikatori',
+                    content: `
+                        <div class="space-y-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-green-400 mb-2">Objašnjenje svake metrike</h3>
+                            </div>
+
+                            <div class="border-l-4 border-blue-500 pl-4">
+                                <h4 class="font-semibold text-blue-400 mb-1">Spread (apsolutna vrednost)</h4>
+                                <p class="text-sm text-slate-400 mb-2"><code>Spread = Ask - Bid</code></p>
+                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                    <li><span class="text-green-400">0.01-0.10:</span> Odličan za scalping</li>
+                                    <li><span class="text-yellow-400">0.10-0.50:</span> Prihvatljiv</li>
+                                    <li><span class="text-red-400">>0.50:</span> Previše rizičan</li>
+                                </ul>
+                            </div>
+
+                            <div class="border-l-4 border-purple-500 pl-4">
+                                <h4 class="font-semibold text-purple-400 mb-1">Spread % (procentualna vrednost)</h4>
+                                <p class="text-sm text-slate-400 mb-2"><code>Spread % = (Spread / Mid Price) × 100</code></p>
+                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                    <li><span class="text-green-400"><0.01%:</span> Ultra-likvidan (BTC, ETH)</li>
+                                    <li><span class="text-yellow-400">0.01-0.05%:</span> Dobar likviditet</li>
+                                    <li><span class="text-red-400">>0.1%:</span> Slab likviditet, oprezno</li>
+                                </ul>
+                            </div>
+
+                            <div class="border-l-4 border-cyan-500 pl-4">
+                                <h4 class="font-semibold text-cyan-400 mb-1">Mid Price (srednja cena)</h4>
+                                <p class="text-sm text-slate-400 mb-2"><code>Mid Price = (Bid + Ask) / 2</code></p>
+                                <p class="text-sm">Referentna cena za praćenje trenda. Ako raste brže od prosjeka = bullish.</p>
+                            </div>
+
+                            <div class="border-l-4 border-green-500 pl-4">
+                                <h4 class="font-semibold text-green-400 mb-1">Volume (1m) - Volumen u poslednjih 60s</h4>
+                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                    <li><span class="text-green-400">Visok volumen (>10,000):</span> Aktivna trgovina, dobro za scalp</li>
+                                    <li><span class="text-yellow-400">Nizak volumen (<1,000):</span> Slaba aktivnost, teže izvršiti naloge</li>
+                                </ul>
+                            </div>
+
+                            <div class="border-l-4 border-yellow-500 pl-4">
+                                <h4 class="font-semibold text-yellow-400 mb-1">Trades (1m) - Broj trades u poslednjih 60s</h4>
+                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                    <li><span class="text-green-400">>500 trades:</span> Visoka frekvencija, idealno za scalp</li>
+                                    <li><span class="text-yellow-400">100-500:</span> Umerena aktivnost</li>
+                                    <li><span class="text-red-400"><100:</span> Spor market</li>
+                                </ul>
+                            </div>
+
+                            <div class="border-l-4 border-orange-500 pl-4">
+                                <h4 class="font-semibold text-orange-400 mb-1">VWAP - Volume Weighted Average Price</h4>
+                                <p class="text-sm text-slate-400 mb-2">Prosječna cena ponderisana volumenom. Koristi se kao referentna linija.</p>
+                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                    <li>Ako je <strong>Price > VWAP:</strong> Bullish momentum</li>
+                                    <li>Ako je <strong>Price < VWAP:</strong> Bearish momentum</li>
+                                    <li>VWAP često djeluje kao <strong>magnet</strong> - cena se vraća ka njemu</li>
+                                </ul>
+                            </div>
+
+                            <div class="bg-slate-800 p-4 rounded-lg">
+                                <p class="text-sm text-slate-400"><strong>🎯 Idealna kombinacija za scalp:</strong> Spread% <0.02%, Volume >8,000, Trades >300, Cena blizu VWAP-a (potencijal za brz pokret).</p>
+                            </div>
+                        </div>
+                    `
+                },
+
+                volumeProfile: {
+                    title: '📊 Volume Profile - Analiza volumena po ceni',
+                    content: `
+                        <div class="space-y-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-green-400 mb-2">Šta je Volume Profile?</h3>
+                                <p class="text-slate-400">Volume Profile prikazuje <strong>distribuciju volumena po različitim price nivoima</strong>. Horizontalni chart pokazuje koliko je volumena trejdovano na svakoj ceni.</p>
+                            </div>
+
+                            <div class="border-l-4 border-blue-500 pl-4">
+                                <h4 class="font-semibold text-blue-400 mb-2">Kako čitati dijagram</h4>
+                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                    <li><strong>Duže šipke (→):</strong> Više volumena trejdovano na toj ceni = važan nivo</li>
+                                    <li><strong>Kraće šipke (→):</strong> Manje volumena = manje značajan nivo</li>
+                                    <li><strong>Najduža šipka:</strong> <span class="text-yellow-400">Point of Control (POC)</span> - najaktivniji price nivo</li>
+                                </ul>
+                            </div>
+
+                            <div>
+                                <h4 class="font-semibold text-purple-400 mb-2">Šta znače različiti nivoi</h4>
+                                <ul class="list-disc list-inside space-y-2 text-sm">
+                                    <li><strong>High Volume Node (HVN):</strong> Veliki volumen na nivou = <span class="text-cyan-400">jak support/resistance</span></li>
+                                    <li><strong>Low Volume Node (LVN):</strong> Mali volumen = cena će verovatno <span class="text-orange-400">brzo proći kroz taj nivo</span></li>
+                                    <li><strong>Value Area:</strong> Zona gde se trejdovalo 70% volumena - "fair value" za taj simbol</li>
+                                </ul>
+                            </div>
+
+                            <div class="border-l-4 border-yellow-500 pl-4">
+                                <h4 class="font-semibold text-yellow-400 mb-2">Scalping strategije sa Volume Profile</h4>
+                                <ul class="list-disc list-inside space-y-2 text-sm">
+                                    <li><strong>Ulaz na LVN:</strong> Ako cena uđe u Low Volume zonu, očekuj brz pokret - postavi TP/SL uže</li>
+                                    <li><strong>Bounce od HVN:</strong> Ako se cena približi High Volume nivou, pripremi se za odbijanje (support/resistance)</li>
+                                    <li><strong>POC kao magnet:</strong> Cena često gravitira ka POC-u - ako je daleko, možda je šansa za mean reversion scalp</li>
+                                    <li><strong>Break iznad HVN:</strong> Ako cena probije High Volume nivo sa volumenom - jak signal za momentum scalp</li>
+                                </ul>
+                            </div>
+
+                            <div class="bg-slate-800 p-4 rounded-lg">
+                                <p class="text-sm text-slate-400"><strong>💡 Pro tip:</strong> Kombineuj Volume Profile sa Orderbook - ako HVN odgovara velikom Bid/Ask "zidu", to je ULTRA jak support/resistance za scalp entry/exit.</p>
+                            </div>
+                        </div>
+                    `
+                }
+            };
+
+            return content[topic] || { title: 'Help', content: '<p>No content available</p>' };
+        }
+
+        // Close modal on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeHelpModal();
         });
     </script>
 
