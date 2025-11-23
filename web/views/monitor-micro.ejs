@@ -864,15 +864,26 @@
                     const response = await fetch(`/api/symbol/${symbol}/candles/${timeframe}?limit=100`);
                     const data = await response.json();
 
-                    if (data.success && data.data) {
-                        updateCandleChart(data.data);
-                        return;
+                    console.log('📊 Candles API response:', data);
+
+                    // Check for both 'ok' (new format) and 'success' (old format)
+                    if ((data.ok || data.success) && (data.candles || data.data)) {
+                        const candles = data.candles || data.data;
+                        console.log(`✅ Loaded ${candles.length} candles for ${symbol}`);
+
+                        if (candles.length > 0) {
+                            updateCandleChart(candles);
+                            return;
+                        } else {
+                            console.warn('⚠️ No candles available, using simulation');
+                        }
                     }
                 } catch (candleError) {
-                    console.warn('⚠️ Candle API failed, generating simulation...');
+                    console.warn('⚠️ Candle API failed:', candleError);
                 }
 
                 // Fallback: simulate candle data
+                console.log('🎲 Generating simulated candles');
                 const simulatedCandles = generateSimulatedCandles(symbol, timeframe, 50);
                 updateCandleChart(simulatedCandles);
 
@@ -1059,10 +1070,19 @@
 
         // Initialize charts with performance optimizations
         function initializeCharts() {
+            console.log('🎨 Initializing charts...');
+
             // Destroy existing charts first
             destroyCharts();
 
             const ctx = document.getElementById('micro-candles-chart');
+
+            if (!ctx) {
+                console.error('❌ Canvas element not found: micro-candles-chart');
+                return;
+            }
+
+            console.log('✅ Canvas found, creating chart...');
 
             charts.candles = new Chart(ctx, {
                 type: 'line',
@@ -1224,19 +1244,49 @@
                     }
                 }
             });
+
+            console.log('✅ Candle chart initialized:', !!charts.candles);
+            console.log('✅ Volume chart initialized:', !!charts.volume);
         }
 
         // Update candle chart with aggregation support
         function updateCandleChart(candles) {
-            if (!charts.candles || !candles || candles.length === 0) return;
+            console.log('📊 updateCandleChart called with:', {
+                hasChart: !!charts.candles,
+                candlesCount: candles?.length || 0,
+                firstCandle: candles?.[0],
+                lastCandle: candles?.[candles?.length - 1]
+            });
+
+            if (!charts.candles) {
+                console.error('❌ Charts.candles not initialized!');
+                return;
+            }
+
+            if (!candles || candles.length === 0) {
+                console.warn('⚠️ No candles to display');
+                return;
+            }
 
             const timeframe = document.getElementById('timeframe-selector').value;
             const aggregatedCandles = aggregateCandles(candles, timeframe);
 
+            console.log('📈 Aggregated candles:', {
+                timeframe,
+                count: aggregatedCandles.length,
+                sample: aggregatedCandles.slice(0, 3)
+            });
+
             const data = aggregatedCandles.map(candle => ({
-                x: new Date(candle.timestamp),
+                x: new Date(candle.timestamp || candle.bucketStart),
                 y: parseFloat(candle.close || candle.price)
             }));
+
+            console.log('📊 Chart data prepared:', {
+                pointsCount: data.length,
+                firstPoint: data[0],
+                lastPoint: data[data.length - 1]
+            });
 
             // Update chart with performance optimization
             charts.candles.data.datasets[0].data = data;
@@ -1246,6 +1296,8 @@
             const animationDuration = config.ms < 5000 ? 0 : 200; // No animation for very fast timeframes
 
             charts.candles.update(animationDuration > 0 ? 'active' : 'none');
+
+            console.log('✅ Chart updated successfully');
         }
 
         // Start real-time updates
