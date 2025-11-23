@@ -1102,6 +1102,18 @@
 
             console.log('✅ Canvas found, creating chart...');
 
+            // Force canvas to be visible (debug)
+            ctx.style.display = 'block';
+            ctx.style.visibility = 'visible';
+            ctx.style.opacity = '1';
+            console.log('📐 Canvas dimensions:', {
+                width: ctx.width,
+                height: ctx.height,
+                clientWidth: ctx.clientWidth,
+                clientHeight: ctx.clientHeight,
+                offsetParent: ctx.offsetParent
+            });
+
             charts.candles = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -1332,13 +1344,14 @@
             // Update chart with performance optimization
             charts.candles.data.datasets[0].data = data;
 
-            // Adjust animation based on timeframe
-            const config = getTimeframeConfig(timeframe);
-            const animationDuration = config.ms < 5000 ? 0 : 200; // No animation for very fast timeframes
+            // Force chart update without animation (more reliable)
+            charts.candles.update('none');
 
-            charts.candles.update(animationDuration > 0 ? 'active' : 'none');
-
-            console.log('✅ Chart updated successfully');
+            console.log('✅ Chart updated successfully', {
+                chartVisible: charts.candles.ctx.canvas.offsetParent !== null,
+                canvasDisplay: window.getComputedStyle(charts.candles.ctx.canvas).display,
+                dataPoints: charts.candles.data.datasets[0].data.length
+            });
         }
 
         // Start real-time updates
