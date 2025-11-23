@@ -1067,17 +1067,21 @@
 
         // Destroy existing charts to prevent memory leaks
         function destroyCharts() {
-            Object.values(charts).forEach(chart => {
+            console.trace('🗑️ destroyCharts() called from:');
+            Object.keys(charts).forEach(key => {
+                const chart = charts[key];
                 if (chart && typeof chart.destroy === 'function') {
+                    console.log(`💥 Destroying chart: ${key} (${chart.config?.type})`);
                     chart.destroy();
                 }
+                // Remove destroyed chart reference
+                charts[key] = null;
             });
-            // Don't reset charts object - it will be repopulated with new chart instances
-            // charts = {}; // REMOVED - this was causing chart to disappear!
         }
 
         // Initialize charts with performance optimizations
         function initializeCharts() {
+            console.trace('🎨 initializeCharts() called from:');
             console.log('🎨 Initializing charts...');
 
             // Destroy existing charts first
