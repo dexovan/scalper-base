@@ -1618,17 +1618,13 @@
                             document.getElementById('data-rate').textContent = eventsPerSecond + ' evt/s';
                             document.getElementById('events-per-min').textContent = (eventsPerSecond * 60).toLocaleString();
 
-                            // Update active symbols count
-                            const currentCount = parseInt(document.getElementById('active-symbols-count').textContent) || 0;
-                            if (currentCount === 0 || Math.abs(currentCount - health.activeSymbols) > 5) {
-                                document.getElementById('active-symbols-count').textContent = health.activeSymbols;
-                            }
+                            // ALWAYS update active symbols count with real data
+                            document.getElementById('active-symbols-count').textContent = health.activeSymbols;
 
-                            // Memory tracking (estimated from process)
-                            const memoryMB = Math.round(process.memoryUsage ? process.memoryUsage().heapUsed / 1024 / 1024 : 0);
-                            document.getElementById('storage-used').textContent = memoryMB + ' MB';
-                            document.getElementById('memory-usage').textContent = memoryMB + ' MB';
-                            performanceMetrics.memoryUsage = memoryMB;
+                            // Memory tracking - browser doesn't have process.memoryUsage
+                            // Just display a placeholder or omit
+                            document.getElementById('storage-used').textContent = '- MB';
+                            document.getElementById('memory-usage').textContent = '- MB';
                         }
 
                         trackPerformance('systemStats', startTime);
