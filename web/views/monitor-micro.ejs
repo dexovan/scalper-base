@@ -1318,13 +1318,20 @@
                 return;
             }
 
+            console.log('🕯️ RAW candles from API:', {
+                count: candles.length,
+                first3: candles.slice(0, 3),
+                closePrices: candles.map(c => c.close || c.price)
+            });
+
             const timeframe = document.getElementById('timeframe-selector').value;
             const aggregatedCandles = aggregateCandles(candles, timeframe);
 
             console.log('📈 Aggregated candles:', {
                 timeframe,
                 count: aggregatedCandles.length,
-                sample: aggregatedCandles.slice(0, 3)
+                sample: aggregatedCandles.slice(0, 3),
+                allClosePrices: aggregatedCandles.map(c => c.close || c.price)
             });
 
             const data = aggregatedCandles.map(candle => ({
