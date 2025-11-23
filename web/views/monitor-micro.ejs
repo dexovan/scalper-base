@@ -1606,9 +1606,13 @@
                         const healthResponse = await fetch('/api/engine/health');
                         const healthData = await healthResponse.json();
 
+                        console.log('🏥 Engine health response:', healthData);
+
                         if (healthData.ok) {
                             const health = healthData.health;
                             const symbols = healthData.symbols || [];
+
+                            console.log('✅ Health data OK:', { activeSymbols: health.activeSymbols, symbolsCount: symbols.length });
 
                             // Calculate events per second from trade counts
                             const totalTrades = symbols.reduce((sum, s) => sum + (s.tradesCount || 0), 0);
@@ -1621,10 +1625,14 @@
                             // ALWAYS update active symbols count with real data
                             document.getElementById('active-symbols-count').textContent = health.activeSymbols;
 
+                            console.log('📊 Updated active-symbols-count to:', health.activeSymbols);
+
                             // Memory tracking - browser doesn't have process.memoryUsage
                             // Just display a placeholder or omit
                             document.getElementById('storage-used').textContent = '- MB';
                             document.getElementById('memory-usage').textContent = '- MB';
+                        } else {
+                            console.error('❌ Health data NOT OK:', healthData);
                         }
 
                         trackPerformance('systemStats', startTime);
