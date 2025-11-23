@@ -861,7 +861,8 @@
                 console.log(`🕯️ Loading candles for ${symbol} (${timeframe})`);
 
                 try {
-                    const response = await fetch(`/api/symbol/${symbol}/candles/${timeframe}?limit=100`);
+                    // CORRECTED: Use proper micro-candles API endpoint
+                    const response = await fetch(`/api/micro-candles/${symbol}?timeframe=${timeframe}`);
                     const data = await response.json();
 
                     console.log('📊 Candles API response:', data);
