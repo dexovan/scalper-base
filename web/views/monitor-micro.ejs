@@ -1602,8 +1602,8 @@
                     try {
                         await loadSystemStats();
 
-                        // Fetch REAL stats from engine (same endpoint as main dashboard)
-                        const healthResponse = await fetch('http://5.223.76.141:8090/api/microstructure/health');
+                        // Fetch REAL stats from engine via proxy endpoint
+                        const healthResponse = await fetch('/api/engine/health');
                         const healthData = await healthResponse.json();
 
                         if (healthData.ok) {

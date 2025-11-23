@@ -20,6 +20,27 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 /* ---------------------------------------------------------
+   GET /api/engine/health – Proxy to engine microstructure health
+--------------------------------------------------------- */
+router.get("/engine/health", async (req, res) => {
+  try {
+    // Proxy request to engine process on port 8090
+    const fetch = (await import('node-fetch')).default;
+    const engineResponse = await fetch('http://localhost:8090/api/microstructure/health');
+    const data = await engineResponse.json();
+
+    return res.json(data);
+  } catch (error) {
+    console.error('[API] Failed to fetch engine health:', error.message);
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to connect to engine',
+      message: error.message
+    });
+  }
+});
+
+/* ---------------------------------------------------------
    GET /api/stats – Live system statistics
 --------------------------------------------------------- */
 router.get("/stats", (req, res) => {
