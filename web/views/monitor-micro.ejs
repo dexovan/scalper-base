@@ -175,6 +175,9 @@
                             </button>
                         </div>
                         <div class="flex space-x-2">
+                            <button id="chart-type-toggle" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs transition-colors font-semibold" title="Toggle between Line and Candlestick">
+                                🕯️ Candles
+                            </button>
                             <select id="timeframe-selector" class="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs">
                                 <option value="1s">1s (Ultra High-Freq)</option>
                                 <option value="5s" selected>5s (High-Freq)</option>
@@ -367,6 +370,7 @@
         // Global variables
         let currentSymbol = null;
         let charts = {};
+        let chartType = 'candlestick'; // 'line' or 'candlestick'
         let updateIntervals = {};
         let lastUpdateTimes = {};
         let performanceMetrics = {
@@ -1222,23 +1226,31 @@
             });
 
             charts.candles = new Chart(ctx, {
-                type: 'line',
+                type: chartType,
                 data: {
                     datasets: [{
                         label: currentSymbol || 'Price',
                         data: [],
-                        borderColor: '#10b981',
+                        // Candlestick colors
+                        color: {
+                            up: '#10b981',
+                            down: '#ef4444',
+                            unchanged: '#6b7280'
+                        },
+                        borderColor: {
+                            up: '#10b981',
+                            down: '#ef4444',
+                            unchanged: '#6b7280'
+                        },
+                        // Line chart fallback colors
                         backgroundColor: 'rgba(16, 185, 129, 0.05)',
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.4,
-                        pointRadius: 0,
-                        pointHoverRadius: 6,
                         pointBackgroundColor: '#10b981',
                         pointBorderColor: '#fff',
                         pointBorderWidth: 2,
-                        pointHoverBackgroundColor: '#10b981',
-                        pointHoverBorderColor: '#fff'
+                        pointRadius: 0,
+                        pointHoverRadius: 6,
+                        fill: true,
+                        tension: 0.4
                     }]
                 },
                 options: {
@@ -1327,10 +1339,25 @@
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
+                                    const dataPoint = context.raw;
+
+                                    // Check if candlestick data (has o, h, l, c properties)
+                                    if (dataPoint && typeof dataPoint === 'object' && 'o' in dataPoint) {
+                                        return [
+                                            `Open: ${parseFloat(dataPoint.o).toFixed(4)}`,
+                                            `High: ${parseFloat(dataPoint.h).toFixed(4)}`,
+                                            `Low: ${parseFloat(dataPoint.l).toFixed(4)}`,
+                                            `Close: ${parseFloat(dataPoint.c).toFixed(4)}`
+                                        ];
+                                    }
+
+                                    // Line chart fallback
                                     return `Price: ${context.parsed.y.toFixed(4)}`;
                                 },
                                 title: function(context) {
-                                    const date = new Date(context[0].parsed.x);
+                                    const dataPoint = context[0].raw;
+                                    const timestamp = dataPoint?.x || context[0].parsed.x;
+                                    const date = new Date(timestamp);
                                     return date.toLocaleString('en-US', {
                                         hour: '2-digit',
                                         minute: '2-digit',
@@ -1478,22 +1505,38 @@
                 allClosePrices: aggregatedCandles.map(c => c.close || c.price)
             });
 
-            // Map to line chart format: { x, y }
-            const data = aggregatedCandles.map(candle => ({
-                x: new Date(candle.timestamp || candle.bucketStart).getTime(),
-                y: parseFloat(candle.close || candle.price)
-            }));
+            // Prepare data based on chart type
+            let data;
+            if (chartType === 'candlestick') {
+                // Candlestick format: { x, o, h, l, c }
+                data = aggregatedCandles.map(candle => ({
+                    x: new Date(candle.timestamp || candle.bucketStart).getTime(),
+                    o: parseFloat(candle.open),
+                    h: parseFloat(candle.high),
+                    l: parseFloat(candle.low),
+                    c: parseFloat(candle.close)
+                }));
 
-            console.log('📊 Chart data prepared:', {
-                pointsCount: data.length,
-                firstPoint: data[0],
-                lastPoint: data[data.length - 1],
-                sample: data.slice(0, 3),
-                priceRange: {
-                    min: Math.min(...data.map(d => d.y)),
-                    max: Math.max(...data.map(d => d.y))
-                }
-            });
+                console.log('🕯️ Candlestick data:', {
+                    pointsCount: data.length,
+                    firstCandle: data[0],
+                    lastCandle: data[data.length - 1]
+                });
+            } else {
+                // Line chart format: { x, y }
+                data = aggregatedCandles.map(candle => ({
+                    x: new Date(candle.timestamp || candle.bucketStart).getTime(),
+                    y: parseFloat(candle.close || candle.price)
+                }));
+
+                console.log('📈 Line data:', {
+                    pointsCount: data.length,
+                    priceRange: {
+                        min: Math.min(...data.map(d => d.y)),
+                        max: Math.max(...data.map(d => d.y))
+                    }
+                });
+            }
 
             // Update chart with performance optimization
             charts.candles.data.datasets[0].data = data;
@@ -1632,6 +1675,28 @@
 
             // Note: checkAlerts removed - will be added back when we have symbol context
         }
+
+        // Chart type toggle button
+        document.getElementById('chart-type-toggle').addEventListener('click', function() {
+            // Toggle between candlestick and line
+            chartType = chartType === 'candlestick' ? 'line' : 'candlestick';
+
+            // Update button text
+            this.textContent = chartType === 'candlestick' ? '🕯️ Candles' : '📈 Line';
+            this.title = chartType === 'candlestick' ? 'Switch to Line Chart' : 'Switch to Candlestick Chart';
+
+            // Visual feedback
+            this.style.backgroundColor = '#059669';
+            setTimeout(() => {
+                this.style.backgroundColor = '';
+            }, 300);
+
+            // Reinitialize chart with new type
+            if (currentSymbol) {
+                initCharts();
+                loadMicroCandles(currentSymbol);
+            }
+        });
 
         // Enhanced timeframe selector with info
         document.getElementById('timeframe-selector').addEventListener('change', function() {
