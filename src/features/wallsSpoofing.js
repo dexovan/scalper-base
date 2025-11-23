@@ -56,28 +56,28 @@ class WallsSpoofingEngine {
      * @returns {Object} Walls and spoofing analysis
      */
     analyzeWallsAndSpoofing(orderbookData, recentTrades = [], currentPrice = 0) {
-        // DEBUG: Log every call periodically
-        if (!this._analyzeCallCount) this._analyzeCallCount = 0;
-        this._analyzeCallCount++;
-        if (this._analyzeCallCount % 10 === 1) {
-            const msg = `🔍 [WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})\n`;
-            process.stdout.write(msg);
-        }
+        // FULLY DISABLED: Console spam (every orderbook update = 10,000+ logs/s!)
+        // if (!this._analyzeCallCount) this._analyzeCallCount = 0;
+        // this._analyzeCallCount++;
+        // if (this._analyzeCallCount % 10 === 1) {
+        //     const msg = `🔍 [WALLS DEBUG] analyzeWallsAndSpoofing called (count: ${this._analyzeCallCount})\n`;
+        //     process.stdout.write(msg);
+        // }
 
         try {
             if (!this.isValidData(orderbookData, currentPrice)) {
-                // DEBUG: Log validation failure
-                if (!this._validationFailLogged) {
-                    this._validationFailLogged = true;
-                    console.log('🔍 [WALLS DEBUG] Validation failed:', JSON.stringify({
-                        hasOrderbook: !!orderbookData,
-                        hasBids: !!orderbookData?.bids,
-                        hasAsks: !!orderbookData?.asks,
-                        currentPrice,
-                        bidsLength: orderbookData?.bids?.length || 0,
-                        asksLength: orderbookData?.asks?.length || 0
-                    }));
-                }
+                // FULLY DISABLED: Console spam
+                // if (!this._validationFailLogged) {
+                //     this._validationFailLogged = true;
+                //     console.log('🔍 [WALLS DEBUG] Validation failed:', JSON.stringify({
+                //         hasOrderbook: !!orderbookData,
+                //         hasBids: !!orderbookData?.bids,
+                //         hasAsks: !!orderbookData?.asks,
+                //         currentPrice,
+                //         bidsLength: orderbookData?.bids?.length || 0,
+                //         asksLength: orderbookData?.asks?.length || 0
+                //     }));
+                // }
                 return this.getEmptyAnalysis();
             }            const { bids, asks, timestamp } = orderbookData;
             const now = Date.now();
@@ -86,19 +86,19 @@ class WallsSpoofingEngine {
             const bidWalls = this.detectWalls(bids, 'bid', currentPrice);
             const askWalls = this.detectWalls(asks, 'ask', currentPrice);
 
-            // DEBUG: Log wall detection (always log first time)
-            if (!this._wallDebugLogged) {
-                this._wallDebugLogged = true;
-                console.log('[WALLS DEBUG] First detection attempt:', {
-                    bidsLength: bids.length,
-                    asksLength: asks.length,
-                    bidWalls: bidWalls.length,
-                    askWalls: askWalls.length,
-                    currentPrice,
-                    topBidWall: bidWalls[0] || 'none',
-                    topAskWall: askWalls[0] || 'none'
-                });
-            }
+            // FULLY DISABLED: Console spam
+            // if (!this._wallDebugLogged) {
+            //     this._wallDebugLogged = true;
+            //     console.log('[WALLS DEBUG] First detection attempt:', {
+            //         bidsLength: bids.length,
+            //         asksLength: asks.length,
+            //         bidWalls: bidWalls.length,
+            //         askWalls: askWalls.length,
+            //         currentPrice,
+            //         topBidWall: bidWalls[0] || 'none',
+            //         topAskWall: askWalls[0] || 'none'
+            //     });
+            // }
 
             // Update wall history
             this.updateWallHistory(bidWalls, askWalls, now);
@@ -177,23 +177,24 @@ class WallsSpoofingEngine {
         this._wallDetectionCount++;
 
         // Log every 10 calls to see actual data being processed
-        if (this._wallDetectionCount % 10 === 1) {
-            const sample = entries.slice(0, 5).map(([p, q]) => ({
-                price: parseFloat(p),
-                qty: parseFloat(q),
-                usd: parseFloat(p) * parseFloat(q),
-                strength: parseFloat(q) / avgQuantity
-            }));
-            console.log(`🔍 [WALLS DEBUG ${this._wallDetectionCount}] ${side} side:`, JSON.stringify({
-                levels: entries.length,
-                avgQuantity: avgQuantity.toFixed(4),
-                currentPrice,
-                wallMultiplier: this.config.wallMultiplier,
-                minWallSize: this.config.minWallSize,
-                maxDistanceFromPrice: this.config.spoofing.maxDistanceFromPrice,
-                sample
-            }));
-        }        // Find walls (quantities significantly above average)
+        // FULLY DISABLED: Console spam (every orderbook update for 500 symbols = 10,000+ logs/s!)
+        // if (this._wallDetectionCount % 10 === 1) {
+        //     const sample = entries.slice(0, 5).map(([p, q]) => ({
+        //         price: parseFloat(p),
+        //         qty: parseFloat(q),
+        //         usd: parseFloat(p) * parseFloat(q),
+        //         strength: parseFloat(q) / avgQuantity
+        //     }));
+        //     console.log(`🔍 [WALLS DEBUG ${this._wallDetectionCount}] ${side} side:`, JSON.stringify({
+        //         levels: entries.length,
+        //         avgQuantity: avgQuantity.toFixed(4),
+        //         currentPrice,
+        //         wallMultiplier: this.config.wallMultiplier,
+        //         minWallSize: this.config.minWallSize,
+        //         maxDistanceFromPrice: this.config.spoofing.maxDistanceFromPrice,
+        //         sample
+        //     }));
+        // }        // Find walls (quantities significantly above average)
         let wallCandidatesChecked = 0;
         let wallCandidatesFailed = { strength: 0, minSize: 0, distance: 0 };
 
@@ -234,17 +235,17 @@ class WallsSpoofingEngine {
             }
         }
 
-        // Log wall detection results periodically
-        if (walls.length > 0 || this._wallDetectionCount % 10 === 1) {
-            console.log(`🔍 [WALLS DEBUG ${this._wallDetectionCount}] ${side} result:`, JSON.stringify({
-                wallsFound: walls.length,
-                candidatesChecked: wallCandidatesChecked,
-                failedStrength: wallCandidatesFailed.strength,
-                failedMinSize: wallCandidatesFailed.minSize,
-                failedDistance: wallCandidatesFailed.distance,
-                walls: walls.slice(0, 2).map(w => ({ price: w.price, usd: w.usdValue.toFixed(2), strength: w.strength.toFixed(2) }))
-            }));
-        }
+        // FULLY DISABLED: Console spam (every orderbook update = 10,000+ logs/s!)
+        // if (walls.length > 0 || this._wallDetectionCount % 10 === 1) {
+        //     console.log(`🔍 [WALLS DEBUG ${this._wallDetectionCount}] ${side} result:`, JSON.stringify({
+        //         wallsFound: walls.length,
+        //         candidatesChecked: wallCandidatesChecked,
+        //         failedStrength: wallCandidatesFailed.strength,
+        //         failedMinSize: wallCandidatesFailed.minSize,
+        //         failedDistance: wallCandidatesFailed.distance,
+        //         walls: walls.slice(0, 2).map(w => ({ price: w.price, usd: w.usdValue.toFixed(2), strength: w.strength.toFixed(2) }))
+        //     }));
+        // }
 
         // Sort by strength (strongest first)
         return walls.sort((a, b) => b.strength - a.strength);

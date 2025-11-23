@@ -235,13 +235,13 @@ class FeatureEngine {
     async updateFeaturesForSymbol(symbol) {
         const startTime = Date.now();
 
-        // DEBUG: Log update calls periodically
-        if (!this._updateCallCount) this._updateCallCount = 0;
-        this._updateCallCount++;
-        if (this._updateCallCount % 10 === 1) {
-            const msg = `🔍 [FEATURE ENGINE DEBUG] updateFeaturesForSymbol called (count: ${this._updateCallCount}, symbol: ${symbol})\n`;
-            process.stdout.write(msg);
-        }
+        // FULLY DISABLED: Console spam (every feature update = 10,000+ logs/s!)
+        // if (!this._updateCallCount) this._updateCallCount = 0;
+        // this._updateCallCount++;
+        // if (this._updateCallCount % 10 === 1) {
+        //     const msg = `🔍 [FEATURE ENGINE DEBUG] updateFeaturesForSymbol called (count: ${this._updateCallCount}, symbol: ${symbol})\n`;
+        //     process.stdout.write(msg);
+        // }
 
         try {
             // Get required data from microstructure
