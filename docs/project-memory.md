@@ -1,7 +1,236 @@
 # SCALPER-BASE PROJECT MEMORY
 
-**Last Updated:** 2025-11-23 01:50 (CRITICAL: Disk Space Emergency - Console.log Spam Elimination)
+**Last Updated:** 2025-11-23 14:20 (CRITICAL: Port Architecture Documentation Added)
 **Purpose:** Persistent knowledge base for critical problems, solutions, and best practices
+
+---
+
+## 🏗️ SYSTEM ARCHITECTURE - PORTS & PROCESS MODEL
+
+### Process Architecture (PM2 Multi-Process)
+
+**KLJUČNO:** Aplikacija se sastoji od **2 odvojena Node.js procesa** koji rade paralelno:
+
+#### 1. ENGINE Process (Port 8090)
+
+- **File:** `src/index.js`
+- **PM2 Name:** `engine`
+- **Port:** `8090`
+- **Memorija:** ~206MB
+- **Funkcija:** Glavni trading engine sa svim podacima
+- **Sadrži:**
+  - WebSocket konekcije ka Bybit API
+  - OrderbookManager sa živim podacima (state.symbols)
+  - FeatureEngine za kalkulacije
+  - Universe sistem (500+ simbola)
+  - Svi real-time eventi (ticker/trade/orderbook)
+- **API Server:** `src/http/monitorApi.js` na portu 8090
+- **Komanda:** `pm2 start src/index.js --name engine`
+
+#### 2. DASHBOARD Process (Port 8080)
+
+- **File:** `web/server.js`
+- **PM2 Name:** `dashboard`
+- **Port:** `8080`
+- **Memorija:** ~76MB
+- **Funkcija:** HTTP web server za korisničko sučelje
+- **Sadrži:**
+  - Express web server
+  - Static files (HTML/CSS/JS)
+  - Routes (dashboard, monitor-micro, markets, etc.)
+  - API proxy endpoints (kada treba pristup engine podacima)
+- **NE SADRŽI:** WebSocket podatke, OrderbookManager state, real-time events
+- **Komanda:** `pm2 start web/server.js --name dashboard`
+
+---
+
+### Port Usage Map
+
+| Port     | Process   | Purpose                                      | Access                                                 | Internal/External                      |
+| -------- | --------- | -------------------------------------------- | ------------------------------------------------------ | -------------------------------------- |
+| **8090** | Engine    | Monitor API - Glavni engine sa svim podacima | `http://localhost:8090` ili `http://5.223.76.141:8090` | **INTERNAL ONLY** - Ne izlagati javno! |
+| **8080** | Dashboard | Web UI - Dashboard za korisnike              | `http://localhost:8080` ili `http://5.223.76.141:8080` | **EXTERNAL** - Javno dostupan          |
+
+---
+
+### Critical Architecture Rules
+
+**PRAVILO #1: Process Isolation = Memory Isolation**
+
+- Engine i Dashboard su **potpuno odvojeni OS procesi**
+- `state.symbols` postoji **SAMO u engine procesu**
+- Dashboard proces **NE VIDI** engine memoriju
+- ❌ **GREŠKA:** Dashboard ne može direktno pozvati `OrderbookManager.getStats()`
+- ✅ **REŠENJE:** Dashboard mora pozvati engine API endpoint
+
+**PRAVILO #2: Cross-Origin Browser Requests**
+
+- Browser na `http://5.223.76.141:8080/monitor-micro` ne može direktno fetchovati `http://5.223.76.141:8090/api/...`
+- ❌ **GREŠKA:** CORS blokira cross-origin request između portova
+- ✅ **REŠENJE:** Dashboard ima **proxy endpoints** koji server-side pozivaju engine
+
+**PRAVILO #3: API Endpoint Routing**
+
+**Engine Endpoints (Port 8090):**
+
+```
+GET /api/microstructure/health     - Orderbook health (300 symbols)
+GET /api/microstructure/symbols    - All symbols microstructure state
+GET /api/features/symbol/:symbol   - Feature calculations
+GET /api/features/health           - Feature Engine health
+GET /api/monitor/summary           - System overview
+GET /api/symbol/:symbol/orderbook  - Raw orderbook data
+GET /api/diagnostics               - Full system diagnostics
+```
+
+**Dashboard Proxy Endpoints (Port 8080):**
+
+```
+GET /api/engine/health             - Proxy to engine:8090/api/microstructure/health
+GET /api/stats                     - Legacy stats (reads from data/stats.json file)
+GET /api/symbol/:symbol/orderbook  - Proxy to engine orderbook
+GET /api/symbol/:symbol/trades     - Proxy to engine trades
+GET /api/symbol/:symbol/candles    - Proxy to engine candles
+```
+
+---
+
+### Data Flow Patterns
+
+#### Pattern 1: Main Dashboard (port 8080) → Engine API (port 8090)
+
+```javascript
+// web/public/js/api-client.js
+async updateMicrostructureStats() {
+    // ✅ CORRECTLY fetches from engine via proxy
+    const response = await fetch('/api/engine/health');
+    // Dashboard server proxies to: http://localhost:8090/api/microstructure/health
+}
+```
+
+#### Pattern 2: Monitor-Micro (browser) → Dashboard Proxy → Engine
+
+```javascript
+// web/views/monitor-micro.ejs
+const healthResponse = await fetch("/api/engine/health");
+// Browser → Dashboard:8080 → Engine:8090 (server-side)
+// NO CORS issues because browser only talks to :8080
+```
+
+#### Pattern 3: Direct Engine Access (only for debugging)
+
+```bash
+# From VPS terminal (internal access)
+curl http://localhost:8090/api/microstructure/health
+
+# From external IP (if firewall allows)
+curl http://5.223.76.141:8090/api/microstructure/health
+```
+
+---
+
+### Common Mistakes & Solutions
+
+**MISTAKE #1: "Dashboard shows 0 symbols, but engine has 300"**
+
+```javascript
+// ❌ WRONG - Dashboard process has empty state
+const stats = OrderbookManager.getStats(); // Returns { activeSymbols: 0 }
+
+// ✅ CORRECT - Fetch from engine
+const response = await fetch("/api/engine/health");
+const data = await response.json(); // Returns { activeSymbols: 300 }
+```
+
+**MISTAKE #2: "CORS error when accessing engine from browser"**
+
+```javascript
+// ❌ WRONG - Cross-origin browser request
+fetch("http://5.223.76.141:8090/api/microstructure/health"); // CORS blocked
+
+// ✅ CORRECT - Use dashboard proxy
+fetch("/api/engine/health"); // Same-origin, proxied to engine
+```
+
+**MISTAKE #3: "File-based stats not working"**
+
+- Engine must call `startStatsPersistence()` to write `data/stats.json`
+- Dashboard reads from file: `fs.readFileSync('data/stats.json')`
+- ⚠️ **DEPRECATED:** File approach replaced by proxy endpoints (more reliable)
+
+---
+
+### Port Configuration Files
+
+**Engine Port (8090):**
+
+- `src/http/monitorApi.js` line ~1214:
+  ```javascript
+  app.listen(8090, () => {
+    console.log("🚀 Monitor API listening on :8090");
+  });
+  ```
+
+**Dashboard Port (8080):**
+
+- `web/server.js` line ~60:
+  ```javascript
+  app.listen(8080, () => {
+    console.log("🚀 Dashboard running on :8080");
+  });
+  ```
+
+---
+
+### Debugging Process Issues
+
+**Check which process is running:**
+
+```bash
+pm2 list
+# Shows: engine (206MB, 33 restarts), dashboard (76MB, 32 restarts)
+
+pm2 describe engine
+# Shows port, script, memory, uptime, restarts
+
+pm2 logs engine --lines 50
+# Recent engine logs
+
+pm2 logs dashboard --lines 50
+# Recent dashboard logs
+```
+
+**Test engine API directly:**
+
+```bash
+curl http://localhost:8090/api/microstructure/health | jq '.health'
+# Should show: { "activeSymbols": 300, "healthySymbols": 296, ... }
+```
+
+**Test dashboard proxy:**
+
+```bash
+curl http://localhost:8080/api/engine/health | jq '.health'
+# Should return same data as engine (proxied)
+```
+
+---
+
+### Security Considerations
+
+**Engine Port (8090):**
+
+- ⚠️ Contains SENSITIVE data (all orderbooks, trades, calculations)
+- 🔒 Should be **INTERNAL ONLY** (firewall block external access)
+- Only localhost and dashboard should access
+- DO NOT expose to internet without authentication
+
+**Dashboard Port (8080):**
+
+- ✅ Safe to expose publicly
+- Only serves static files and proxied data
+- No direct access to engine memory
+- Can add Nginx reverse proxy for SSL/caching
 
 ---
 
