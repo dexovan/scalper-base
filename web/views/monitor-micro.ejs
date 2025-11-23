@@ -685,17 +685,47 @@
                     const response = await fetch(`/api/symbol/${symbol}/orderbook`);
                     const data = await response.json();
 
-                    if (data.success && data.data) {
+                    if (data.success && data.data && data.data.bids && data.data.bids.length > 0) {
+                        console.log(`✅ Got real orderbook from API for ${symbol}`);
                         renderOrderbook(data.data);
                         return;
                     }
                 } catch (orderbookError) {
-                    console.warn('⚠️ Orderbook API failed, generating simulation...');
+                    console.warn('⚠️ Orderbook API failed:', orderbookError);
                 }
 
-                // Fallback: simulate orderbook data
-                const simulatedOrderbook = generateSimulatedOrderbook(symbol);
-                renderOrderbook(simulatedOrderbook);
+                // Fallback: Try Bybit REST API directly
+                console.log(`🔄 Trying Bybit REST API for ${symbol}...`);
+                try {
+                    const bybitResponse = await fetch(`https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${symbol}&limit=25`);
+                    const bybitData = await bybitResponse.json();
+
+                    if (bybitData.retCode === 0 && bybitData.result) {
+                        const { b: bids, a: asks, ts: timestamp } = bybitData.result;
+
+                        console.log(`✅ Got real orderbook from Bybit for ${symbol}`, {
+                            bids: bids?.length || 0,
+                            asks: asks?.length || 0,
+                            bestBid: bids?.[0]?.[0],
+                            bestAsk: asks?.[0]?.[0]
+                        });
+
+                        const orderbook = {
+                            symbol,
+                            bids: bids || [],
+                            asks: asks || [],
+                            timestamp: parseInt(timestamp) || Date.now()
+                        };
+
+                        renderOrderbook(orderbook);
+                        return;
+                    }
+                } catch (bybitError) {
+                    console.error('💥 Bybit API failed:', bybitError);
+                }
+
+                // Last resort: show error
+                document.getElementById('orderbook-display').innerHTML = '<div class="text-center text-yellow-400 py-4">No orderbook data available</div>';
 
             } catch (error) {
                 console.error('💥 Error loading orderbook:', error);
