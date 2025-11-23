@@ -439,6 +439,8 @@ class FeatureEngine {
                 tobImbalance: state.imbalance?.tobImbalance || 0,
                 spoofingScore: state.walls?.spoofingScore || 0,
                 volatilityScore: state.volatility?.volatilityScore || 0,
+                riskLevel: state.volatility?.riskLevel || null,
+                explosionFlag: state.volatility?.explosionFlag || false,
                 pumpLikelihoodScore: state.pumpSignals?.pumpLikelihoodScore || 0,
                 defaultLeverage: state.feeLeverage?.defaultLeverage || 0,
                 maxLeverage: state.feeLeverage?.metadata?.leverageConstraints?.maxAvailable || 0,
