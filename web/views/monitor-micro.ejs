@@ -125,6 +125,28 @@
                         <div class="text-xs text-slate-500" id="orderbook-timestamp">-</div>
                     </div>
 
+                    <!-- CURRENT PRICE DISPLAY -->
+                    <div class="mb-6 p-4 rounded-lg bg-gradient-to-r from-slate-800 to-slate-900 border border-slate-600">
+                        <div class="text-center">
+                            <div class="text-xs text-slate-400 mb-1">CURRENT PRICE</div>
+                            <div id="current-price" class="text-4xl font-bold text-green-400 mb-2">-</div>
+                            <div class="flex justify-center space-x-6 text-xs">
+                                <div>
+                                    <span class="text-slate-400">Bid:</span>
+                                    <span id="best-bid" class="text-green-400 font-mono ml-1">-</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400">Ask:</span>
+                                    <span id="best-ask" class="text-red-400 font-mono ml-1">-</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400">Spread:</span>
+                                    <span id="current-spread" class="text-blue-400 font-mono ml-1">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="orderbook-display" class="orderbook-table">
                         <div class="text-center text-slate-400 py-8">
                             Select symbol for orderbook
@@ -725,6 +747,17 @@
 
             const bids = orderbook.bids.slice(0, 10);
             const asks = orderbook.asks.slice(0, 10).reverse();
+
+            // UPDATE CURRENT PRICE DISPLAY
+            const bestBid = bids.length > 0 ? parseFloat(bids[0][0]) : 0;
+            const bestAsk = asks.length > 0 ? parseFloat(asks[asks.length - 1][0]) : 0;
+            const midPrice = (bestBid + bestAsk) / 2;
+            const spread = bestAsk - bestBid;
+
+            document.getElementById('current-price').textContent = midPrice.toFixed(4);
+            document.getElementById('best-bid').textContent = bestBid.toFixed(4);
+            document.getElementById('best-ask').textContent = bestAsk.toFixed(4);
+            document.getElementById('current-spread').textContent = spread.toFixed(4);
 
             let html = `
                 <div class="grid grid-cols-3 gap-2 text-xs font-semibold text-slate-400 mb-2 px-2">
