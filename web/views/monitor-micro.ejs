@@ -1371,10 +1371,11 @@
                 pointsCount: data.length,
                 firstPoint: data[0],
                 lastPoint: data[data.length - 1],
-                sample: data.slice(0, 3)
-                yValues: data.map(d => d.y),
-                yMin: Math.min(...data.map(d => d.y)),
-                yMax: Math.max(...data.map(d => d.y))
+                sample: data.slice(0, 3),
+                priceRange: {
+                    min: Math.min(...data.map(d => d.l)),
+                    max: Math.max(...data.map(d => d.h))
+                }
             });
 
             // Update chart with performance optimization
