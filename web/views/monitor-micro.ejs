@@ -1252,12 +1252,15 @@
                     datasets: [{
                         label: 'Volume',
                         data: [],
-                        backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                        backgroundColor: 'rgba(16, 185, 129, 0.7)',
                         borderColor: '#10b981',
-                        borderWidth: 1
+                        borderWidth: 0,
+                        barPercentage: 0.95,
+                        categoryPercentage: 0.95
                     }]
                 },
                 options: {
+                    indexAxis: 'y',  // Horizontal bars
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: {
@@ -1268,29 +1271,32 @@
                         duration: 200,
                         easing: 'easeOutQuart'
                     },
-                    parsing: false,
-                    normalized: true,
                     scales: {
                         x: {
                             grid: {
-                                color: '#374151',
-                                display: false
-                            },
-                            ticks: {
-                                color: '#9ca3af',
-                                maxTicksLimit: 8
-                            }
-                        },
-                        y: {
-                            grid: {
-                                color: '#374151',
+                                color: 'rgba(55, 65, 81, 0.3)',
                                 display: true
                             },
                             ticks: {
                                 color: '#9ca3af',
-                                maxTicksLimit: 6,
+                                maxTicksLimit: 5,
+                                font: { size: 10 },
                                 callback: function(value) {
                                     return value >= 1000 ? (value/1000).toFixed(1) + 'K' : value.toFixed(0);
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(55, 65, 81, 0.3)',
+                                display: false
+                            },
+                            ticks: {
+                                color: '#9ca3af',
+                                maxTicksLimit: 8,
+                                font: { size: 10 },
+                                callback: function(value) {
+                                    return parseFloat(value).toFixed(4);
                                 }
                             }
                         }
@@ -1301,6 +1307,9 @@
                             enabled: true,
                             mode: 'index',
                             intersect: false,
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                            borderColor: '#10b981',
+                            borderWidth: 1,
                             callbacks: {
                                 label: function(context) {
                                     const value = context.parsed.y;
@@ -1386,6 +1395,46 @@
                 chartVisible: charts.candles.ctx.canvas.offsetParent !== null,
                 canvasDisplay: window.getComputedStyle(charts.candles.ctx.canvas).display,
                 dataPoints: charts.candles.data.datasets[0].data.length
+            });
+
+            // Update volume chart with same data
+            updateVolumeChart(aggregatedCandles);
+        }
+
+        // Update volume chart
+        function updateVolumeChart(candles) {
+            if (!charts.volume || !candles || candles.length === 0) {
+                return;
+            }
+
+            // Create volume profile - group by price levels
+            const priceStep = 0.001; // Price bucket size
+            const volumeByPrice = {};
+
+            candles.forEach(candle => {
+                const price = parseFloat(candle.close || candle.price);
+                const volume = parseFloat(candle.volume || 0);
+                const priceLevel = (Math.round(price / priceStep) * priceStep).toFixed(4);
+
+                if (!volumeByPrice[priceLevel]) {
+                    volumeByPrice[priceLevel] = 0;
+                }
+                volumeByPrice[priceLevel] += volume;
+            });
+
+            // Sort by price and prepare chart data
+            const sortedPrices = Object.keys(volumeByPrice).sort((a, b) => parseFloat(a) - parseFloat(b));
+            const volumes = sortedPrices.map(price => volumeByPrice[price]);
+
+            // Update chart
+            charts.volume.data.labels = sortedPrices;
+            charts.volume.data.datasets[0].data = volumes;
+            charts.volume.update('none');
+
+            console.log('📊 Volume chart updated:', {
+                priceLevels: sortedPrices.length,
+                totalVolume: volumes.reduce((sum, v) => sum + v, 0),
+                maxVolume: Math.max(...volumes)
             });
         }
 
