@@ -24,9 +24,9 @@
     </script>
 
     <!-- Chart.js for real-time charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.js"></script>
 
     <style>
         .orderbook-table {
@@ -1195,7 +1195,11 @@
         let chartsInitialized = false;
 
         function initializeCharts() {
-            console.log('🎨 Initializing charts...', { chartsInitialized });
+            console.log('🎨 Initializing charts...', {
+                chartsInitialized,
+                chartType,
+                hasFinancialPlugin: typeof Chart.controllers.candlestick !== 'undefined'
+            });
 
             // Only destroy if already initialized (prevent destroying on first load)
             if (chartsInitialized) {
