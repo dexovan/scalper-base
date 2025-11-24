@@ -1381,6 +1381,7 @@ export function startMonitorApiServer(port = 8090) {
       const side = (req.query.side || 'BOTH').toUpperCase();
       const minScore = parseFloat(req.query.minScore) || 40;
       const limit = parseInt(req.query.limit) || 20;
+      const ignoreGlobalRegime = req.query.ignoreGlobalRegime === 'true'; // For dashboard viewing
 
       // Validate side
       if (!['BOTH', 'LONG', 'SHORT'].includes(side)) {
@@ -1397,13 +1398,14 @@ export function startMonitorApiServer(port = 8090) {
       const hotlist = scoringEngine.getScannerHotlist({
         side,
         minScore,
-        limit
+        limit,
+        ignoreGlobalRegime
       });
 
       res.json({
         ok: true,
         hotlist,
-        filters: { side, minScore, limit },
+        filters: { side, minScore, limit, ignoreGlobalRegime },
         count: hotlist.length,
         timestamp: new Date().toISOString()
       });

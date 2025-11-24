@@ -357,7 +357,8 @@ class ScoringEngine {
     const {
       side = 'BOTH',
       minScore = this.config.hotlist?.minScoreForHotlist || 40,
-      limit = this.config.hotlist?.maxWatchCandidates || 20
+      limit = this.config.hotlist?.maxWatchCandidates || 20,
+      ignoreGlobalRegime = false  // NEW: Allow viewing candidates even in PANIC
     } = options;
 
     // Check cache
@@ -374,11 +375,11 @@ class ScoringEngine {
     const candidates = [];
 
     for (const [symbol, state] of this.scoreStates.entries()) {
-      // Skip if regime not NORMAL
+      // Skip if symbol regime not NORMAL (symbol-level risk is too high)
       if (state.regime !== 'NORMAL') continue;
 
-      // Skip if global regime not NORMAL
-      if (state.globalRegime !== 'NORMAL') continue;
+      // Skip if global regime not NORMAL (unless explicitly ignored for dashboard viewing)
+      if (!ignoreGlobalRegime && state.globalRegime !== 'NORMAL') continue;
 
       // Add LONG candidate
       if (state.allowedLong && state.finalLong >= minScore) {
