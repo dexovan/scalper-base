@@ -17,12 +17,32 @@ const CONFIG = {
 
   execution: {
     mode: "SIM", // SIM | DRY_RUN | LIVE
-    maxSlippagePct: 0.10,
-    maxSpreadPct: 0.15,
-    orderTimeoutMs: 120000,
-    maxRetryCount: 3,
-    minNotionalUsd: 5,
-    maxNotionalUsd: 500
+    venue: "BYBIT_LINEAR_PERP",
+
+    // API URLs (LIVE mode)
+    restBaseUrl: "https://api.bybit.com",
+    wsPrivateUrl: "wss://stream.bybit.com/v5/private",
+
+    // Safety limits
+    maxSlippagePct: 0.10,      // Max 0.10% slippage from best price
+    maxSpreadPct: 0.15,        // Max 0.15% spread to allow order
+    orderTimeoutMs: 120000,    // 2 minutes order timeout
+    maxRetryCount: 3,          // Max retries on network errors
+
+    // Notional limits
+    minNotionalUsd: 5,         // Minimum $5 per order
+    maxNotionalUsd: 500,       // Maximum $500 per order
+
+    // Order ID prefix
+    clientOrderIdPrefix: "AISCLP",
+
+    // Panic behavior
+    panicCloseOnGlobalPanic: true,
+    safeModeOnNetworkErrors: true,
+
+    // Fill simulation (SIM mode)
+    simSlippageBps: 2,         // 0.02% simulated slippage
+    simFillDelayMs: 50,        // 50ms simulated fill delay
   },
 
   risk: {
