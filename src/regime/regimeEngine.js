@@ -149,7 +149,7 @@ class RegimeEngine {
       if (PRIME_TIER_SYMBOLS.has(symbol)) {
         this.primeTier.add(symbol);
       } else {
-        const features = this.featureEngine.getFeatures(symbol);
+        const features = this.featureEngine.getFeatureState(symbol);
         const vol = features?.volatility?.volatilityScore || 0;
 
         if (vol >= 0.75) {
@@ -225,7 +225,7 @@ class RegimeEngine {
   _updateSymbolRegime(symbol) {
     try {
       // Get required data
-      const features = this.featureEngine.getFeatures(symbol);
+      const features = this.featureEngine.getFeatureState(symbol);
       const symbolHealth = this.orderbookManager.getSymbolHealth?.(symbol);
 
       if (!features) {
@@ -258,8 +258,8 @@ class RegimeEngine {
   _updateGlobalRegime() {
     try {
       // Get BTC and ETH features
-      const btcFeatures = this.featureEngine.getFeatures('BTCUSDT');
-      const ethFeatures = this.featureEngine.getFeatures('ETHUSDT');
+      const btcFeatures = this.featureEngine.getFeatureState('BTCUSDT');
+      const ethFeatures = this.featureEngine.getFeatureState('ETHUSDT');
 
       if (!btcFeatures || !ethFeatures) {
         logger.debug('[REGIME ENGINE] Missing BTC/ETH features, skipping global update');
