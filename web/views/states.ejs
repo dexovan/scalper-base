@@ -200,8 +200,16 @@ async function fetchStates() {
     const data = await response.json();
     if (!data.ok) throw new Error(data.error || 'Unknown error');
 
-    allSymbols = data.entries || [];
+    // Validate entries is an array
+    if (!Array.isArray(data.entries)) {
+      console.error('API returned non-array entries:', typeof data.entries, data.entries);
+      throw new Error('Invalid API response: entries is not an array');
+    }
+
+    allSymbols = data.entries;
     stateStats = data.summary || {};
+
+    console.log(`Loaded ${allSymbols.length} symbols from State Machine`);
 
     updateStats();
     updateStateDistribution();
@@ -306,10 +314,17 @@ function renderTable(symbols) {
   // Sort by state priority (active states first)
   const priority = ['IN_POSITION', 'MANAGING', 'ORDER_PLACED', 'ARMED', 'WATCHING', 'EXITED', 'COOLDOWN', 'BLOCKED_REGIME', 'FLAT'];
   symbols.sort((a, b) => {
+    // Safety check: ensure objects have required properties
+    if (!a || !b || !a.currentState || !b.currentState) return 0;
+
     const aPriority = priority.findIndex(p => a.currentState.includes(p));
     const bPriority = priority.findIndex(p => b.currentState.includes(p));
     if (aPriority !== bPriority) return aPriority - bPriority;
-    return a.symbol.localeCompare(b.symbol);
+
+    // Safety check: ensure symbol is a string
+    const aSymbol = (a.symbol || '').toString();
+    const bSymbol = (b.symbol || '').toString();
+    return aSymbol.localeCompare(bSymbol);
   });
 
   tbody.innerHTML = symbols.map(item => {
