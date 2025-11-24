@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Regime Monitor - DTrade Scalper</title>
+    <title>Režim Monitor - DTrade Scalper</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -99,7 +99,7 @@
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-4">
                     <h1 class="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                        🛡️ Regime Monitor
+                        🛡️ Režim Monitor
                     </h1>
                     <button onclick="toggleInfoModal()" class="text-slate-400 hover:text-purple-400 transition">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,16 +107,16 @@
                         </svg>
                     </button>
                     <div id="lastUpdate" class="text-xs text-slate-400">
-                        Loading...
+                        Učitavanje...
                     </div>
                 </div>
                 <div class="flex items-center gap-4">
                     <div class="flex items-center gap-2 text-sm">
                         <span class="text-slate-400">Status:</span>
-                        <span id="connectionStatus" class="text-green-400 font-medium">● Connected</span>
+                        <span id="connectionStatus" class="text-green-400 font-medium">● Povezan</span>
                     </div>
                     <a href="/monitor-micro" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-medium transition">
-                        Microstructure →
+                        Mikrostruktura →
                     </a>
                 </div>
             </div>
@@ -130,7 +130,7 @@
 
             <!-- Main Global Regime Card -->
             <div class="lg:col-span-2 rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-                <h2 class="text-lg font-semibold mb-4 text-slate-200">Global Market Regime</h2>
+                <h2 class="text-lg font-semibold mb-4 text-slate-200">Globalni Tržišni Režim</h2>
 
                 <div class="flex items-center justify-between mb-6">
                     <div class="flex items-center gap-4">
@@ -139,11 +139,11 @@
                             NORMAL
                         </div>
                         <div id="globalRiskLevel" class="text-sm text-slate-400">
-                            Risk Level: <span class="font-medium text-green-400">LOW</span>
+                            Nivo Rizika: <span class="font-medium text-green-400">NIZAK</span>
                         </div>
                     </div>
                     <div id="globalTimestamp" class="text-xs text-slate-500">
-                        Updated: --:--:--
+                        Ažurirano: --:--:--
                     </div>
                 </div>
 
@@ -151,13 +151,13 @@
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="bg-slate-800/50 rounded-lg p-4">
                         <div class="flex items-center justify-between">
-                            <span class="text-sm text-slate-400">New Positions</span>
+                            <span class="text-sm text-slate-400">Nove Pozicije</span>
                             <span id="allowNewPositions" class="text-2xl">✅</span>
                         </div>
                     </div>
                     <div class="bg-slate-800/50 rounded-lg p-4">
                         <div class="flex items-center justify-between">
-                            <span class="text-sm text-slate-400">Force Close</span>
+                            <span class="text-sm text-slate-400">Prisilno Zatvaranje</span>
                             <span id="forceClosePositions" class="text-2xl">❌</span>
                         </div>
                     </div>
@@ -166,11 +166,11 @@
                 <!-- BTC/ETH Metrics -->
                 <div class="grid grid-cols-2 gap-4">
                     <div class="bg-slate-800/30 rounded-lg p-3">
-                        <div class="text-xs text-slate-400 mb-1">BTC Volatility</div>
+                        <div class="text-xs text-slate-400 mb-1">BTC Volatilnost</div>
                         <div id="btcVolatility" class="text-lg font-mono font-bold text-yellow-400">0.000</div>
                     </div>
                     <div class="bg-slate-800/30 rounded-lg p-3">
-                        <div class="text-xs text-slate-400 mb-1">ETH Volatility</div>
+                        <div class="text-xs text-slate-400 mb-1">ETH Volatilnost</div>
                         <div id="ethVolatility" class="text-lg font-mono font-bold text-yellow-400">0.000</div>
                     </div>
                 </div>
@@ -178,19 +178,19 @@
 
             <!-- Symbol Statistics Card -->
             <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-                <h2 class="text-lg font-semibold mb-4 text-slate-200">Symbol Statistics</h2>
+                <h2 class="text-lg font-semibold mb-4 text-slate-200">Statistika Simbola</h2>
 
                 <div class="space-y-3">
                     <div class="flex items-center justify-between text-sm">
-                        <span class="text-slate-400">Total Symbols</span>
+                        <span class="text-slate-400">Ukupno Simbola</span>
                         <span id="totalSymbols" class="font-mono font-bold text-slate-200">0</span>
                     </div>
                     <div class="flex items-center justify-between text-sm">
-                        <span class="text-slate-400">Tradeable</span>
+                        <span class="text-slate-400">Dozvoljeni</span>
                         <span id="tradeableSymbols" class="font-mono font-bold text-green-400">0</span>
                     </div>
                     <div class="flex items-center justify-between text-sm">
-                        <span class="text-slate-400">Blocked</span>
+                        <span class="text-slate-400">Blokirani</span>
                         <span id="blockedSymbols" class="font-mono font-bold text-red-400">0</span>
                     </div>
 
@@ -236,37 +236,37 @@
             <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-xs font-medium text-slate-400 uppercase">Normal Tier</span>
-                    <span class="text-xs text-blue-400 font-mono">2s updates</span>
+                    <span class="text-xs text-blue-400 font-mono">2s ažuriranja</span>
                 </div>
                 <div id="normalTierCount" class="text-2xl font-bold text-blue-400">0</div>
-                <div class="text-xs text-slate-500 mt-1">Standard volatility</div>
+                <div class="text-xs text-slate-500 mt-1">Standardna volatilnost</div>
             </div>
             <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-xs font-medium text-slate-400 uppercase">Wild Tier</span>
-                    <span class="text-xs text-orange-400 font-mono">3-5s updates</span>
+                    <span class="text-xs text-orange-400 font-mono">3-5s ažuriranja</span>
                 </div>
                 <div id="wildTierCount" class="text-2xl font-bold text-orange-400">0</div>
-                <div class="text-xs text-slate-500 mt-1">High volatility</div>
+                <div class="text-xs text-slate-500 mt-1">Visoka volatilnost</div>
             </div>
         </section>
 
         <!-- Symbol Regimes Table -->
         <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-semibold text-slate-200">Symbol Regimes</h2>
+                <h2 class="text-lg font-semibold text-slate-200">Režimi Simbola</h2>
                 <div class="flex items-center gap-2">
                     <input
                         type="text"
                         id="searchSymbol"
-                        placeholder="Search symbol..."
+                        placeholder="Pretraži simbol..."
                         class="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-purple-500"
                     >
                     <select
                         id="filterRegime"
                         class="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-purple-500"
                     >
-                        <option value="all">All Regimes</option>
+                        <option value="all">Svi Režimi</option>
                         <option value="PUMP">PUMP</option>
                         <option value="MANIPULATED">MANIPULATED</option>
                         <option value="NEWS_DRIVEN">NEWS_DRIVEN</option>
@@ -281,20 +281,20 @@
                 <table class="w-full text-sm">
                     <thead class="border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
                         <tr class="text-left">
-                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Symbol</th>
-                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Regime</th>
+                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Simbol</th>
+                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Režim</th>
                             <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase text-center">Long</th>
                             <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase text-center">Short</th>
-                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Pump Score</th>
-                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Spoof Score</th>
-                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Volatility</th>
-                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Updated</th>
+                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Pump Skor</th>
+                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Spoof Skor</th>
+                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Volatilnost</th>
+                            <th class="py-3 px-2 text-xs font-medium text-slate-400 uppercase">Ažurirano</th>
                         </tr>
                     </thead>
                     <tbody id="symbolRegimesTable" class="divide-y divide-slate-800">
                         <tr>
                             <td colspan="8" class="py-8 text-center text-slate-500">
-                                Loading symbol regimes...
+                                Učitavanje režima simbola...
                             </td>
                         </tr>
                     </tbody>
@@ -302,18 +302,18 @@
             </div>
 
             <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
-                <div id="tableInfo">Showing 0 symbols</div>
-                <div id="updateCounter" class="font-mono">Updates: 0</div>
+                <div id="tableInfo">Prikazano 0 simbola</div>
+                <div id="updateCounter" class="font-mono">Ažuriranja: 0</div>
             </div>
         </section>
 
         <!-- Trade Permission Checker -->
         <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-            <h2 class="text-lg font-semibold mb-4 text-slate-200">Trade Permission Checker</h2>
+            <h2 class="text-lg font-semibold mb-4 text-slate-200">Provera Dozvole za Trgovanje</h2>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                    <label class="block text-xs text-slate-400 mb-2">Symbol</label>
+                    <label class="block text-xs text-slate-400 mb-2">Simbol</label>
                     <input
                         type="text"
                         id="checkSymbol"
@@ -322,7 +322,7 @@
                     >
                 </div>
                 <div>
-                    <label class="block text-xs text-slate-400 mb-2">Side</label>
+                    <label class="block text-xs text-slate-400 mb-2">Strana</label>
                     <select
                         id="checkSide"
                         class="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-purple-500"
@@ -336,7 +336,7 @@
                         id="checkTradeBtn"
                         class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition"
                     >
-                        Check Trade
+                        Proveri Trgovanje
                     </button>
                 </div>
             </div>
@@ -417,12 +417,12 @@
                     }
 
                     updateCounter++;
-                    document.getElementById('updateCounter').textContent = `Updates: ${updateCounter}`;
-                    document.getElementById('lastUpdate').textContent = `Last update: ${formatTimestamp(new Date().toISOString())}`;
+                    document.getElementById('updateCounter').textContent = `Ažuriranja: ${updateCounter}`;
+                    document.getElementById('lastUpdate').textContent = `Poslednje ažuriranje: ${formatTimestamp(new Date().toISOString())}`;
                 }
             } catch (error) {
                 console.error('Failed to fetch regime overview:', error);
-                document.getElementById('connectionStatus').innerHTML = '● <span class="text-red-400">Disconnected</span>';
+                document.getElementById('connectionStatus').innerHTML = '● <span class="text-red-400">Prekinuto</span>';
             }
         }
 
@@ -455,10 +455,16 @@
                 'MEDIUM': 'text-blue-400',
                 'LOW': 'text-green-400'
             };
-            riskLevelEl.innerHTML = `Risk Level: <span class="font-medium ${riskColors[global.riskLevel]}">${global.riskLevel}</span>`;
+            const riskLabels = {
+                'EXTREME': 'EKSTREMAN',
+                'HIGH': 'VISOK',
+                'MEDIUM': 'SREDNJI',
+                'LOW': 'NIZAK'
+            };
+            riskLevelEl.innerHTML = `Nivo Rizika: <span class="font-medium ${riskColors[global.riskLevel]}">${riskLabels[global.riskLevel]}</span>`;
 
             // Update timestamp
-            timestampEl.textContent = `Updated: ${formatTimestamp(global.updatedAt)}`;
+            timestampEl.textContent = `Ažurirano: ${formatTimestamp(global.updatedAt)}`;
 
             // Update permissions
             allowNewEl.textContent = global.allowNewPositions ? '✅' : '❌';
@@ -503,8 +509,8 @@
             });
 
             if (filtered.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-slate-500">No symbols found</td></tr>';
-                document.getElementById('tableInfo').textContent = 'Showing 0 symbols';
+                tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-slate-500">Simboli nisu pronađeni</td></tr>';
+                document.getElementById('tableInfo').textContent = 'Prikazano 0 simbola';
                 return;
             }
 
@@ -516,7 +522,7 @@
                     return `
                         <tr class="hover:bg-slate-800/50 transition">
                             <td class="py-2 px-2 font-mono font-medium text-slate-200">${item.symbol}</td>
-                            <td colspan="7" class="py-2 px-2 text-slate-500 text-xs">No regime data</td>
+                            <td colspan="7" class="py-2 px-2 text-slate-500 text-xs">Nema podataka o režimu</td>
                         </tr>
                     `;
                 }
@@ -535,7 +541,7 @@
                 `;
             }).join('');
 
-            document.getElementById('tableInfo').textContent = `Showing ${filtered.length} symbols`;
+            document.getElementById('tableInfo').textContent = `Prikazano ${filtered.length} simbola`;
         }
 
         // ================================================================
@@ -550,7 +556,7 @@
             console.log('📝 Symbol:', symbol, 'Side:', side);
 
             if (!symbol) {
-                resultDiv.innerHTML = '<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">Please enter a symbol</div>';
+                resultDiv.innerHTML = '<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">Molimo unesite simbol</div>';
                 resultDiv.classList.remove('hidden');
                 return;
             }
@@ -578,16 +584,16 @@
                         <div class="p-4 ${bgColor} border rounded-lg ${textColor}">
                             <div class="flex items-center gap-2 mb-2">
                                 <span class="text-2xl">${icon}</span>
-                                <span class="font-bold text-lg">${allowed ? 'Trade Allowed' : 'Trade Blocked'}</span>
+                                <span class="font-bold text-lg">${allowed ? 'Trgovanje Dozvoljeno' : 'Trgovanje Blokirano'}</span>
                             </div>
                             ${hasWarning ? `<div class="mb-2 p-2 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-400 text-xs">⚠️ ${data.warning}</div>` : ''}
                             <div class="text-sm space-y-1 text-slate-300">
-                                <div>Symbol: <span class="font-mono font-bold">${symbol}</span></div>
-                                <div>Side: <span class="font-mono font-bold">${side}</span></div>
-                                ${data.reason && !allowed ? `<div>Reason: <span class="font-medium">${data.reason}</span></div>` : ''}
-                                ${data.reason && allowed ? `<div class="text-xs text-slate-500">Reason: ${data.reason}</div>` : ''}
-                                ${data.globalRegime ? `<div>Global Regime: <span class="font-mono">${data.globalRegime}</span></div>` : ''}
-                                ${data.symbolRegime ? `<div>Symbol Regime: <span class="font-mono">${data.symbolRegime}</span></div>` : ''}
+                                <div>Simbol: <span class="font-mono font-bold">${symbol}</span></div>
+                                <div>Strana: <span class="font-mono font-bold">${side}</span></div>
+                                ${data.reason && !allowed ? `<div>Razlog: <span class="font-medium">${data.reason}</span></div>` : ''}
+                                ${data.reason && allowed ? `<div class="text-xs text-slate-500">Razlog: ${data.reason}</div>` : ''}
+                                ${data.globalRegime ? `<div>Globalni Režim: <span class="font-mono">${data.globalRegime}</span></div>` : ''}
+                                ${data.symbolRegime ? `<div>Režim Simbola: <span class="font-mono">${data.symbolRegime}</span></div>` : ''}
                             </div>
                         </div>
                     `;
@@ -598,7 +604,7 @@
                 resultDiv.classList.remove('hidden');
             } catch (error) {
                 console.error('❌ checkTrade error:', error);
-                resultDiv.innerHTML = `<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">Error: ${error.message}</div>`;
+                resultDiv.innerHTML = `<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">Greška: ${error.message}</div>`;
                 resultDiv.classList.remove('hidden');
             }
         }
