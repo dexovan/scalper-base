@@ -2988,3 +2988,201 @@ return aSymbol.localeCompare(bSymbol);
 - `src/state/stateModel.js` - Transition logic
 - `src/state/stateMachine.js` - Orchestrator
 - `web/views/states.ejs` - Dashboard UI
+
+---
+
+## PHASE 8 - RISK ENGINE IMPLEMENTATION (Nov 24, 2025)
+
+### Overview
+
+Implemented complete Risk & Portfolio Engine for position tracking, PnL calculation, and risk limit enforcement. System tracks account equity, open positions, portfolio heat percentage, and daily loss limits with three operating modes (SIM/DRY_RUN/LIVE).
+
+**Core Modules Created:**
+
+- `src/risk/accountState.js` (195 lines) - Account equity, balance, PnL tracking
+- `src/risk/positionTracker.js` (312 lines) - Position lifecycle, MFE/MAE tracking
+- `src/risk/riskEngine.js` (379 lines) - Main orchestrator, risk calculations
+- `src/risk/externalAccountAdapter.js` (57 lines) - Bybit API stub (future phases)
+
+**Total:** 943 lines of new code
+
+### Configuration
+
+```javascript
+{
+  maxRiskPerTradePct: 1.0,      // Max 1% risk per trade
+  maxPortfolioHeatPct: 6.0,     // Max 6% portfolio heat
+  maxDailyLossPct: 5.0,         // Max 5% daily loss
+  maxOpenPositions: 5,          // Max concurrent positions
+  dailyResetTimeUtc: "00:00"    // Daily stats reset
+}
+```
+
+### API Endpoints (Port 8090)
+
+1. `GET /api/risk/overview` - Complete risk snapshot (account, portfolio, dailyStats, riskFlags)
+2. `GET /api/risk/limits` - Risk configuration limits
+3. `GET /api/positions` - All active positions with summary
+4. `GET /api/positions/:symbol` - Symbol-specific positions (LONG/SHORT)
+5. `GET /api/trades_log/:date` - Daily trade history (future: full log persistence)
+
+**Dashboard Proxy Routes (Port 8080):**
+
+- `/api/engine/risk/overview` → `http://localhost:8090/api/risk/overview`
+- `/api/engine/risk/limits` → `http://localhost:8090/api/risk/limits`
+- `/api/engine/positions` → `http://localhost:8090/api/positions`
+- `/api/engine/positions/:symbol` → `http://localhost:8090/api/positions/:symbol`
+
+### Dashboard UI
+
+**Route:** `/risk` (requires authentication)
+
+**Features:**
+
+- Global Risk Panel: 4 stat cards (Equity, Unrealized PnL, Portfolio Heat, Daily PnL)
+- Risk Flags: 4 status indicators (New Positions, New Long, New Short, Daily Loss Limit)
+- Active Positions Table: Symbol, Side, Entry, Qty, Leverage, PnL, MFE/MAE, Duration
+- Auto-refresh: 5 seconds
+- Full-width layout: `max-width: 100%`
+- Color coding: Green (positive), Red (negative), Yellow (warning)
+
+**Navigation Link Added:** `layout.ejs` - "💰 Risk Monitor"
+
+### Implementation Details
+
+**Account State Module:**
+
+- Tracks: equity, balance, margin used, unrealized PnL, realized PnL (total + today)
+- Operating modes: SIM (simulated $10K), DRY_RUN (paper trading), LIVE (Bybit API)
+- Daily reset: Tracks PnL percentage from day start equity
+- Functions: `initAccountState()`, `updateAccountFromPositions()`, `recordRealizedPnl()`, `resetDailyStats()`, `getDailyPnlPercent()`, `getAccountHealth()`
+
+**Position Tracker Module:**
+
+- Position key format: `"BTCUSDT_LONG"`, `"ETHUSDT_SHORT"`
+- Tracks: entry price, qty, notional value, margin used, stop loss, TP prices
+- Metrics: unrealized PnL, realized PnL, MFE (Max Favorable Excursion), MAE (Max Adverse Excursion)
+- Features: Pyramiding support, partial closes, 0.1% debug sampling
+- Functions: `onNewPositionOpened()`, `onPositionPriceUpdate()`, `onPositionClosed()`, `getAllPositions()`, `getPortfolioSummary()`
+
+**Risk Engine Module:**
+
+- Calculates portfolio heat: `SUM(marginUsed) / equity * 100`
+- Calculates daily loss: `dailyPnl / equityAtDayStart * 100`
+- Risk flags:
+  - `riskAllowNewPositions` - Overall permission (no daily loss limit, < max positions, < max heat)
+  - `riskAllowNewLong` - Allow long positions (heat < 4%)
+  - `riskAllowNewShort` - Allow short positions (heat < 4%)
+  - `riskForceCloseAll` - Emergency close all (daily loss limit hit)
+- Daily reset: Scheduled check every 1 minute, resets at midnight UTC
+- Functions: `initRiskEngine()`, `onPositionEvent()`, `onPriceTickForSymbol()`, `recalcRiskState()`, `getRiskSnapshot()`, `onDailyReset()`
+
+### Integration Points
+
+**Engine Initialization (`src/index.js`):**
+
+```javascript
+// Phase 8: Risk Engine after State Machine
+const riskEngine = await import("./risk/riskEngine.js");
+riskEngine.initRiskEngine(riskConfig, "SIM", 10000);
+global.riskEngine = riskEngine;
+```
+
+**Future Integration (Phase 9):**
+
+- Scoring Engine: Use `riskFlags` to filter signals
+- State Machine: Block WATCH/ARM transitions when risk flags = false
+- Position events: Feed POSITION_OPENED/CLOSED events to Risk Engine
+- Price ticks: Update unrealized PnL on price changes
+
+### Testing Results
+
+**API Test (Nov 24, 22:04 UTC):**
+
+```bash
+curl http://localhost:8090/api/risk/overview | jq .
+```
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "account": {
+      "mode": "SIM",
+      "equityTotal": 10000,
+      "balanceAvailable": 10000,
+      "marginUsed": 0,
+      "openPnlUnrealized": 0,
+      "realizedPnlTotal": 0,
+      "realizedPnlToday": 0,
+      "equityAtDayStart": 10000
+    },
+    "portfolio": {
+      "activePositions": 0,
+      "totalUnrealizedPnl": 0,
+      "totalRealizedPnl": 0,
+      "totalMarginUsed": 0,
+      "maxMFE": 0,
+      "maxMAE": 0
+    },
+    "riskFlags": {
+      "portfolioHeatPct": 0,
+      "projectedHeatPctIfNewTrade": 1,
+      "riskAllowNewPositions": true,
+      "riskAllowNewLong": true,
+      "riskAllowNewShort": true,
+      "riskForceCloseAll": false
+    }
+  }
+}
+```
+
+**Status:** ✅ All systems operational, all risk flags GREEN
+
+### UI Improvements
+
+**State Machine Monitor Table Fix:**
+
+- Problem: 502 symbols displayed as long non-scrollable list, took up entire screen
+- Solution: Added `max-h-[600px] overflow-y-auto` + `sticky top-0` header
+- Commit: `f25920d` - "UI: Add scrollable table to State Machine Monitor (max-height 600px)"
+- Result: Table scrolls after ~15 rows, header stays visible
+
+### Key Learnings
+
+1. **Full-width dashboard layout:** Use `max-width: 100%` instead of fixed `1600px` for better space utilization
+2. **Risk flags design pattern:** Boolean flags (allow/block) easier to consume than complex state enums
+3. **Daily reset timing:** Check every 1 minute for date change instead of scheduling exact time (more reliable across timezones)
+4. **Position key format:** Combine symbol + side (`"BTCUSDT_LONG"`) for unique identification and easy lookups
+5. **MFE/MAE tracking:** Calculate on every price update, critical for position quality analysis
+6. **Throttled updates:** Only recalc risk on 1% of price ticks to reduce CPU load
+
+### Files Modified
+
+**New Files:**
+
+- `src/risk/accountState.js`
+- `src/risk/positionTracker.js`
+- `src/risk/riskEngine.js`
+- `src/risk/externalAccountAdapter.js`
+- `web/views/risk.ejs`
+
+**Modified Files:**
+
+- `src/index.js` - Added Risk Engine initialization
+- `src/http/monitorApi.js` - Added 5 Risk API endpoints
+- `web/server.js` - Added 4 proxy routes + `/risk` dashboard route
+- `web/views/layout.ejs` - Added "💰 Risk Monitor" navigation link
+- `web/views/states.ejs` - Added scrollable table
+
+**Commits:**
+
+- `fc98806` - "Phase 8: Add Risk Engine core modules, API endpoints, and dashboard"
+- `f20ca14` - "UI: Expand Risk Monitor to full width"
+- `f25920d` - "UI: Add scrollable table to State Machine Monitor (max-height 600px)"
+
+**Total Changes:** 9 files, 1762 insertions
+
+---
