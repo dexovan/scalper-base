@@ -216,8 +216,18 @@ const scoringProxy = createProxyMiddleware({
   changeOrigin: true,
   timeout: 30000,
   proxyTimeout: 30000,
+  // Preserve query string explicitly
+  router: (req) => {
+    return "http://localhost:8090";
+  },
+  pathRewrite: (path, req) => {
+    // Return full path with query string
+    return req.url;
+  },
   onProxyReq: (proxyReq, req, res) => {
-    console.log(`[PROXY-SCORING] ${req.method} ${req.originalUrl} → http://localhost:8090${req.path}`);
+    // Preserve full URL with query string
+    const fullPath = req.url || req.originalUrl;
+    console.log(`[PROXY-SCORING] ${req.method} http://localhost:8080${fullPath} → http://localhost:8090${fullPath}`);
   },
   onProxyRes: (proxyRes, req, res) => {
     console.log(`[PROXY-SCORING] Response: ${proxyRes.statusCode}`);
