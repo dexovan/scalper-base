@@ -206,6 +206,39 @@
             </a>
         </div>
 
+        <!-- Regime Monitor -->
+        <div class="rounded-lg border border-slate-800 bg-gradient-to-br from-red-950/20 to-slate-900/60 p-4 hover:border-red-700/50 transition-colors">
+            <div class="flex items-start justify-between mb-3">
+                <div>
+                    <h3 class="text-base font-semibold text-slate-200">Regime Monitor</h3>
+                    <p class="text-xs text-slate-400 mt-1">FAZA 5 - Market regime detection</p>
+                </div>
+                <div class="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                    <span class="text-xl">🛡️</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-3 mb-3 text-xs">
+                <div>
+                    <div class="text-slate-500">Global</div>
+                    <div class="text-lg font-bold text-green-400" id="regime-global-preview">NORMAL</div>
+                </div>
+                <div>
+                    <div class="text-slate-500">Blocked</div>
+                    <div class="text-lg font-bold text-red-400" id="regime-blocked-preview">0</div>
+                </div>
+                <div>
+                    <div class="text-slate-500">Risk</div>
+                    <div class="text-lg font-bold text-slate-400" id="regime-risk-preview">LOW</div>
+                </div>
+            </div>
+            <a href="/regime-monitor" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors">
+                Open Monitor
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14m-7-7l7 7-7 7"/>
+                </svg>
+            </a>
+        </div>
+
     </section>
 
     <!-- Recent Market Activity - Last 10 Trades -->
@@ -434,6 +467,53 @@
 
         dashboard.start();
 
+        // Load regime preview data
+        loadRegimePreview();
+        setInterval(loadRegimePreview, 5000); // Update every 5s
+
         console.log('✅ Dashboard initialized');
     });
+
+    // Regime preview loader
+    async function loadRegimePreview() {
+        try {
+            const response = await fetch('http://localhost:8090/api/regime/overview');
+            const data = await response.json();
+
+            if (data.ok) {
+                const global = data.overview.global;
+                const symbols = data.overview.symbols;
+
+                // Update global regime
+                const globalEl = document.getElementById('regime-global-preview');
+                if (globalEl) {
+                    globalEl.textContent = global.regime;
+                    globalEl.className = 'text-lg font-bold ' +
+                        (global.regime === 'PANIC' ? 'text-red-400' :
+                         global.regime === 'RISK_OFF' ? 'text-yellow-400' :
+                         'text-green-400');
+                }
+
+                // Update blocked symbols
+                const blockedEl = document.getElementById('regime-blocked-preview');
+                if (blockedEl) {
+                    blockedEl.textContent = symbols.blocked || 0;
+                }
+
+                // Update risk level
+                const riskEl = document.getElementById('regime-risk-preview');
+                if (riskEl) {
+                    riskEl.textContent = global.riskLevel;
+                    riskEl.className = 'text-lg font-bold ' +
+                        (global.riskLevel === 'EXTREME' ? 'text-red-400' :
+                         global.riskLevel === 'HIGH' ? 'text-yellow-400' :
+                         global.riskLevel === 'MEDIUM' ? 'text-blue-400' :
+                         'text-slate-400');
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load regime preview:', error);
+        }
+    }
 </script>
+
