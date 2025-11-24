@@ -1442,6 +1442,112 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // STATE MACHINE API
+  // ============================================================
+
+  // GET /api/states/overview - Get State Machine overview with statistics
+  app.get("/api/states/overview", async (req, res) => {
+    try {
+      if (!global.stateMachine) {
+        return res.status(503).json({
+          ok: false,
+          error: "State Machine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const overview = global.stateMachine.getStatesOverview();
+      const stats = global.stateMachine.getStateStatistics();
+
+      res.json({
+        ok: true,
+        summary: stats,
+        entries: overview,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [STATE/OVERVIEW] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/symbol/:symbol/state - Get detailed state for one symbol
+  app.get("/api/symbol/:symbol/state", async (req, res) => {
+    try {
+      if (!global.stateMachine) {
+        return res.status(503).json({
+          ok: false,
+          error: "State Machine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const symbol = req.params.symbol.toUpperCase();
+      const state = global.stateMachine.getSymbolState(symbol);
+
+      if (!state) {
+        return res.status(404).json({
+          ok: false,
+          error: `No state data for symbol: ${symbol}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      res.json({
+        ok: true,
+        symbol,
+        state,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [STATE/${req.params.symbol}] Error:`, error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/symbol/:symbol/events - Get event log history for one symbol
+  app.get("/api/symbol/:symbol/events", async (req, res) => {
+    try {
+      if (!global.stateMachine) {
+        return res.status(503).json({
+          ok: false,
+          error: "State Machine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const symbol = req.params.symbol.toUpperCase();
+      const limit = parseInt(req.query.limit) || 50;
+
+      const events = global.stateMachine.readEventLog(symbol, limit);
+
+      res.json({
+        ok: true,
+        symbol,
+        events,
+        count: events.length,
+        limit,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [STATE/EVENTS/${req.params.symbol}] Error:`, error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // START SERVER
   // ============================================================
   app.listen(port, "0.0.0.0", async () => {
