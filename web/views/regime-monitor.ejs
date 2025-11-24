@@ -396,6 +396,17 @@
                     updateGlobalRegime(data.overview.global);
                     updateSymbolStats(data.overview.symbols);
                     updateTierStats(data.overview.tiers);
+
+                    // Use symbol list from overview
+                    if (data.overview.symbols.list && data.overview.symbols.list.length > 0) {
+                        symbolRegimesData = data.overview.symbols.list.map(s => ({
+                            symbol: s.symbol,
+                            regime: s,
+                            features: { pumpScore: 0, spoofScore: 0, volatility: 0 }
+                        }));
+                        renderSymbolTable();
+                    }
+
                     updateCounter++;
                     document.getElementById('updateCounter').textContent = `Updates: ${updateCounter}`;
                     document.getElementById('lastUpdate').textContent = `Last update: ${formatTimestamp(new Date().toISOString())}`;
@@ -403,48 +414,6 @@
             } catch (error) {
                 console.error('Failed to fetch regime overview:', error);
                 document.getElementById('connectionStatus').innerHTML = '● <span class="text-red-400">Disconnected</span>';
-            }
-        }
-
-        async function fetchSymbolRegimes() {
-            try {
-                const response = await fetch('/api/features/overview');
-                const data = await response.json();
-
-                if (data.ok) {
-                    // Get regime data for each symbol
-                    const regimesPromises = data.symbols.slice(0, 100).map(async (symbol) => {
-                        try {
-                            const regimeResp = await fetch(`/api/regime/${symbol.symbol}`);
-                            const regimeData = await regimeResp.json();
-
-                            return {
-                                symbol: symbol.symbol,
-                                regime: regimeData.ok ? regimeData.regime : null,
-                                features: {
-                                    pumpScore: symbol.pumpLikelihood || 0,
-                                    spoofScore: symbol.spoofingScore || 0,
-                                    volatility: symbol.volatilityScore || 0
-                                }
-                            };
-                        } catch (err) {
-                            return {
-                                symbol: symbol.symbol,
-                                regime: null,
-                                features: {
-                                    pumpScore: symbol.pumpLikelihood || 0,
-                                    spoofScore: symbol.spoofingScore || 0,
-                                    volatility: symbol.volatilityScore || 0
-                                }
-                            };
-                        }
-                    });
-
-                    symbolRegimesData = await Promise.all(regimesPromises);
-                    renderSymbolTable();
-                }
-            } catch (error) {
-                console.error('Failed to fetch symbol regimes:', error);
             }
         }
 
@@ -520,7 +489,7 @@
 
             let filtered = symbolRegimesData.filter(item => {
                 const matchesSearch = item.symbol.includes(searchTerm);
-                const matchesRegime = filterRegime === 'all' || item.regime?.current === filterRegime;
+                const matchesRegime = filterRegime === 'all' || item.regime?.regime === filterRegime;
                 return matchesSearch && matchesRegime;
             });
 
@@ -546,7 +515,7 @@
                 return `
                     <tr class="hover:bg-slate-800/50 transition">
                         <td class="py-2 px-2 font-mono font-medium text-slate-200">${item.symbol}</td>
-                        <td class="py-2 px-2">${getRegimeBadgeHTML(regime.current)}</td>
+                        <td class="py-2 px-2">${getRegimeBadgeHTML(regime.regime)}</td>
                         <td class="py-2 px-2 text-center text-lg">${regime.allowLong ? '✅' : '❌'}</td>
                         <td class="py-2 px-2 text-center text-lg">${regime.allowShort ? '✅' : '❌'}</td>
                         <td class="py-2 px-2 font-mono text-xs ${features.pumpScore >= 0.70 ? 'text-orange-400 font-bold' : 'text-slate-400'}">${features.pumpScore.toFixed(3)}</td>
@@ -635,11 +604,9 @@
 
         // Initial fetch
         fetchRegimeOverview();
-        fetchSymbolRegimes();
 
-        // Polling intervals
-        setInterval(fetchRegimeOverview, 2000); // Global every 2s
-        setInterval(fetchSymbolRegimes, 5000);   // Symbols every 5s
+        // Polling interval
+        setInterval(fetchRegimeOverview, 2000); // Overview every 2s (includes symbols)
 
         console.log('🛡️ Regime Monitor initialized');
     </script>

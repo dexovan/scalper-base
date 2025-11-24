@@ -374,7 +374,8 @@ class RegimeEngine {
           STALE: 0
         },
         blocked: 0,
-        tradeable: 0
+        tradeable: 0,
+        list: [] // ADD SYMBOL LIST
       },
       tiers: {
         prime: this.primeTier.size,
@@ -397,6 +398,17 @@ class RegimeEngine {
       } else {
         stats.symbols.blocked++;
       }
+
+      // Add to symbol list
+      stats.symbols.list.push({
+        symbol,
+        regime: reg,
+        allowLong: regime.allowLong,
+        allowShort: regime.allowShort,
+        updatedAt: regime.updatedAt,
+        tier: this.primeTier.has(symbol) ? 'PRIME' :
+              this.normalTier.has(symbol) ? 'NORMAL' : 'WILD'
+      });
     }
 
     return stats;
