@@ -389,7 +389,7 @@
 
         async function fetchRegimeOverview() {
             try {
-                const response = await fetch('http://localhost:8090/api/regime/overview');
+                const response = await fetch('/api/regime/overview');
                 const data = await response.json();
 
                 if (data.ok) {
@@ -408,14 +408,14 @@
 
         async function fetchSymbolRegimes() {
             try {
-                const response = await fetch('http://localhost:8090/api/features/overview');
+                const response = await fetch('/api/features/overview');
                 const data = await response.json();
 
                 if (data.ok) {
                     // Get regime data for each symbol
                     const regimesPromises = data.symbols.slice(0, 100).map(async (symbol) => {
                         try {
-                            const regimeResp = await fetch(`http://localhost:8090/api/symbol/${symbol.symbol}/regime`);
+                            const regimeResp = await fetch(`/api/regime/${symbol.symbol}`);
                             const regimeData = await regimeResp.json();
 
                             return {
@@ -576,7 +576,7 @@
             }
 
             try {
-                const response = await fetch('http://localhost:8090/api/regime/check-trade', {
+                const response = await fetch('/api/regime/check-trade', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol, side })

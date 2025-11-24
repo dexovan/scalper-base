@@ -477,7 +477,7 @@
     // Regime preview loader
     async function loadRegimePreview() {
         try {
-            const response = await fetch('http://localhost:8090/api/regime/overview');
+            const response = await fetch('/api/regime/overview');
             const data = await response.json();
 
             if (data.ok) {

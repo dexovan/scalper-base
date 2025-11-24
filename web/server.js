@@ -278,6 +278,21 @@ app.use(
 // PROXY → REGIME ENGINE API (port 8090)
 // ===========================================
 app.use(
+  "/api/regime/:symbol",
+  createProxyMiddleware({
+    target: "http://localhost:8090",
+    changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
+    pathRewrite: (path, req) => {
+      // /api/regime/BTCUSDT -> /api/symbol/BTCUSDT/regime
+      const symbol = req.params.symbol;
+      return `/api/symbol/${symbol}/regime`;
+    }
+  })
+);
+
+app.use(
   "/api/regime",
   createProxyMiddleware({
     target: "http://localhost:8090/api/regime",
