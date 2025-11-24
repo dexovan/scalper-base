@@ -2825,3 +2825,166 @@ Created robust 24h data refresh system in `src/http/monitorApi.js`:
 
 - `1049fa0` - Initial 24h data refresh
 - `[CURRENT]` - Robust version with retry + monitoring
+
+---
+
+## PHASE 7 - STATE MACHINE IMPLEMENTATION & TROUBLESHOOTING (Nov 24, 2025)
+
+### Problem 1: API Endpoints Returning HTML Instead of JSON
+
+**Symptom:**
+
+```bash
+curl http://localhost:8090/api/states/overview
+# Returns: <pre>Cannot GET /api/states/overview</pre>
+```
+
+**Root Cause:**
+State Machine API endpoints were added to **dashboard routes** (`web/routes/api.js`) instead of **engine API** (`src/http/monitorApi.js`). Dashboard process doesn't have access to `global.stateMachine` because State Machine lives in engine process.
+
+**Solution:**
+Moved all State Machine endpoints from dashboard to engine API. Added proxy routes in dashboard for frontend access.
+
+**Key Lesson:** Always check which process has access to data! State Machine = engine process = port 8090.
+
+**Commits:** `ab9277b`, `d37da7e`
+
+---
+
+### Problem 2: `"null": 507` in bySide Statistics
+
+**Symptom:**
+
+```json
+{ "bySide": { "LONG": 0, "SHORT": 0, "null": 507 } }
+```
+
+**Root Cause:** `activeSide: null` was counted as separate category.
+
+**Solution:**
+
+```javascript
+if (context.activeSide !== null) {
+  stats.bySide[context.activeSide] = ...;
+}
+```
+
+**Commit:** `d37da7e`
+
+---
+
+### Problem 3: `[object Object]` Instead of Symbol Names
+
+**Symptom:** Dashboard showing `[object Object]` in Symbol column.
+
+**Root Cause:** `getSymbolsByCategory()` returns **array of metadata objects**, not strings.
+
+**Solution:**
+
+```javascript
+// WRONG: const allSymbols = [...smPrimeSymbols, ...smNormalSymbols];
+// CORRECT:
+const allSymbols = [
+  ...smPrimeSymbols.map((meta) => meta.symbol),
+  ...smNormalSymbols.map((meta) => meta.symbol),
+];
+```
+
+**Key Lesson:** `getSymbolsByCategory()` always returns metadata objects. Extract `.symbol` property.
+
+**Commit:** `67b2e04`
+
+---
+
+### Problem 4: `null.toFixed()` TypeError
+
+**Symptom:** `TypeError: Cannot read properties of null (reading 'toFixed')`
+
+**Root Cause:** `finalScoreLong`/`Short` can be `null` before first SCORING_UPDATE.
+
+**Solution:**
+
+```javascript
+// WRONG: item.lastSnapshot?.finalScoreLong !== undefined
+// CORRECT: item.lastSnapshot?.finalScoreLong != null
+```
+
+**Key Lesson:** Use `!= null` to catch both `null` and `undefined`.
+
+**Commit:** `a8f8f48`
+
+---
+
+### Problem 5: "NaNs" Duration and "Invalid Date"
+
+**Symptom:** Duration showing `NaNs`, Last Update showing `Invalid Date`.
+
+**Root Cause:** Missing `enteredCurrentStateAt` and `lastEventAt` fields in context.
+
+**Solution:**
+Added to `createDefaultContext()`:
+
+```javascript
+enteredCurrentStateAt: now,
+lastEventAt: now,
+```
+
+Updated in `applyTransition()`:
+
+```javascript
+newContext.lastEventAt = timestamp; // Every event
+newContext.enteredCurrentStateAt = timestamp; // State change only
+```
+
+**Key Lesson:** Track TWO timestamps - `enteredCurrentStateAt` for duration, `lastEventAt` for "last seen".
+
+**Commit:** `9a7c6a4`
+
+---
+
+### Problem 6: Array Sort `localeCompare` Error
+
+**Symptom:** `TypeError: a.symbol.localeCompare is not a function`
+
+**Root Cause:** Race conditions during initialization.
+
+**Solution:**
+
+```javascript
+if (!a || !b || !a.currentState || !b.currentState) return 0;
+const aSymbol = (a.symbol || "").toString();
+const bSymbol = (b.symbol || "").toString();
+return aSymbol.localeCompare(bSymbol);
+```
+
+**Commit:** `a21108c`
+
+---
+
+### Phase 7 Quick Reference
+
+**Common Pitfalls:**
+
+| Problem                | Root Cause                 | Solution                          |
+| ---------------------- | -------------------------- | --------------------------------- |
+| HTML instead of JSON   | Wrong server               | Add to engine API (port 8090)     |
+| `[object Object]`      | Objects instead of strings | Extract `.symbol` property        |
+| `null.toFixed()` error | null not checked           | Use `!= null` not `!== undefined` |
+| "NaNs" duration        | Missing timestamps         | Add `enteredCurrentStateAt`       |
+| localeCompare error    | Race conditions            | Add defensive checks              |
+| "null" in stats        | Counting null              | Only count when `!== null`        |
+
+**Architecture:**
+
+- 15 states, 10 event types, event-driven FSM
+- Thresholds: minScore=15, watch=25, arm=40
+- Integration: ScoringEngine, RegimeEngine, 1s ticker
+- API: 3 endpoints on engine port 8090
+- Dashboard: Real-time UI with filters, auto-refresh 5s
+
+**Files:**
+
+- `src/state/stateEvents.js` - Event definitions
+- `src/state/stateModel.js` - Transition logic
+- `src/state/stateMachine.js` - Orchestrator
+- `web/views/states.ejs` - Dashboard UI
