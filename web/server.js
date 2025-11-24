@@ -142,6 +142,16 @@ app.use((req, res, next) => {
 });
 
 // ---------------------------------------
+// REQUEST LOGGING (DEBUG)
+// ---------------------------------------
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/regime')) {
+    console.log(`🔍 [REQUEST] ${req.method} ${req.originalUrl} (matched /api/regime)`);
+  }
+  next();
+});
+
+// ---------------------------------------
 // DB INIT (ATTACH DB TO REQ)
 // ---------------------------------------
 const db = await createDB();
