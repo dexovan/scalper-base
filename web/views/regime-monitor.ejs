@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Regime Monitor - DTrade Scalper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#1e293b',
+                            950: '#020617'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes pulse-danger {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse-danger {
+            animation: pulse-danger 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .regime-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.375rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .regime-PANIC {
+            background: rgba(239, 68, 68, 0.2);
+            color: rgb(239, 68, 68);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+        .regime-RISK_OFF {
+            background: rgba(234, 179, 8, 0.2);
+            color: rgb(234, 179, 8);
+            border: 1px solid rgba(234, 179, 8, 0.4);
+        }
+        .regime-NORMAL {
+            background: rgba(34, 197, 94, 0.2);
+            color: rgb(34, 197, 94);
+            border: 1px solid rgba(34, 197, 94, 0.4);
+        }
+        .regime-PUMP {
+            background: rgba(249, 115, 22, 0.2);
+            color: rgb(249, 115, 22);
+            border: 1px solid rgba(249, 115, 22, 0.4);
+        }
+        .regime-MANIPULATED {
+            background: rgba(168, 85, 247, 0.2);
+            color: rgb(168, 85, 247);
+            border: 1px solid rgba(168, 85, 247, 0.4);
+        }
+        .regime-NEWS_DRIVEN {
+            background: rgba(59, 130, 246, 0.2);
+            color: rgb(59, 130, 246);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+        }
+        .regime-COOLDOWN {
+            background: rgba(148, 163, 184, 0.2);
+            color: rgb(148, 163, 184);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+        }
+        .regime-STALE {
+            background: rgba(100, 116, 139, 0.2);
+            color: rgb(100, 116, 139);
+            border: 1px solid rgba(100, 116, 139, 0.4);
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-EXTREME { background: rgb(239, 68, 68); }
+        .status-HIGH { background: rgb(234, 179, 8); }
+        .status-MEDIUM { background: rgb(59, 130, 246); }
+        .status-LOW { background: rgb(34, 197, 94); }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+        <div class="px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <h1 class="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                        🛡️ Regime Monitor
+                    </h1>
+                    <div id="lastUpdate" class="text-xs text-slate-400">
+                        Loading...
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2 text-sm">
+                        <span class="text-slate-400">Status:</span>
+                        <span id="connectionStatus" class="text-green-400 font-medium">● Connected</span>
+                    </div>
+                    <a href="/monitor-micro" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-medium transition">
+                        Microstructure →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="px-6 py-6 space-y-6">
+
+        <!-- Global Regime Status -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Main Global Regime Card -->
+            <div class="lg:col-span-2 rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+                <h2 class="text-lg font-semibold mb-4 text-slate-200">Global Market Regime</h2>
+
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center gap-4">
+                        <div id="globalRegime" class="regime-badge regime-NORMAL">
+                            <span class="status-dot status-LOW"></span>
+                            NORMAL
+                        </div>
+                        <div id="globalRiskLevel" class="text-sm text-slate-400">
+                            Risk Level: <span class="font-medium text-green-400">LOW</span>
+                        </div>
+                    </div>
+                    <div id="globalTimestamp" class="text-xs text-slate-500">
+                        Updated: --:--:--
+                    </div>
+                </div>
+
+                <!-- Trading Permissions -->
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-slate-800/50 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-slate-400">New Positions</span>
+                            <span id="allowNewPositions" class="text-2xl">✅</span>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-slate-400">Force Close</span>
+                            <span id="forceClosePositions" class="text-2xl">❌</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BTC/ETH Metrics -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-slate-800/30 rounded-lg p-3">
+                        <div class="text-xs text-slate-400 mb-1">BTC Volatility</div>
+                        <div id="btcVolatility" class="text-lg font-mono font-bold text-yellow-400">0.000</div>
+                    </div>
+                    <div class="bg-slate-800/30 rounded-lg p-3">
+                        <div class="text-xs text-slate-400 mb-1">ETH Volatility</div>
+                        <div id="ethVolatility" class="text-lg font-mono font-bold text-yellow-400">0.000</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Symbol Statistics Card -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+                <h2 class="text-lg font-semibold mb-4 text-slate-200">Symbol Statistics</h2>
+
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-slate-400">Total Symbols</span>
+                        <span id="totalSymbols" class="font-mono font-bold text-slate-200">0</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-slate-400">Tradeable</span>
+                        <span id="tradeableSymbols" class="font-mono font-bold text-green-400">0</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-slate-400">Blocked</span>
+                        <span id="blockedSymbols" class="font-mono font-bold text-red-400">0</span>
+                    </div>
+
+                    <hr class="border-slate-800 my-3">
+
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-500">PUMP</span>
+                            <span id="symbolsPUMP" class="font-mono text-orange-400">0</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-500">MANIPULATED</span>
+                            <span id="symbolsMANIPULATED" class="font-mono text-purple-400">0</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-500">COOLDOWN</span>
+                            <span id="symbolsCOOLDOWN" class="font-mono text-slate-400">0</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-500">STALE</span>
+                            <span id="symbolsSTALE" class="font-mono text-slate-500">0</span>
+                        </div>
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-slate-500">NORMAL</span>
+                            <span id="symbolsNORMAL" class="font-mono text-green-400">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Tier Statistics -->
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-medium text-slate-400 uppercase">Prime Tier</span>
+                    <span class="text-xs text-purple-400 font-mono">1s updates</span>
+                </div>
+                <div id="primeTierCount" class="text-2xl font-bold text-purple-400">0</div>
+                <div class="text-xs text-slate-500 mt-1">BTC, ETH, SOL, BNB...</div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-medium text-slate-400 uppercase">Normal Tier</span>
+                    <span class="text-xs text-blue-400 font-mono">2s updates</span>
+                </div>
+                <div id="normalTierCount" class="text-2xl font-bold text-blue-400">0</div>
+                <div class="text-xs text-slate-500 mt-1">Standard volatility</div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-medium text-slate-400 uppercase">Wild Tier</span>
+                    <span class="text-xs text-orange-400 font-mono">3-5s updates</span>
+                </div>
+                <div id="wildTierCount" class="text-2xl font-bold text-orange-400">0</div>
+                <div class="text-xs text-slate-500 mt-1">High volatility</div>
+            </div>
+        </section>
+
+        <!-- Symbol Regimes Table -->
+        <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-slate-200">Symbol Regimes</h2>
+                <div class="flex items-center gap-2">
+                    <input
+                        type="text"
+                        id="searchSymbol"
+                        placeholder="Search symbol..."
+                        class="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                    >
+                    <select
+                        id="filterRegime"
+                        class="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                    >
+                        <option value="all">All Regimes</option>
+                        <option value="PUMP">PUMP</option>
+                        <option value="MANIPULATED">MANIPULATED</option>
+                        <option value="NEWS_DRIVEN">NEWS_DRIVEN</option>
+                        <option value="COOLDOWN">COOLDOWN</option>
+                        <option value="STALE">STALE</option>
+                        <option value="NORMAL">NORMAL</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="border-b border-slate-800">
+                        <tr class="text-left">
+                            <th class="pb-3 px-2 text-xs font-medium text-slate-400 uppercase">Symbol</th>
+                            <th class="pb-3 px-2 text-xs font-medium text-slate-400 uppercase">Regime</th>
+                            <th class="pb-3 px-2 text-xs font-medium text-slate-400 uppercase text-center">Long</th>
+                            <th class="pb-3 px-2 text-xs font-medium text-slate-400 uppercase text-center">Short</th>
+                            <th class="pb-3 px-2 text-xs font-medium text-slate-400 uppercase">Pump Score</th>
+                            <th class="pb-3 px-2 text-xs font-medium text-slate-400 uppercase">Spoof Score</th>
+                            <th class="pb-3 px-2 text-xs font-medium text-slate-400 uppercase">Volatility</th>
+                            <th class="pb-3 px-2 text-xs font-medium text-slate-400 uppercase">Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody id="symbolRegimesTable" class="divide-y divide-slate-800">
+                        <tr>
+                            <td colspan="8" class="py-8 text-center text-slate-500">
+                                Loading symbol regimes...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+                <div id="tableInfo">Showing 0 symbols</div>
+                <div id="updateCounter" class="font-mono">Updates: 0</div>
+            </div>
+        </section>
+
+        <!-- Trade Permission Checker -->
+        <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+            <h2 class="text-lg font-semibold mb-4 text-slate-200">Trade Permission Checker</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-2">Symbol</label>
+                    <input
+                        type="text"
+                        id="checkSymbol"
+                        placeholder="BTCUSDT"
+                        class="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-purple-500"
+                    >
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-2">Side</label>
+                    <select
+                        id="checkSide"
+                        class="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-purple-500"
+                    >
+                        <option value="LONG">LONG</option>
+                        <option value="SHORT">SHORT</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button
+                        id="checkTradeBtn"
+                        class="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition"
+                    >
+                        Check Trade
+                    </button>
+                </div>
+            </div>
+
+            <div id="tradeCheckResult" class="mt-4 hidden">
+                <!-- Result will be populated here -->
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // ================================================================
+        // STATE
+        // ================================================================
+        let updateCounter = 0;
+        let symbolRegimesData = [];
+
+        // ================================================================
+        // UTILITY FUNCTIONS
+        // ================================================================
+
+        function getRegimeBadgeHTML(regime) {
+            const badgeClass = `regime-badge regime-${regime}`;
+            const icon = {
+                'PANIC': '🚨',
+                'RISK_OFF': '⚠️',
+                'NORMAL': '✅',
+                'PUMP': '🚀',
+                'MANIPULATED': '🎭',
+                'NEWS_DRIVEN': '📰',
+                'COOLDOWN': '❄️',
+                'STALE': '💤'
+            };
+            return `<span class="${badgeClass}">${icon[regime] || '•'} ${regime}</span>`;
+        }
+
+        function formatTimestamp(isoString) {
+            if (!isoString) return '--:--:--';
+            const date = new Date(isoString);
+            return date.toLocaleTimeString('en-US', { hour12: false });
+        }
+
+        function formatRelativeTime(isoString) {
+            if (!isoString) return 'Never';
+            const seconds = Math.floor((Date.now() - new Date(isoString)) / 1000);
+            if (seconds < 60) return `${seconds}s ago`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+            return `${Math.floor(seconds / 3600)}h ago`;
+        }
+
+        // ================================================================
+        // DATA FETCHING
+        // ================================================================
+
+        async function fetchRegimeOverview() {
+            try {
+                const response = await fetch('http://localhost:8090/api/regime/overview');
+                const data = await response.json();
+
+                if (data.ok) {
+                    updateGlobalRegime(data.overview.global);
+                    updateSymbolStats(data.overview.symbols);
+                    updateTierStats(data.overview.tiers);
+                    updateCounter++;
+                    document.getElementById('updateCounter').textContent = `Updates: ${updateCounter}`;
+                    document.getElementById('lastUpdate').textContent = `Last update: ${formatTimestamp(new Date().toISOString())}`;
+                }
+            } catch (error) {
+                console.error('Failed to fetch regime overview:', error);
+                document.getElementById('connectionStatus').innerHTML = '● <span class="text-red-400">Disconnected</span>';
+            }
+        }
+
+        async function fetchSymbolRegimes() {
+            try {
+                const response = await fetch('http://localhost:8090/api/features/overview');
+                const data = await response.json();
+
+                if (data.ok) {
+                    // Get regime data for each symbol
+                    const regimesPromises = data.symbols.slice(0, 100).map(async (symbol) => {
+                        try {
+                            const regimeResp = await fetch(`http://localhost:8090/api/symbol/${symbol.symbol}/regime`);
+                            const regimeData = await regimeResp.json();
+
+                            return {
+                                symbol: symbol.symbol,
+                                regime: regimeData.ok ? regimeData.regime : null,
+                                features: {
+                                    pumpScore: symbol.pumpLikelihood || 0,
+                                    spoofScore: symbol.spoofingScore || 0,
+                                    volatility: symbol.volatilityScore || 0
+                                }
+                            };
+                        } catch (err) {
+                            return {
+                                symbol: symbol.symbol,
+                                regime: null,
+                                features: {
+                                    pumpScore: symbol.pumpLikelihood || 0,
+                                    spoofScore: symbol.spoofingScore || 0,
+                                    volatility: symbol.volatilityScore || 0
+                                }
+                            };
+                        }
+                    });
+
+                    symbolRegimesData = await Promise.all(regimesPromises);
+                    renderSymbolTable();
+                }
+            } catch (error) {
+                console.error('Failed to fetch symbol regimes:', error);
+            }
+        }
+
+        // ================================================================
+        // UI UPDATE FUNCTIONS
+        // ================================================================
+
+        function updateGlobalRegime(global) {
+            const regimeEl = document.getElementById('globalRegime');
+            const riskLevelEl = document.getElementById('globalRiskLevel');
+            const timestampEl = document.getElementById('globalTimestamp');
+            const allowNewEl = document.getElementById('allowNewPositions');
+            const forceCloseEl = document.getElementById('forceClosePositions');
+            const btcVolEl = document.getElementById('btcVolatility');
+            const ethVolEl = document.getElementById('ethVolatility');
+
+            // Update regime badge
+            const icon = {
+                'PANIC': '🚨',
+                'RISK_OFF': '⚠️',
+                'NORMAL': '✅'
+            };
+            regimeEl.className = `regime-badge regime-${global.regime} ${global.regime === 'PANIC' ? 'pulse-danger' : ''}`;
+            regimeEl.innerHTML = `<span class="status-dot status-${global.riskLevel}"></span> ${icon[global.regime]} ${global.regime}`;
+
+            // Update risk level
+            const riskColors = {
+                'EXTREME': 'text-red-400',
+                'HIGH': 'text-yellow-400',
+                'MEDIUM': 'text-blue-400',
+                'LOW': 'text-green-400'
+            };
+            riskLevelEl.innerHTML = `Risk Level: <span class="font-medium ${riskColors[global.riskLevel]}">${global.riskLevel}</span>`;
+
+            // Update timestamp
+            timestampEl.textContent = `Updated: ${formatTimestamp(global.updatedAt)}`;
+
+            // Update permissions
+            allowNewEl.textContent = global.allowNewPositions ? '✅' : '❌';
+            forceCloseEl.textContent = global.forceClosePositions ? '⚠️' : '❌';
+
+            // Update BTC/ETH volatility
+            btcVolEl.textContent = global.btcVolatility.toFixed(3);
+            ethVolEl.textContent = global.ethVolatility.toFixed(3);
+
+            // Color volatility based on value
+            btcVolEl.className = global.btcVolatility >= 0.75 ? 'text-lg font-mono font-bold text-red-400' : 'text-lg font-mono font-bold text-yellow-400';
+            ethVolEl.className = global.ethVolatility >= 0.70 ? 'text-lg font-mono font-bold text-red-400' : 'text-lg font-mono font-bold text-yellow-400';
+        }
+
+        function updateSymbolStats(symbols) {
+            document.getElementById('totalSymbols').textContent = symbols.total;
+            document.getElementById('tradeableSymbols').textContent = symbols.tradeable;
+            document.getElementById('blockedSymbols').textContent = symbols.blocked;
+
+            document.getElementById('symbolsPUMP').textContent = symbols.byRegime.PUMP || 0;
+            document.getElementById('symbolsMANIPULATED').textContent = symbols.byRegime.MANIPULATED || 0;
+            document.getElementById('symbolsCOOLDOWN').textContent = symbols.byRegime.COOLDOWN || 0;
+            document.getElementById('symbolsSTALE').textContent = symbols.byRegime.STALE || 0;
+            document.getElementById('symbolsNORMAL').textContent = symbols.byRegime.NORMAL || 0;
+        }
+
+        function updateTierStats(tiers) {
+            document.getElementById('primeTierCount').textContent = tiers.prime;
+            document.getElementById('normalTierCount').textContent = tiers.normal;
+            document.getElementById('wildTierCount').textContent = tiers.wild;
+        }
+
+        function renderSymbolTable() {
+            const tbody = document.getElementById('symbolRegimesTable');
+            const searchTerm = document.getElementById('searchSymbol').value.toUpperCase();
+            const filterRegime = document.getElementById('filterRegime').value;
+
+            let filtered = symbolRegimesData.filter(item => {
+                const matchesSearch = item.symbol.includes(searchTerm);
+                const matchesRegime = filterRegime === 'all' || item.regime?.current === filterRegime;
+                return matchesSearch && matchesRegime;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-slate-500">No symbols found</td></tr>';
+                document.getElementById('tableInfo').textContent = 'Showing 0 symbols';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(item => {
+                const regime = item.regime;
+                const features = item.features;
+
+                if (!regime) {
+                    return `
+                        <tr class="hover:bg-slate-800/50 transition">
+                            <td class="py-2 px-2 font-mono font-medium text-slate-200">${item.symbol}</td>
+                            <td colspan="7" class="py-2 px-2 text-slate-500 text-xs">No regime data</td>
+                        </tr>
+                    `;
+                }
+
+                return `
+                    <tr class="hover:bg-slate-800/50 transition">
+                        <td class="py-2 px-2 font-mono font-medium text-slate-200">${item.symbol}</td>
+                        <td class="py-2 px-2">${getRegimeBadgeHTML(regime.current)}</td>
+                        <td class="py-2 px-2 text-center text-lg">${regime.allowLong ? '✅' : '❌'}</td>
+                        <td class="py-2 px-2 text-center text-lg">${regime.allowShort ? '✅' : '❌'}</td>
+                        <td class="py-2 px-2 font-mono text-xs ${features.pumpScore >= 0.70 ? 'text-orange-400 font-bold' : 'text-slate-400'}">${features.pumpScore.toFixed(3)}</td>
+                        <td class="py-2 px-2 font-mono text-xs ${features.spoofScore >= 0.72 ? 'text-purple-400 font-bold' : 'text-slate-400'}">${features.spoofScore.toFixed(3)}</td>
+                        <td class="py-2 px-2 font-mono text-xs ${features.volatility >= 0.75 ? 'text-red-400 font-bold' : 'text-slate-400'}">${features.volatility.toFixed(3)}</td>
+                        <td class="py-2 px-2 text-xs text-slate-500">${formatRelativeTime(regime.updatedAt)}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('tableInfo').textContent = `Showing ${filtered.length} symbols`;
+        }
+
+        // ================================================================
+        // TRADE PERMISSION CHECKER
+        // ================================================================
+
+        async function checkTrade() {
+            const symbol = document.getElementById('checkSymbol').value.toUpperCase();
+            const side = document.getElementById('checkSide').value;
+            const resultDiv = document.getElementById('tradeCheckResult');
+
+            if (!symbol) {
+                resultDiv.innerHTML = '<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">Please enter a symbol</div>';
+                resultDiv.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8090/api/regime/check-trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol, side })
+                });
+
+                const data = await response.json();
+
+                if (data.ok) {
+                    const allowed = data.allowed;
+                    const bgColor = allowed ? 'bg-green-900/20 border-green-800' : 'bg-red-900/20 border-red-800';
+                    const textColor = allowed ? 'text-green-400' : 'text-red-400';
+                    const icon = allowed ? '✅' : '❌';
+
+                    resultDiv.innerHTML = `
+                        <div class="p-4 ${bgColor} border rounded-lg ${textColor}">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-2xl">${icon}</span>
+                                <span class="font-bold text-lg">${allowed ? 'Trade Allowed' : 'Trade Blocked'}</span>
+                            </div>
+                            <div class="text-sm space-y-1 text-slate-300">
+                                <div>Symbol: <span class="font-mono font-bold">${symbol}</span></div>
+                                <div>Side: <span class="font-mono font-bold">${side}</span></div>
+                                ${!allowed ? `<div>Reason: <span class="font-medium">${data.reason}</span></div>` : ''}
+                                ${data.globalRegime ? `<div>Global Regime: <span class="font-mono">${data.globalRegime}</span></div>` : ''}
+                                ${data.symbolRegime ? `<div>Symbol Regime: <span class="font-mono">${data.symbolRegime}</span></div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">${data.error}</div>`;
+                }
+
+                resultDiv.classList.remove('hidden');
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">Error: ${error.message}</div>`;
+                resultDiv.classList.remove('hidden');
+            }
+        }
+
+        // ================================================================
+        // EVENT LISTENERS
+        // ================================================================
+
+        document.getElementById('searchSymbol').addEventListener('input', renderSymbolTable);
+        document.getElementById('filterRegime').addEventListener('change', renderSymbolTable);
+        document.getElementById('checkTradeBtn').addEventListener('click', checkTrade);
+
+        // Enter key to check trade
+        document.getElementById('checkSymbol').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') checkTrade();
+        });
+
+        // ================================================================
+        // INITIALIZATION
+        // ================================================================
+
+        // Initial fetch
+        fetchRegimeOverview();
+        fetchSymbolRegimes();
+
+        // Polling intervals
+        setInterval(fetchRegimeOverview, 2000); // Global every 2s
+        setInterval(fetchSymbolRegimes, 5000);   // Symbols every 5s
+
+        console.log('🛡️ Regime Monitor initialized');
+    </script>
+
+</body>
+</html>

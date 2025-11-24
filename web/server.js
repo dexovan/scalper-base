@@ -274,6 +274,22 @@ app.use(
   })
 );
 
+// ===========================================
+// PROXY → REGIME ENGINE API (port 8090)
+// ===========================================
+app.use(
+  "/api/regime",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/regime",
+    changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
+    pathRewrite: {
+      "^/api/regime": ""
+    }
+  })
+);
+
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/");
@@ -325,6 +341,14 @@ app.get("/monitor", requireAuth, (req, res) => {
 app.get("/monitor-micro", requireAuth, (req, res) => {
   res.render("monitor-micro", {
     title: "Microstructure Monitor",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
+// 7️⃣ REGIME MONITOR PAGE (FAZA 5)
+app.get("/regime-monitor", requireAuth, (req, res) => {
+  res.render("regime-monitor", {
+    title: "Regime Monitor",
     currentTime: new Date().toLocaleString(),
   });
 });

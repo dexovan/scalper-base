@@ -923,6 +923,141 @@ export function startMonitorApiServer(port = 8090) {
     }
   });
 
+  // ================================================================
+  // REGIME ENGINE API ENDPOINTS
+  // ================================================================
+
+  // GET /api/regime/global - Global market regime state
+  app.get("/api/regime/global", async (req, res) => {
+    try {
+      if (!global.regimeEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Regime Engine not initialized"
+        });
+      }
+
+      const globalRegime = global.regimeEngine.getGlobalRegime();
+
+      return res.json({
+        ok: true,
+        regime: globalRegime,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/regime/overview - All symbols regime summary
+  app.get("/api/regime/overview", async (req, res) => {
+    try {
+      if (!global.regimeEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Regime Engine not initialized"
+        });
+      }
+
+      const overview = global.regimeEngine.getRegimeOverview();
+
+      return res.json({
+        ok: true,
+        overview,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/symbol/:symbol/regime - Per-symbol regime details
+  app.get("/api/symbol/:symbol/regime", async (req, res) => {
+    try {
+      if (!global.regimeEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Regime Engine not initialized"
+        });
+      }
+
+      const symbol = req.params.symbol.toUpperCase();
+      const symbolRegime = global.regimeEngine.getSymbolRegime(symbol);
+
+      if (!symbolRegime) {
+        return res.status(404).json({
+          ok: false,
+          error: `No regime data for ${symbol}`,
+          symbol,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      return res.json({
+        ok: true,
+        symbol,
+        regime: symbolRegime,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        symbol: req.params.symbol,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // POST /api/regime/check-trade - Check if trade is allowed
+  app.post("/api/regime/check-trade", async (req, res) => {
+    try {
+      if (!global.regimeEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Regime Engine not initialized"
+        });
+      }
+
+      const { symbol, side } = req.body;
+
+      if (!symbol || !side) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing required fields: symbol, side"
+        });
+      }
+
+      const tradeCheck = global.regimeEngine.isTradeAllowed(symbol.toUpperCase(), side.toUpperCase());
+
+      return res.json({
+        ok: true,
+        symbol: symbol.toUpperCase(),
+        side: side.toUpperCase(),
+        ...tradeCheck,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ================================================================
+  // END REGIME ENGINE API ENDPOINTS
+  // ================================================================
+
   // GET /api/microstructure/symbols - List of active symbols with microstructure
   app.get("/api/microstructure/symbols", async (req, res) => {
     try {

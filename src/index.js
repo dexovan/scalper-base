@@ -36,6 +36,12 @@ import { BybitPublicWS } from "./connectors/bybit/publicWS.js";
 // Monitor API server (Opcija A)
 import { startMonitorApiServer, attachRealtimeListeners } from "./http/monitorApi.js";
 
+// Phase 5: Regime Engine
+import RegimeEngine from "./regime/regimeEngine.js";
+import FeatureEngine from "./features/featureEngine.js";
+import * as OrderbookManager from "./microstructure/OrderbookManager.js";
+import { logEngineStartup } from "./regime/regimeLogger.js";
+
 async function startEngine() {
   console.log("====================================================");
   console.log("🚀 AI Scalper Engine – Phase 2 Booting...");
@@ -169,6 +175,37 @@ async function startEngine() {
 
   startMonitorApiServer(8090);
   console.log("🚀 DEBUG: Monitor API successfully started");
+
+  // =====================================================
+  // PHASE 5: REGIME ENGINE INITIALIZATION
+  // =====================================================
+  console.log("=============================");
+  console.log("🛡️  REGIME: Starting Regime Engine...");
+  console.log("=============================");
+
+  const featureEngine = FeatureEngine.getInstance();
+  const regimeEngine = new RegimeEngine(featureEngine, OrderbookManager);
+
+  // Store in global for API access
+  global.regimeEngine = regimeEngine;
+
+  await regimeEngine.start();
+
+  // Log startup stats
+  const stats = {
+    primeSymbols: regimeEngine.primeTier.size,
+    normalSymbols: regimeEngine.normalTier.size,
+    wildSymbols: regimeEngine.wildTier.size,
+    totalSymbols: regimeEngine.primeTier.size + regimeEngine.normalTier.size + regimeEngine.wildTier.size
+  };
+
+  logEngineStartup(stats);
+
+  console.log("🛡️  [REGIME] Engine started successfully:");
+  console.log(`   Prime tier: ${stats.primeSymbols} symbols (1s updates)`);
+  console.log(`   Normal tier: ${stats.normalSymbols} symbols (2s updates)`);
+  console.log(`   Wild tier: ${stats.wildSymbols} symbols (3-5s updates)`);
+  console.log("=============================");
 
   metrics.heartbeat();
 }

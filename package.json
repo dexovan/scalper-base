@@ -19,6 +19,7 @@
     "http-proxy-middleware": "^3.0.5",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
+    "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.18.3"
   }
 }
