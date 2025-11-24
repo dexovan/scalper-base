@@ -265,7 +265,7 @@ export function getStateStatistics() {
   const stats = {
     totalSymbols: stateMachineState.perSymbol.size,
     byState: {},
-    bySide: { LONG: 0, SHORT: 0, null: 0 },
+    bySide: { LONG: 0, SHORT: 0 },
     activeScenarios: 0,
     blockedSymbols: 0
   };
@@ -274,8 +274,10 @@ export function getStateStatistics() {
     // Count by state
     stats.byState[context.currentState] = (stats.byState[context.currentState] || 0) + 1;
 
-    // Count by side
-    stats.bySide[context.activeSide] = (stats.bySide[context.activeSide] || 0) + 1;
+    // Count by side (only if activeSide is not null)
+    if (context.activeSide !== null) {
+      stats.bySide[context.activeSide] = (stats.bySide[context.activeSide] || 0) + 1;
+    }
 
     // Count active scenarios (not FLAT, not BLOCKED, not COOLDOWN)
     if (![TradeState.FLAT, TradeState.BLOCKED_REGIME, TradeState.COOLDOWN].includes(context.currentState)) {
