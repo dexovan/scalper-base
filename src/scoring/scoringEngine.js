@@ -342,12 +342,9 @@ class ScoringEngine {
       // ================================================================
       try {
         const stateMachine = global.stateMachine;
-        console.log('[DEBUG SCORING] stateMachine exists:', !!stateMachine);
         if (stateMachine) {
-          console.log('[DEBUG SCORING] Importing stateEvents...');
           const { createStateEvent, createScoringUpdatePayload } = await import('../state/stateEvents.js');
 
-          console.log('[DEBUG SCORING] Creating event for', symbol);
           const event = createStateEvent(
             'SCORING_UPDATE',
             symbol,
@@ -359,13 +356,10 @@ class ScoringEngine {
             )
           );
 
-          console.log('[DEBUG SCORING] Calling handleEvent...');
           stateMachine.handleEvent(event);
-          console.log('[DEBUG SCORING] handleEvent completed');
         }
       } catch (smError) {
         // Non-fatal: State Machine integration is optional
-        console.log('[DEBUG SCORING] State Machine error:', smError.message);
         this.logger.debug(`State Machine integration skipped: ${smError.message}`);
       }
 
