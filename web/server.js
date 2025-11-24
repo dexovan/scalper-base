@@ -163,11 +163,21 @@ const regimeProxy = createProxyMiddleware({
   proxyTimeout: 30000,
   onProxyReq: (proxyReq, req, res) => {
     console.log(`[PROXY-REGIME] ${req.method} ${req.originalUrl} → http://localhost:8090${req.path}`);
+
+    // Fix POST body forwarding
+    if (req.body && req.method === 'POST') {
+      const bodyData = JSON.stringify(req.body);
+      proxyReq.setHeader('Content-Type', 'application/json');
+      proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+      proxyReq.write(bodyData);
+    }
   }
 });
 
 app.get("/api/regime/overview", regimeProxy);
 app.get("/api/regime/global", regimeProxy);
+app.post("/api/regime/check-trade", regimeProxy);
+app.get("/api/regime/:symbol", regimeProxy);
 
 // ---------------------------------------
 // DB INIT (ATTACH DB TO REQ)
