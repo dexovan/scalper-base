@@ -169,12 +169,18 @@ const regimeProxy = createProxyMiddleware({
       const bodyData = JSON.stringify(req.body);
       proxyReq.setHeader('Content-Type', 'application/json');
       proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+      console.log('[PROXY-REGIME] Forwarding body:', bodyData);
       proxyReq.write(bodyData);
     }
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    console.log(`[PROXY-REGIME] Response: ${proxyRes.statusCode}`);
+  },
+  onError: (err, req, res) => {
+    console.error('[PROXY-REGIME] Error:', err.message);
+    res.status(503).json({ ok: false, error: 'Regime Engine unavailable' });
   }
-});
-
-app.get("/api/regime/overview", regimeProxy);
+});app.get("/api/regime/overview", regimeProxy);
 app.get("/api/regime/global", regimeProxy);
 app.post("/api/regime/check-trade", regimeProxy);
 app.get("/api/regime/:symbol", regimeProxy);

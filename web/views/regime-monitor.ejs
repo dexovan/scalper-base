@@ -594,6 +594,7 @@
 
                 resultDiv.classList.remove('hidden');
             } catch (error) {
+                console.error('❌ checkTrade error:', error);
                 resultDiv.innerHTML = `<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">Error: ${error.message}</div>`;
                 resultDiv.classList.remove('hidden');
             }
