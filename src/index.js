@@ -34,11 +34,10 @@ import { BybitPublicWS } from "./connectors/bybit/publicWS.js";
 // Phase 2 VARIJANTA B - Event handling for parsed ticker/trade data
 
 // Monitor API server (Opcija A)
-import { startMonitorApiServer, attachRealtimeListeners } from "./http/monitorApi.js";
+import { startMonitorApiServer, attachRealtimeListeners, featureEngine } from "./http/monitorApi.js";
 
 // Phase 5: Regime Engine
 import RegimeEngine from "./regime/regimeEngine.js";
-import FeatureEngine from "./features/featureEngine.js";
 import * as OrderbookManager from "./microstructure/OrderbookManager.js";
 import { logEngineStartup } from "./regime/regimeLogger.js";
 
@@ -183,7 +182,6 @@ async function startEngine() {
   console.log("🛡️  REGIME: Starting Regime Engine...");
   console.log("=============================");
 
-  const featureEngine = FeatureEngine.getInstance();
   const regimeEngine = new RegimeEngine(featureEngine, OrderbookManager);
 
   // Store in global for API access

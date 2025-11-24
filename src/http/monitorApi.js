@@ -1373,5 +1373,6 @@ export {
   start24hDataRefresh,
   stop24hDataRefresh,
   get24hDataStatus,
-  fetch24hData
+  fetch24hData,
+  featureEngine // Export featureEngine for RegimeEngine
 };
