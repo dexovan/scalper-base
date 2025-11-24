@@ -223,7 +223,8 @@
                 const minScore = document.getElementById('filterMinScore').value;
                 const limit = document.getElementById('filterLimit').value;
 
-                const response = await fetch(`/api/scanner/hotlist?side=${side}&minScore=${minScore}&limit=${limit}`);
+                // Always ignore global regime for dashboard viewing
+                const response = await fetch(`/api/scanner/hotlist?side=${side}&minScore=${minScore}&limit=${limit}&ignoreGlobalRegime=true`);
                 const data = await response.json();
 
                 if (data.ok) {
