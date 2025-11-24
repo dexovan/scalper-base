@@ -279,13 +279,18 @@ router.get("/symbol/:symbol/trades", async (req, res) => {
 
       proxyRes.on('end', () => {
         try {
+          console.log(`[PROXY] Engine response status: ${proxyRes.statusCode}, data length: ${data.length}`);
           const jsonData = JSON.parse(data);
-          res.json({
+          console.log(`[PROXY] Parsed trades: ${jsonData.trades?.length || 0} items`);
+          const response = {
             success: jsonData.ok || false,
             data: jsonData.trades || []
-          });
+          };
+          console.log(`[PROXY] Sending to browser:`, response);
+          res.json(response);
         } catch (error) {
           console.error(`[API] Failed to parse engine trades response:`, error.message);
+          console.error(`[API] Raw data:`, data.substring(0, 200));
           res.status(500).json({
             success: false,
             message: "Failed to parse engine response",

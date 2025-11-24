@@ -892,22 +892,28 @@
 
                     console.log(`📊 Trade API response:`, {
                         status: response.status,
+                        ok: data.ok,
                         success: data.success,
+                        tradesLength: data.trades?.length,
                         dataLength: data.data?.length,
-                        sample: data.data?.[0]
+                        sample: data.trades?.[0] || data.data?.[0]
                     });
 
-                    if (data.success && data.data && data.data.length > 0) {
-                        renderTradeFlow(data.data);
-                        return;
+                    // Accept both Engine format (ok/trades) and Dashboard format (success/data)
+                    if ((data.ok || data.success) && (data.trades || data.data)) {
+                        const trades = data.trades || data.data;
+                        if (trades.length > 0) {
+                            renderTradeFlow(trades);
+                            return;
+                        } else {
+                            console.warn('⚠️ Trade API returned empty array, generating simulation...');
+                        }
                     } else {
                         console.warn('⚠️ Trade API returned no data, generating simulation...');
                     }
                 } catch (tradeError) {
                     console.warn('⚠️ Trade API failed:', tradeError.message);
-                }
-
-                // Fallback: simulate trade flow
+                }                // Fallback: simulate trade flow
                 const simulatedTrades = generateSimulatedTrades(symbol, 20);
                 renderTradeFlow(simulatedTrades);
 

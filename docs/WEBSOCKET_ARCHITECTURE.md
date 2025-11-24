@@ -1517,3 +1517,77 @@ const metrics = {
 **Date Finalized:** November 23, 2025
 **System Version:** Phase 5 Complete
 **Next Review:** Before Phase 6 (Trading Implementation)
+
+---
+
+## POBOLJSANJE 3 KRITICNIH STVARI
+
+Problem #2 — OrderbookManager memory growth
+
+Tvoj sistem drži:
+
+100 trades × 300 simbola = 30.000 trade objekata
+
+50 bid + 50 ask = 100 orderbook nivoa × 300 = 30.000 nivoa
+
+svaka polovina sekunde se recalculiše
+
+U realnosti:
+
+≈ 150–250 MB RAM usage
+
+To je dobro.
+Ali… postoji jedan ogroman rizik:
+
+❗ Tvoj sistem NIKADA NE BRIŠE SIMBOL kad je stale
+
+Ako simbol 1h nema update (delistovan):
+
+on ostaje u memoriji zauvek.
+
+Rešenje:
+
+If symbol.lastUpdate > 5 minutes → delete from state
+
+⚠️ Problem #3 — FeatureEngine throttling može izazvati "signal lag"
+
+Ovo je NAJVEĆI problem koji 99% ljudi ne vidi.
+
+Ti radiš:
+
+update features every 500ms
+
+Ali:
+
+orderbook se menja 10–20 puta u 500ms
+
+trade feed se menja 30–200 puta u 500ms
+
+microstructure se menja konstantno
+
+Šta će se desiti:
+
+❗ Tvoj scoring engine je 250–500ms iza realnog tržišta.
+
+To znači:
+
+entry signal stiže kasno
+
+trailing SL je spor
+
+DCA će biti prekasno ili prerano
+
+pump detection kasni 250ms → fail
+
+To obara WIN RATE za 10–20%.
+
+Rešenje (jednostavno):
+
+run FeatureEngine every 100ms (10Hz)
+NOT 500ms
+
+Sa throttling-om za 300 simbola — CPU i dalje podnosi.
+
+---
+
+## FAZA 5 preporuka za websockete
