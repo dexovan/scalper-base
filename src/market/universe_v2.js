@@ -182,9 +182,23 @@ export function getSymbolMeta(symbol) {
   return UniverseState.symbols?.[symbol] || null;
 }
 
-export function getUniverseSymbols() {
-  // Return all active symbols from universe
-  return Object.keys(UniverseState.symbols || {});
+export function getUniverseSymbols(filterActive = false) {
+  const allSymbols = Object.keys(UniverseState.symbols || {});
+
+  if (!filterActive) {
+    return allSymbols;
+  }
+
+  // Filter out expired futures and low-activity symbols
+  return allSymbols.filter(symbol => {
+    // Skip expired/weekly futures contracts (e.g., BTCUSDT-28NOV25, DOGEUSDT-05DEC25)
+    if (/-\d{2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d{2}$/.test(symbol)) {
+      return false;
+    }
+
+    // Keep all perpetual and spot symbols
+    return true;
+  });
 }
 
 export async function getSymbolsByCategory(category) {

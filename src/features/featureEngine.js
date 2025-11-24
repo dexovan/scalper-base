@@ -118,8 +118,8 @@ class FeatureEngine {
             await this.ensureDataDirectory();
 
             // Load universe symbols
-            const symbols = await getUniverseSymbols();
-            this.logger.info(`Loaded ${symbols.length} symbols from universe`);
+            const symbols = await getUniverseSymbols(true); // Filter active only
+            this.logger.info(`Loaded ${symbols.length} active symbols from universe (filtered)`);
 
             // Initialize feature states for all symbols
             for (const symbol of symbols) {
