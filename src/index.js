@@ -182,12 +182,17 @@ async function startEngine() {
   console.log("🛡️  REGIME: Starting Regime Engine...");
   console.log("=============================");
 
+  console.log("🛡️  [REGIME] Creating RegimeEngine instance...");
   const regimeEngine = new RegimeEngine(featureEngine, OrderbookManager);
+  console.log("🛡️  [REGIME] RegimeEngine instance created");
 
   // Store in global for API access
   global.regimeEngine = regimeEngine;
+  console.log("🛡️  [REGIME] Stored in global");
 
+  console.log("🛡️  [REGIME] Calling regimeEngine.start()...");
   await regimeEngine.start();
+  console.log("🛡️  [REGIME] regimeEngine.start() completed");
 
   // Log startup stats
   const stats = {
