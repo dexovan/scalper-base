@@ -151,6 +151,24 @@ app.use((req, res, next) => {
   next();
 });
 
+// ===========================================
+// PROXY → REGIME ENGINE API (port 8090)
+// CRITICAL: Must be FIRST, before ANY other /api routes!
+// ===========================================
+
+const regimeProxy = createProxyMiddleware({
+  target: "http://localhost:8090",
+  changeOrigin: true,
+  timeout: 30000,
+  proxyTimeout: 30000,
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`[PROXY-REGIME] ${req.method} ${req.originalUrl} → http://localhost:8090${req.path}`);
+  }
+});
+
+app.get("/api/regime/overview", regimeProxy);
+app.get("/api/regime/global", regimeProxy);
+
 // ---------------------------------------
 // DB INIT (ATTACH DB TO REQ)
 // ---------------------------------------
@@ -283,24 +301,6 @@ app.use(
     }
   })
 );
-
-// ===========================================
-// PROXY → REGIME ENGINE API (port 8090)
-// CRITICAL: Must be BEFORE app.use("/api", apiRoutes)
-// ===========================================
-
-const regimeProxy = createProxyMiddleware({
-  target: "http://localhost:8090",
-  changeOrigin: true,
-  timeout: 30000,
-  proxyTimeout: 30000,
-  onProxyReq: (proxyReq, req, res) => {
-    console.log(`[PROXY-REGIME] ${req.method} ${req.originalUrl} → http://localhost:8090${req.path}`);
-  }
-});
-
-app.get("/api/regime/overview", regimeProxy);
-app.get("/api/regime/global", regimeProxy);
 
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
