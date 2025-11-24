@@ -248,9 +248,9 @@ async function startEngine() {
   console.log("⚙️  [STATE] State Machine imported");
 
   // Get universe symbols (Prime + Normal for now)
-  const primeSymbols = getSymbolsByCategory("Prime");
-  const normalSymbols = getSymbolsByCategory("Normal");
-  const allSymbols = [...primeSymbols, ...normalSymbols];
+  const smPrimeSymbols = getSymbolsByCategory("Prime");
+  const smNormalSymbols = getSymbolsByCategory("Normal");
+  const allSymbols = [...smPrimeSymbols, ...smNormalSymbols];
 
   console.log(`⚙️  [STATE] Initializing for ${allSymbols.length} symbols...`);
   const smStats = stateMachine.initStateMachine(allSymbols);
