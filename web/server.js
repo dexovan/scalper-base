@@ -205,11 +205,24 @@ app.use(
 
 app.use(
   "/api/symbol",
+  (req, res, next) => {
+    console.log(`🔀 [PROXY] Incoming request: ${req.method} ${req.url}`);
+    next();
+  },
   createProxyMiddleware({
     target: "http://localhost:8090",
     changeOrigin: true,
     timeout: 30000,
-    proxyTimeout: 30000
+    proxyTimeout: 30000,
+    onProxyReq: (proxyReq, req, res) => {
+      console.log(`🔀 [PROXY] Forwarding to Engine: ${req.method} ${req.url}`);
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      console.log(`🔀 [PROXY] Engine responded: ${proxyRes.statusCode}`);
+    },
+    onError: (err, req, res) => {
+      console.error(`🔀 [PROXY] Error:`, err.message);
+    }
   })
 );
 
