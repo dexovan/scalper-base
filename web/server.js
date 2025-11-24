@@ -276,21 +276,21 @@ app.use(
 
 // ===========================================
 // PROXY → REGIME ENGINE API (port 8090)
+// CRITICAL: Must be BEFORE app.use("/api", apiRoutes)
 // ===========================================
 
-// Generic regime endpoints (e.g., /api/regime/overview, /api/regime/global)
-app.use(
-  ["/api/regime/overview", "/api/regime/global"],
-  createProxyMiddleware({
-    target: "http://localhost:8090",
-    changeOrigin: true,
-    timeout: 30000,
-    proxyTimeout: 30000,
-    onProxyReq: (proxyReq, req, res) => {
-      console.log(`[PROXY-REGIME] ${req.method} ${req.path} → http://localhost:8090${req.path}`);
-    }
-  })
-);
+const regimeProxy = createProxyMiddleware({
+  target: "http://localhost:8090",
+  changeOrigin: true,
+  timeout: 30000,
+  proxyTimeout: 30000,
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`[PROXY-REGIME] ${req.method} ${req.originalUrl} → http://localhost:8090${req.path}`);
+  }
+});
+
+app.get("/api/regime/overview", regimeProxy);
+app.get("/api/regime/global", regimeProxy);
 
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
