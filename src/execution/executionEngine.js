@@ -441,7 +441,16 @@ function getMarketSnapshot(symbol) {
 
 function getRiskSnapshot() {
   if (global.riskEngine?.getRiskSnapshot) {
-    return global.riskEngine.getRiskSnapshot();
+    const snapshot = global.riskEngine.getRiskSnapshot();
+    if (snapshot && snapshot.riskFlags) {
+      return {
+        allowNewPositions: snapshot.riskFlags.riskAllowNewPositions,
+        allowNewLong: snapshot.riskFlags.riskAllowNewLong,
+        allowNewShort: snapshot.riskFlags.riskAllowNewShort,
+        safeMode: snapshot.riskFlags.riskForceCloseAll || false,
+        blockReason: snapshot.riskFlags.dailyLossLimitHit ? 'Daily loss limit hit' : null,
+      };
+    }
   }
 
   return {
