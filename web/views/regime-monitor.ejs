@@ -543,9 +543,11 @@
         // ================================================================
 
         async function checkTrade() {
+            console.log('🔍 checkTrade called');
             const symbol = document.getElementById('checkSymbol').value.toUpperCase();
             const side = document.getElementById('checkSide').value;
             const resultDiv = document.getElementById('tradeCheckResult');
+            console.log('📝 Symbol:', symbol, 'Side:', side);
 
             if (!symbol) {
                 resultDiv.innerHTML = '<div class="p-4 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">Please enter a symbol</div>';
@@ -554,13 +556,16 @@
             }
 
             try {
+                console.log('🚀 Fetching /api/regime/check-trade...');
                 const response = await fetch('/api/regime/check-trade', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ symbol, side })
                 });
+                console.log('✅ Response:', response.status, response.statusText);
 
                 const data = await response.json();
+                console.log('📦 Data:', data);
 
                 if (data.ok) {
                     const allowed = data.allowed;
@@ -600,7 +605,15 @@
 
         document.getElementById('searchSymbol').addEventListener('input', renderSymbolTable);
         document.getElementById('filterRegime').addEventListener('change', renderSymbolTable);
-        document.getElementById('checkTradeBtn').addEventListener('click', checkTrade);
+
+        const checkTradeBtn = document.getElementById('checkTradeBtn');
+        console.log('🔘 Check Trade Button:', checkTradeBtn);
+        if (checkTradeBtn) {
+            checkTradeBtn.addEventListener('click', checkTrade);
+            console.log('✅ Event listener attached to checkTradeBtn');
+        } else {
+            console.error('❌ checkTradeBtn not found!');
+        }
 
         // Enter key to check trade
         document.getElementById('checkSymbol').addEventListener('keypress', (e) => {
