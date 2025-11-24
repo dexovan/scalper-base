@@ -597,25 +597,23 @@ class FeatureEngine {
 
             // DEBUG: Log first 3 loops for BTCUSDT only
             if (symbol === 'BTCUSDT' && loopCount <= 3) {
-                console.log(`🔧 [FEATURE LOOP ${loopCount}] ${symbol}: elapsed=${elapsed}ms, interval=${dynamicInterval}ms, will_update=${elapsed >= dynamicInterval}`);
+                console.log(`🔧 [FEATURE LOOP ${loopCount}] ${symbol}: elapsed=${elapsed}ms, interval=${dynamicInterval}ms, will_update=${elapsed >= dynamicInterval || lastProcessAt === 0}`);
             }
 
-            // Only process if enough time has passed
-            if (now - lastProcessAt >= dynamicInterval) {
+            // Only process if enough time has passed OR it's the first run
+            if (lastProcessAt === 0 || now - lastProcessAt >= dynamicInterval) {
                 await this.updateFeaturesForSymbol(symbol);
                 lastProcessAt = now;
 
                 // DEBUG: Confirm update happened
                 if (symbol === 'BTCUSDT' && loopCount <= 3) {
-                    console.log(`✅ [FEATURE LOOP ${loopCount}] ${symbol}: UPDATE COMPLETED`);
+                    console.log(`✅ [FEATURE LOOP ${loopCount}] ${symbol}: UPDATE COMPLETED at ${new Date().toISOString()}`);
                 }
             }
 
             // Schedule next check with minimum interval to stay responsive
             setTimeout(updateLoop, Math.min(dynamicInterval, 50));
-        };
-
-        // Start the adaptive update loop
+        };        // Start the adaptive update loop
         updateLoop();
 
         // Track that this symbol is being updated (for stopping later)
