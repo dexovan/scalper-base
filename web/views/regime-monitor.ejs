@@ -572,6 +572,7 @@
                     const bgColor = allowed ? 'bg-green-900/20 border-green-800' : 'bg-red-900/20 border-red-800';
                     const textColor = allowed ? 'text-green-400' : 'text-red-400';
                     const icon = allowed ? '✅' : '❌';
+                    const hasWarning = data.warning;
 
                     resultDiv.innerHTML = `
                         <div class="p-4 ${bgColor} border rounded-lg ${textColor}">
@@ -579,10 +580,12 @@
                                 <span class="text-2xl">${icon}</span>
                                 <span class="font-bold text-lg">${allowed ? 'Trade Allowed' : 'Trade Blocked'}</span>
                             </div>
+                            ${hasWarning ? `<div class="mb-2 p-2 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-400 text-xs">⚠️ ${data.warning}</div>` : ''}
                             <div class="text-sm space-y-1 text-slate-300">
                                 <div>Symbol: <span class="font-mono font-bold">${symbol}</span></div>
                                 <div>Side: <span class="font-mono font-bold">${side}</span></div>
-                                ${!allowed ? `<div>Reason: <span class="font-medium">${data.reason}</span></div>` : ''}
+                                ${data.reason && !allowed ? `<div>Reason: <span class="font-medium">${data.reason}</span></div>` : ''}
+                                ${data.reason && allowed ? `<div class="text-xs text-slate-500">Reason: ${data.reason}</div>` : ''}
                                 ${data.globalRegime ? `<div>Global Regime: <span class="font-mono">${data.globalRegime}</span></div>` : ''}
                                 ${data.symbolRegime ? `<div>Symbol Regime: <span class="font-mono">${data.symbolRegime}</span></div>` : ''}
                             </div>
@@ -746,9 +749,10 @@
                         </div>
                         <div class="bg-slate-800/50 p-4 rounded-lg border-l-4 border-red-500">
                             <div class="font-bold text-red-400 mb-1">🚨 PANIC</div>
-                            <div class="text-slate-400">Extreme market conditions. Force close all positions.</div>
-                            <div class="text-red-400 mt-2 text-xs">✗ EXIT IMMEDIATELY - Market crash/flash crash</div>
+                            <div class="text-slate-400">Extreme market conditions. High volatility.</div>
+                            <div class="text-yellow-400 mt-2 text-xs">⚠️ ONLY NORMAL symbols allowed - scalp with extreme caution!</div>
                             <div class="text-slate-500 mt-1 text-xs">Triggers: BTC vol &gt;0.92 OR 40% symbols blocked OR BTC dump &gt;-3.5%</div>
+                            <div class="text-green-400 mt-1 text-xs">✓ Scalping opportunities: NORMAL regime symbols can still be traded</div>
                         </div>
                     </div>
                 </section>
@@ -759,11 +763,11 @@
                     <div class="bg-gradient-to-r from-green-900/30 to-blue-900/30 p-4 rounded-lg border border-green-700/50 text-sm space-y-2">
                         <div class="flex items-start gap-2">
                             <span class="text-green-400">✓</span>
-                            <span><strong class="text-white">Global Regime:</strong> NORMAL</span>
+                            <span><strong class="text-white">Global Regime:</strong> NORMAL (best) or PANIC (risky but possible)</span>
                         </div>
                         <div class="flex items-start gap-2">
                             <span class="text-green-400">✓</span>
-                            <span><strong class="text-white">Symbol Regime:</strong> NORMAL</span>
+                            <span><strong class="text-white">Symbol Regime:</strong> NORMAL (required)</span>
                         </div>
                         <div class="flex items-start gap-2">
                             <span class="text-green-400">✓</span>
@@ -781,6 +785,9 @@
                             <span class="text-green-400">✓</span>
                             <span><strong class="text-white">Tier:</strong> PRIME or NORMAL (avoid WILD)</span>
                         </div>
+                    </div>
+                    <div class="mt-3 p-3 bg-yellow-900/20 border border-yellow-700 rounded-lg text-yellow-400 text-xs">
+                        <strong>⚡ PANIC Scalping:</strong> During PANIC, only symbols with NORMAL regime are tradeable. Market is volatile but clean symbols can offer quick scalp opportunities. Use tight stops!
                     </div>
                 </section>
 

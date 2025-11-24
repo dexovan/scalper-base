@@ -426,39 +426,54 @@ class RegimeEngine {
    * @returns {Object} { allowed, reason }
    */
   isTradeAllowed(symbol, side) {
-    // Check global regime first
-    if (this.globalRegime.forceClosePositions) {
-      return {
-        allowed: false,
-        reason: 'GLOBAL_PANIC',
-        globalRegime: this.globalRegime.current
-      };
-    }
-
-    if (!this.globalRegime.allowNewPositions) {
-      return {
-        allowed: false,
-        reason: 'GLOBAL_RISK_OFF',
-        globalRegime: this.globalRegime.current
-      };
-    }
-
-    // Check symbol regime
+    // Check symbol regime first
     const symbolRegime = this.symbolRegimes.get(symbol);
     if (!symbolRegime) {
       return {
         allowed: false,
         reason: 'NO_REGIME_DATA',
-        symbolRegime: null
+        symbolRegime: null,
+        globalRegime: this.globalRegime.current
       };
     }
 
     const symbolAllowed = isAllowedToTrade(symbolRegime, side);
 
+    // Symbol must be in good regime
     if (!symbolAllowed) {
       return {
         allowed: false,
         reason: 'SYMBOL_REGIME_BLOCKED',
+        symbolRegime: symbolRegime.current,
+        globalRegime: this.globalRegime.current
+      };
+    }
+
+    // During PANIC: Allow ONLY if symbol is NORMAL (not pumped/manipulated/stale)
+    if (this.globalRegime.forceClosePositions) {
+      if (symbolRegime.current === 'NORMAL') {
+        return {
+          allowed: true,
+          reason: 'PANIC_BUT_SYMBOL_NORMAL',
+          warning: 'Global PANIC active - trade with caution',
+          globalRegime: this.globalRegime.current,
+          symbolRegime: symbolRegime.current
+        };
+      }
+      return {
+        allowed: false,
+        reason: 'GLOBAL_PANIC',
+        globalRegime: this.globalRegime.current,
+        symbolRegime: symbolRegime.current
+      };
+    }
+
+    // During RISK_OFF: Block new positions (old logic)
+    if (!this.globalRegime.allowNewPositions) {
+      return {
+        allowed: false,
+        reason: 'GLOBAL_RISK_OFF',
+        globalRegime: this.globalRegime.current,
         symbolRegime: symbolRegime.current
       };
     }
