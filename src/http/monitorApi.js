@@ -1337,6 +1337,109 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // SCORING ENGINE API
+  // ============================================================
+
+  // GET /api/symbol/:symbol/score - Get score for single symbol
+  app.get("/api/symbol/:symbol/score", async (req, res) => {
+    try {
+      const symbol = req.params.symbol.toUpperCase();
+
+      // Lazy import scoring engine
+      const { scoringEngine } = await import('../scoring/scoringEngine.js');
+
+      const scoreState = scoringEngine.getScoreState(symbol);
+
+      if (!scoreState) {
+        return res.status(404).json({
+          ok: false,
+          error: `No score data for symbol: ${symbol}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      res.json({
+        ok: true,
+        symbol,
+        score: scoreState,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [SCORE/${req.params.symbol}] Error:`, error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/scanner/hotlist - Get scanner hotlist (top scoring symbols)
+  app.get("/api/scanner/hotlist", async (req, res) => {
+    try {
+      // Query params
+      const side = (req.query.side || 'BOTH').toUpperCase();
+      const minScore = parseFloat(req.query.minScore) || 40;
+      const limit = parseInt(req.query.limit) || 20;
+
+      // Validate side
+      if (!['BOTH', 'LONG', 'SHORT'].includes(side)) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid side parameter. Must be: BOTH, LONG, or SHORT",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Lazy import scoring engine
+      const { scoringEngine } = await import('../scoring/scoringEngine.js');
+
+      const hotlist = scoringEngine.getScannerHotlist({
+        side,
+        minScore,
+        limit
+      });
+
+      res.json({
+        ok: true,
+        hotlist,
+        filters: { side, minScore, limit },
+        count: hotlist.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [SCANNER/HOTLIST] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/scoring/stats - Get scoring statistics
+  app.get("/api/scoring/stats", async (req, res) => {
+    try {
+      const { scoringEngine } = await import('../scoring/scoringEngine.js');
+
+      const stats = scoringEngine.getStats();
+
+      res.json({
+        ok: true,
+        stats,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [SCORING/STATS] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // START SERVER
   // ============================================================
   app.listen(port, "0.0.0.0", async () => {

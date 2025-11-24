@@ -210,6 +210,28 @@ async function startEngine() {
   console.log(`   Wild tier: ${stats.wildSymbols} symbols (3-5s updates)`);
   console.log("=============================");
 
+  // =====================================================
+  // PHASE 6: SCORING ENGINE INITIALIZATION
+  // =====================================================
+  console.log("=============================");
+  console.log("🎯 SCORING: Starting Scoring Engine...");
+  console.log("=============================");
+
+  console.log("🎯 [SCORING] Importing Scoring Engine...");
+  const { scoringEngine } = await import('./scoring/scoringEngine.js');
+  console.log("🎯 [SCORING] Scoring Engine imported");
+
+  console.log("🎯 [SCORING] Calling scoringEngine.start()...");
+  await scoringEngine.start();
+  console.log("🎯 [SCORING] scoringEngine.start() completed");
+
+  const scoringStats = scoringEngine.getStats();
+  console.log("🎯 [SCORING] Engine started successfully:");
+  console.log(`   Total symbols: ${scoringStats.totalSymbols}`);
+  console.log(`   Update interval: ${scoringEngine.config.updateIntervalMs}ms`);
+  console.log(`   Signals: ARM=${scoringStats.signalCounts.ARM_LONG + scoringStats.signalCounts.ARM_SHORT}, WATCH=${scoringStats.signalCounts.WATCH_LONG + scoringStats.signalCounts.WATCH_SHORT}`);
+  console.log("=============================");
+
   metrics.heartbeat();
 }
 

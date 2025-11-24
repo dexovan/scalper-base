@@ -402,7 +402,16 @@ app.get("/regime-monitor", requireAuth, (req, res) => {
   });
 });
 
-// 7️⃣ FEATURE ENGINE PAGE (FAZA 4)
+// 8️⃣ SCANNER PAGE (FAZA 6)
+app.get("/scanner", requireAuth, (req, res) => {
+  res.render("scanner", {
+    title: "Signal Scanner",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
+// 9️⃣ FEATURE ENGINE PAGE (FAZA 4)
 app.get("/features", requireAuth, (req, res) => {
   res.render("features", {
     title: "Feature Engine",
@@ -411,7 +420,7 @@ app.get("/features", requireAuth, (req, res) => {
   });
 });
 
-// 8️⃣ DIAGNOSTICS PAGE (SYSTEM HEALTH)
+// 🔟 DIAGNOSTICS PAGE (SYSTEM HEALTH)
 app.get("/diagnostics", requireAuth, (req, res) => {
   res.render("diagnostics", {
     title: "System Diagnostics",
