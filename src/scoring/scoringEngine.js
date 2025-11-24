@@ -49,12 +49,45 @@ class ScoringEngine {
   constructor() {
     this.logger = logger.child({ component: 'ScoringEngine' });
 
-    // Configuration
-    this.config = CONFIG.scoring || {
+    // Configuration with proper defaults
+    const defaultConfig = {
       updateIntervalMs: 1000,
-      weights: {},
-      thresholds: {},
-      hotlist: {}
+      weights: {
+        orderbook: 0.20,
+        flow: 0.25,
+        walls: 0.15,
+        volatility: 0.15,
+        feeEdge: 0.25,
+        spoof: 1.0,
+        pump: 0.8,
+        news: 1.0
+      },
+      thresholds: {
+        watchThreshold: 50,
+        armThreshold: 75
+      },
+      hotlist: {
+        maxWatchCandidates: 20,
+        minScoreForHotlist: 40
+      }
+    };
+
+    // Merge with CONFIG.scoring (if available)
+    this.config = {
+      ...defaultConfig,
+      ...(CONFIG.scoring || {}),
+      weights: {
+        ...defaultConfig.weights,
+        ...(CONFIG.scoring?.weights || {})
+      },
+      thresholds: {
+        ...defaultConfig.thresholds,
+        ...(CONFIG.scoring?.thresholds || {})
+      },
+      hotlist: {
+        ...defaultConfig.hotlist,
+        ...(CONFIG.scoring?.hotlist || {})
+      }
     };
 
     // State storage
