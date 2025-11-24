@@ -418,6 +418,13 @@ class FeatureEngine {
     }
 
     /**
+     * Get all symbols being tracked by FeatureEngine
+     */
+    getAllSymbols() {
+        return Array.from(this.featureStates.keys());
+    }
+
+    /**
      * Get feature overview for all symbols
      */
     getFeaturesOverview() {
