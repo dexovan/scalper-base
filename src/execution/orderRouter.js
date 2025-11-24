@@ -7,6 +7,7 @@
 import fs from "fs/promises";
 import path from "path";
 import CONFIG from "../config/index.js";
+import paths from "../config/paths.js";
 import safetyGuards from "./safetyGuards.js";
 import simulatedExchange from "./simulatedExchange.js";
 import bybitPrivateRest from "../connectors/bybitPrivateRest.js";
@@ -210,7 +211,7 @@ async function routeToLive(orderRequest, marketSnapshot) {
 async function logOrder(executionOrder) {
   try {
     const date = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-    const logDir = path.join(CONFIG.paths.data, "orders");
+    const logDir = path.join(paths.data, "orders");
     const logFile = path.join(logDir, `day-${date}.json`);
 
     // Ensure directory exists
@@ -232,7 +233,7 @@ async function logOrder(executionOrder) {
  */
 export async function readOrderLog(date) {
   try {
-    const logFile = path.join(CONFIG.paths.data, "orders", `day-${date}.json`);
+    const logFile = path.join(paths.data, "orders", `day-${date}.json`);
     const content = await fs.readFile(logFile, "utf8");
 
     // Parse JSON Lines

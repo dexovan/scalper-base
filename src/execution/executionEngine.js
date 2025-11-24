@@ -7,6 +7,7 @@
 import fs from "fs/promises";
 import path from "path";
 import CONFIG from "../config/index.js";
+import paths from "../config/paths.js";
 import orderRouter from "./orderRouter.js";
 import simulatedExchange from "./simulatedExchange.js";
 
@@ -480,7 +481,7 @@ function getPosition(symbol) {
 // =======================================
 async function saveExecutionSnapshot() {
   try {
-    const snapshotPath = path.join(CONFIG.paths.data, "system", "execution_snapshot.json");
+    const snapshotPath = path.join(paths.data, "system", "execution_snapshot.json");
 
     const snapshot = {
       ...getExecutionState(),
