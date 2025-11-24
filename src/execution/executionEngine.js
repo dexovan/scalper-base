@@ -11,6 +11,11 @@ import paths from "../config/paths.js";
 import orderRouter from "./orderRouter.js";
 import simulatedExchange from "./simulatedExchange.js";
 
+// Debug: Check if paths imported correctly
+if (!paths || !paths.DATA_DIR) {
+  console.error("❌ [EXECUTION ENGINE] paths import failed:", { paths, DATA_DIR: paths?.DATA_DIR });
+}
+
 // =======================================
 // EXECUTION ENGINE STATE
 // =======================================

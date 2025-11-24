@@ -12,6 +12,11 @@ import safetyGuards from "./safetyGuards.js";
 import simulatedExchange from "./simulatedExchange.js";
 import bybitPrivateRest from "../connectors/bybitPrivateRest.js";
 
+// Debug: Check if paths imported correctly
+if (!paths || !paths.DATA_DIR) {
+  console.error("❌ [ORDER ROUTER] paths import failed:", { paths, DATA_DIR: paths?.DATA_DIR });
+}
+
 /**
  * Route order to appropriate venue based on execution mode
  * @param {Object} orderRequest
