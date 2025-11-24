@@ -352,9 +352,10 @@ console.log("🔧 Feature Engine instance created (module-level)");
 // START ENGINE API SERVER
 // ============================================================
 export function startMonitorApiServer(port = 8090) {
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
+  return new Promise((resolve, reject) => {
+    const app = express();
+    app.use(cors());
+    app.use(express.json());
 
   // ============================================================
   // GET /api/monitor/summary
@@ -1361,10 +1362,15 @@ export function startMonitorApiServer(port = 8090) {
 
       await featureEngine.start();
       console.log("✅ Feature Engine started - processing symbols");
+
+      // Resolve promise AFTER FeatureEngine is ready
+      resolve();
     } catch (error) {
       console.error("❌ Failed to initialize Feature Engine:", error);
+      reject(error);
     }
     console.log("=".repeat(60));
+  });
   });
 }
 

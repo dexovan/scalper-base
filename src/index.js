@@ -172,8 +172,8 @@ async function startEngine() {
   attachRealtimeListeners(publicEmitter);
   console.log("📡 Real-time dashboard listeners attached");
 
-  startMonitorApiServer(8090);
-  console.log("🚀 DEBUG: Monitor API successfully started");
+  await startMonitorApiServer(8090); // AWAIT to ensure FeatureEngine is ready
+  console.log("🚀 DEBUG: Monitor API started AND FeatureEngine ready");
 
   // =====================================================
   // PHASE 5: REGIME ENGINE INITIALIZATION
