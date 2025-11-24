@@ -86,6 +86,14 @@ class FeatureEngine {
             errorsCount: 0
         };
 
+        // Adaptive interval tracking (for dynamic feature update rates)
+        this.eventRateTracking = {
+            lastEventCount: 0,
+            currentEventCount: 0,
+            eventsPerSecond: 0,
+            lastCalculationAt: Date.now()
+        };
+
         // Debug counters
         this._nullDataCount = 0;
         this._successDataCount = 0;
@@ -494,18 +502,76 @@ class FeatureEngine {
     /**
      * Start update loop for a specific symbol
      */
+    /**
+     * Calculate adaptive update interval based on WebSocket event rate
+     * @returns {number} interval in milliseconds
+     */
+    getAdaptiveInterval() {
+        const { eventsPerSecond } = this.eventRateTracking;
+
+        // Low traffic: 50ms updates (20 updates/sec)
+        if (eventsPerSecond < 100) {
+            return 50;
+        }
+
+        // Normal traffic: 100ms updates (10 updates/sec)
+        if (eventsPerSecond < 500) {
+            return 100;
+        }
+
+        // High traffic: 200ms updates (5 updates/sec)
+        if (eventsPerSecond < 1500) {
+            return 200;
+        }
+
+        // Overload: 300ms updates (3.3 updates/sec)
+        return 300;
+    }
+
+    /**
+     * Update WebSocket event rate tracking
+     * Called by WebSocket handlers on every event
+     */
+    trackWebSocketEvent() {
+        this.eventRateTracking.currentEventCount++;
+
+        const now = Date.now();
+        const elapsed = now - this.eventRateTracking.lastCalculationAt;
+
+        // Recalculate rate every second
+        if (elapsed >= 1000) {
+            const events = this.eventRateTracking.currentEventCount - this.eventRateTracking.lastEventCount;
+            this.eventRateTracking.eventsPerSecond = Math.round(events / (elapsed / 1000));
+            this.eventRateTracking.lastEventCount = this.eventRateTracking.currentEventCount;
+            this.eventRateTracking.lastCalculationAt = now;
+        }
+    }
+
     startSymbolUpdates(symbol) {
-        // Determine update interval based on symbol tier
-        const tier = this.getSymbolTier(symbol);
-        const interval = this.config.updateIntervals[tier];
+        // Use adaptive interval instead of fixed tier-based interval
+        let lastProcessAt = 0;
 
-        const intervalId = setInterval(async () => {
-            if (this.isRunning) {
+        const updateLoop = async () => {
+            if (!this.isRunning) return;
+
+            const now = Date.now();
+            const dynamicInterval = this.getAdaptiveInterval();
+
+            // Only process if enough time has passed
+            if (now - lastProcessAt >= dynamicInterval) {
                 await this.updateFeaturesForSymbol(symbol);
+                lastProcessAt = now;
             }
-        }, interval);
 
-        this.updateIntervals.set(symbol, intervalId);
+            // Schedule next check with minimum interval to stay responsive
+            setTimeout(updateLoop, Math.min(dynamicInterval, 50));
+        };
+
+        // Start the adaptive update loop
+        updateLoop();
+
+        // Track that this symbol is being updated (for stopping later)
+        this.updateIntervals.set(symbol, { type: 'adaptive', symbol });
 
         // Initial update
         setImmediate(() => this.updateFeaturesForSymbol(symbol));

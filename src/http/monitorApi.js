@@ -1020,6 +1020,12 @@ export function startMonitorApiServer(port = 8090) {
   const featureEngine = new FeatureEngine();
   console.log("🔧 Feature Engine instance created");
 
+  // Register WebSocket event callback for adaptive intervals
+  OrderbookManager.setWebSocketEventCallback(() => {
+    featureEngine.trackWebSocketEvent();
+  });
+  console.log("✅ FeatureEngine adaptive interval tracking registered");
+
   // GET /api/diagnostics - COMPREHENSIVE SYSTEM HEALTH CHECK
   app.get("/api/diagnostics", async (req, res) => {
     try {

@@ -12,6 +12,13 @@ const state = {
   symbols: {},
 };
 
+// Event callback for tracking WebSocket activity (used by FeatureEngine adaptive intervals)
+let wsEventCallback = null;
+
+function setWebSocketEventCallback(callback) {
+  wsEventCallback = callback;
+}
+
 /**
  * MicroSymbolState struktura:
  * {
@@ -81,6 +88,9 @@ function ensureSymbolState(symbol) {
  */
 function onOrderbookEvent(symbol, eventData) {
   try {
+    // Track WebSocket event for adaptive feature engine intervals
+    if (wsEventCallback) wsEventCallback();
+
     const s = ensureSymbolState(symbol);
     const now = new Date().toISOString();
 
@@ -236,6 +246,9 @@ function updatePriceInfo(symbolState) {
  */
 function onTradeEvent(symbol, eventData) {
   try {
+    // Track WebSocket event for adaptive feature engine intervals
+    if (wsEventCallback) wsEventCallback();
+
     const s = ensureSymbolState(symbol);
     const now = new Date().toISOString();
 
@@ -600,6 +613,7 @@ export {
   getCandles,
   getActiveSymbols,
   getSymbolHealth,
+  setWebSocketEventCallback,
   getStats,
   startStatsPersistence,
   stopStatsPersistence,
@@ -616,6 +630,7 @@ export default {
   getCandles,
   getActiveSymbols,
   getSymbolHealth,
+  setWebSocketEventCallback,
   getStats,
   startStatsPersistence,
   stopStatsPersistence,
