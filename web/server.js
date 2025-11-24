@@ -611,6 +611,22 @@ app.use(
   })
 );
 
+// ===========================================
+// PROXY → EXECUTION ENGINE API (port 8090) - FAZA 10
+// ===========================================
+app.use(
+  "/api/engine/execution",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/execution",
+    changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
+    pathRewrite: {
+      "^/api/engine/execution": ""
+    }
+  })
+);
+
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/");
@@ -710,7 +726,16 @@ app.get("/positions", requireAuth, (req, res) => {
   });
 });
 
-// 1️⃣2️⃣ FEATURE ENGINE PAGE (FAZA 4)
+// 1️⃣2️⃣ EXECUTION PAGE (FAZA 10) - Order Management & Panic Controls
+app.get("/execution", requireAuth, (req, res) => {
+  res.render("execution", {
+    title: "Execution Engine",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
+// 1️⃣3️⃣ FEATURE ENGINE PAGE (FAZA 4)
 app.get("/features", requireAuth, (req, res) => {
   res.render("features", {
     title: "Feature Engine",

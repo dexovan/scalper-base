@@ -1826,6 +1826,167 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // PHASE 10: EXECUTION ENGINE ENDPOINTS
+  // ============================================================
+
+  // Get execution engine overview
+  app.get("/api/execution/overview", (req, res) => {
+    try {
+      if (!global.executionEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Execution Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const state = global.executionEngine.getExecutionState();
+      const pendingOrders = global.executionEngine.getPendingOrders();
+
+      res.json({
+        ok: true,
+        state,
+        pendingOrders,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [EXECUTION/OVERVIEW] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Get today's orders (filtered)
+  app.get("/api/execution/orders", async (req, res) => {
+    try {
+      const { symbol, status, source, side } = req.query;
+
+      const orderRouter = await import('../execution/orderRouter.js');
+      const filters = {};
+      if (symbol) filters.symbol = symbol;
+      if (status) filters.status = status;
+      if (source) filters.source = source;
+      if (side) filters.side = side;
+
+      const orders = await orderRouter.default.getFilteredOrders(filters);
+
+      res.json({
+        ok: true,
+        orders,
+        count: orders.length,
+        filters,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [EXECUTION/ORDERS] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Panic close all positions
+  app.post("/api/execution/panic-close-all", async (req, res) => {
+    try {
+      if (!global.executionEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Execution Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const { reason } = req.body;
+      await global.executionEngine.panicCloseAll(reason || "Manual panic close");
+
+      res.json({
+        ok: true,
+        message: "Panic close initiated for all positions",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [EXECUTION/PANIC-CLOSE-ALL] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Panic close specific symbol
+  app.post("/api/execution/panic-close-symbol", async (req, res) => {
+    try {
+      if (!global.executionEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Execution Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const { symbol, reason } = req.body;
+      if (!symbol) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing required field: symbol",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      await global.executionEngine.panicCloseSymbol(symbol, reason || "Manual panic close");
+
+      res.json({
+        ok: true,
+        message: `Panic close initiated for ${symbol}`,
+        symbol,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [EXECUTION/PANIC-CLOSE-SYMBOL] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Manual order submission (for testing)
+  app.post("/api/execution/submit-order", async (req, res) => {
+    try {
+      if (!global.executionEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Execution Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const orderRequest = req.body;
+      const result = await global.executionEngine.submitOrder(orderRequest);
+
+      res.json({
+        ok: result !== null,
+        order: result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [EXECUTION/SUBMIT-ORDER] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // START SERVER
   // ============================================================
   app.listen(port, "0.0.0.0", async () => {

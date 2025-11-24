@@ -344,6 +344,35 @@ async function startEngine() {
     console.log(`   Trailing distance: ${tpslConfig.planner.trailingDistancePct}%`);
     console.log("=============================");
 
+    // =====================================================
+    // PHASE 10: EXECUTION ENGINE INITIALIZATION
+    // =====================================================
+    console.log("=============================");
+    console.log("⚡ EXEC: Starting Execution Engine...");
+    console.log("=============================");
+
+    console.log("⚡ [EXEC] Importing Execution Engine...");
+    const executionEngine = await import('./execution/executionEngine.js');
+    console.log("⚡ [EXEC] Execution Engine imported");
+
+    // Initialize
+    console.log("⚡ [EXEC] Calling initExecutionEngine()...");
+    executionEngine.initExecutionEngine();
+    console.log("⚡ [EXEC] initExecutionEngine() completed");
+
+    // Store in global for API access
+    global.executionEngine = executionEngine;
+    console.log("⚡ [EXEC] Stored in global");
+
+    const execState = executionEngine.getExecutionState();
+    console.log("⚡ [EXEC] Execution Engine started successfully:");
+    console.log(`   Mode: ${execState.mode}`);
+    console.log(`   Safe Mode: ${execState.safeMode ? 'ACTIVE' : 'INACTIVE'}`);
+    console.log(`   Client Order ID Prefix: ${CONFIG.execution.clientOrderIdPrefix}`);
+    console.log(`   Max Slippage: ${CONFIG.execution.maxSlippagePct * 100}%`);
+    console.log(`   Max Spread: ${CONFIG.execution.maxSpreadPct * 100}%`);
+    console.log("=============================");
+
     metrics.heartbeat();
 }
 

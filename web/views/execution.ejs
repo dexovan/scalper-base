@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> - Scalper Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      min-height: 100vh;
+      color: #e2e8f0;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-sim {
+      background-color: #3b82f6;
+      color: white;
+    }
+    .status-dry-run {
+      background-color: #f59e0b;
+      color: white;
+    }
+    .status-live {
+      background-color: #ef4444;
+      color: white;
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    .status-safe {
+      background-color: #10b981;
+      color: white;
+    }
+    .status-danger {
+      background-color: #ef4444;
+      color: white;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .panic-button {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      transition: all 0.3s;
+    }
+    .panic-button:hover {
+      background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+      transform: scale(1.05);
+    }
+    .order-row {
+      transition: background-color 0.2s;
+    }
+    .order-row:hover {
+      background-color: rgba(59, 130, 246, 0.1);
+    }
+  </style>
+</head>
+<body>
+
+<div class="container mx-auto p-6 max-w-7xl">
+
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="text-3xl font-bold text-white mb-2">⚡ Execution Engine</h1>
+      <p class="text-slate-400">Order management, safety controls, and panic buttons</p>
+    </div>
+    <div class="text-right">
+      <p class="text-sm text-slate-400">Last Updated</p>
+      <p class="text-lg font-mono text-blue-400" id="lastUpdate">Loading...</p>
+      <a href="/" class="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block">← Back to Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Engine Status -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+
+    <!-- Mode -->
+    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
+      <div class="text-sm text-slate-400 mb-2">Mode</div>
+      <div class="flex items-center justify-between">
+        <span id="mode" class="status-badge status-sim">SIM</span>
+      </div>
+    </div>
+
+    <!-- Safe Mode -->
+    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
+      <div class="text-sm text-slate-400 mb-2">Safe Mode</div>
+      <div class="flex items-center justify-between">
+        <span id="safeMode" class="status-badge status-safe">INACTIVE</span>
+      </div>
+      <div id="safeModeReason" class="text-xs text-slate-500 mt-1"></div>
+    </div>
+
+    <!-- Pending Orders -->
+    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
+      <div class="text-sm text-slate-400 mb-2">Pending Orders</div>
+      <div class="text-3xl font-bold text-blue-400" id="pendingCount">0</div>
+    </div>
+
+    <!-- Active Orders (Today) -->
+    <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
+      <div class="text-sm text-slate-400 mb-2">Orders Today</div>
+      <div class="text-3xl font-bold text-green-400" id="todayCount">0</div>
+    </div>
+
+  </div>
+
+  <!-- Panic Controls -->
+  <div class="bg-slate-800 rounded-lg p-6 border border-slate-700 mb-6">
+    <h2 class="text-xl font-bold text-white mb-4">🚨 Panic Controls</h2>
+    <div class="flex gap-4">
+      <button
+        onclick="panicCloseAll()"
+        class="panic-button text-white px-6 py-3 rounded-lg font-semibold shadow-lg">
+        ⛔ PANIC CLOSE ALL POSITIONS
+      </button>
+      <button
+        onclick="toggleSafeMode()"
+        class="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-lg font-semibold transition">
+        🛡️ Toggle Safe Mode
+      </button>
+    </div>
+    <p class="text-sm text-slate-400 mt-3">
+      ⚠️ Panic close will immediately close all positions at market price. Use only in emergencies.
+    </p>
+  </div>
+
+  <!-- Pending Orders Table -->
+  <div class="bg-slate-800 rounded-lg p-6 border border-slate-700 mb-6">
+    <h2 class="text-xl font-bold text-white mb-4">📋 Pending Orders</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700 text-left">
+            <th class="py-3 px-4 text-slate-400 font-semibold">Symbol</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Side</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Type</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Price</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Qty</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Status</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Created</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pendingOrdersTable">
+          <tr>
+            <td colspan="8" class="py-8 text-center text-slate-500">
+              No pending orders
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Order History (Today) -->
+  <div class="bg-slate-800 rounded-lg p-6 border border-slate-700">
+    <h2 class="text-xl font-bold text-white mb-4">📜 Order History (Today)</h2>
+
+    <!-- Filters -->
+    <div class="flex gap-4 mb-4">
+      <select id="filterStatus" onchange="applyFilters()" class="bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600">
+        <option value="">All Statuses</option>
+        <option value="FILLED">Filled</option>
+        <option value="REJECTED">Rejected</option>
+        <option value="CANCELED">Canceled</option>
+      </select>
+      <select id="filterSide" onchange="applyFilters()" class="bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600">
+        <option value="">All Sides</option>
+        <option value="BUY">Buy</option>
+        <option value="SELL">Sell</option>
+      </select>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700 text-left">
+            <th class="py-3 px-4 text-slate-400 font-semibold">Time</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Symbol</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Side</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Type</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Qty</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Avg Fill</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Status</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Source</th>
+            <th class="py-3 px-4 text-slate-400 font-semibold">Notional</th>
+          </tr>
+        </thead>
+        <tbody id="orderHistoryTable">
+          <tr>
+            <td colspan="9" class="py-8 text-center text-slate-500">
+              No orders today
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let allOrders = [];
+
+// Fetch execution state
+async function fetchExecutionState() {
+  try {
+    const response = await fetch('/api/engine/execution/overview');
+    const data = await response.json();
+
+    if (data.ok) {
+      updateStatus(data.state);
+      updatePendingOrders(data.pendingOrders);
+    }
+
+    document.getElementById('lastUpdate').textContent = new Date(data.timestamp).toLocaleTimeString();
+  } catch (error) {
+    console.error('Failed to fetch execution state:', error);
+  }
+}
+
+// Fetch order history
+async function fetchOrderHistory() {
+  try {
+    const response = await fetch('/api/engine/execution/orders');
+    const data = await response.json();
+
+    if (data.ok) {
+      allOrders = data.orders;
+      applyFilters();
+      document.getElementById('todayCount').textContent = data.count;
+    }
+  } catch (error) {
+    console.error('Failed to fetch order history:', error);
+  }
+}
+
+// Update status display
+function updateStatus(state) {
+  // Mode badge
+  const modeEl = document.getElementById('mode');
+  modeEl.textContent = state.mode;
+  modeEl.className = 'status-badge';
+  if (state.mode === 'SIM') modeEl.classList.add('status-sim');
+  else if (state.mode === 'DRY_RUN') modeEl.classList.add('status-dry-run');
+  else if (state.mode === 'LIVE') modeEl.classList.add('status-live');
+
+  // Safe mode badge
+  const safeModeEl = document.getElementById('safeMode');
+  const safeModeReasonEl = document.getElementById('safeModeReason');
+
+  if (state.safeMode) {
+    safeModeEl.textContent = 'ACTIVE';
+    safeModeEl.className = 'status-badge status-danger';
+    safeModeReasonEl.textContent = state.safeModeReason || 'Unknown reason';
+  } else {
+    safeModeEl.textContent = 'INACTIVE';
+    safeModeEl.className = 'status-badge status-safe';
+    safeModeReasonEl.textContent = '';
+  }
+
+  // Pending count
+  document.getElementById('pendingCount').textContent = state.pendingOrdersCount;
+}
+
+// Update pending orders table
+function updatePendingOrders(orders) {
+  const tbody = document.getElementById('pendingOrdersTable');
+
+  if (!orders || orders.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-slate-500">No pending orders</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = orders.map(order => `
+    <tr class="order-row border-b border-slate-700/50">
+      <td class="py-3 px-4 font-semibold text-blue-400">${order.symbol}</td>
+      <td class="py-3 px-4">
+        <span class="px-2 py-1 rounded ${order.side === 'BUY' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">
+          ${order.side}
+        </span>
+      </td>
+      <td class="py-3 px-4">${order.type}</td>
+      <td class="py-3 px-4 font-mono">${order.price ? order.price.toFixed(2) : 'MARKET'}</td>
+      <td class="py-3 px-4 font-mono">${order.qty.toFixed(4)}</td>
+      <td class="py-3 px-4">
+        <span class="px-2 py-1 rounded bg-yellow-900/50 text-yellow-400">${order.status}</span>
+      </td>
+      <td class="py-3 px-4 text-xs text-slate-400">${new Date(order.createdAt).toLocaleTimeString()}</td>
+      <td class="py-3 px-4">
+        <button
+          onclick="cancelOrder('${order.clientOrderId}')"
+          class="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white text-xs transition">
+          Cancel
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// Apply filters to order history
+function applyFilters() {
+  const statusFilter = document.getElementById('filterStatus').value;
+  const sideFilter = document.getElementById('filterSide').value;
+
+  let filtered = allOrders;
+
+  if (statusFilter) {
+    filtered = filtered.filter(o => o.status === statusFilter);
+  }
+
+  if (sideFilter) {
+    filtered = filtered.filter(o => o.side === sideFilter);
+  }
+
+  updateOrderHistory(filtered);
+}
+
+// Update order history table
+function updateOrderHistory(orders) {
+  const tbody = document.getElementById('orderHistoryTable');
+
+  if (!orders || orders.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-slate-500">No orders match filters</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = orders.map(order => `
+    <tr class="order-row border-b border-slate-700/50">
+      <td class="py-3 px-4 text-xs text-slate-400">${new Date(order.createdAt).toLocaleTimeString()}</td>
+      <td class="py-3 px-4 font-semibold text-blue-400">${order.symbol}</td>
+      <td class="py-3 px-4">
+        <span class="px-2 py-1 rounded ${order.side === 'BUY' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">
+          ${order.side}
+        </span>
+      </td>
+      <td class="py-3 px-4">${order.type}</td>
+      <td class="py-3 px-4 font-mono">${order.qty ? order.qty.toFixed(4) : '-'}</td>
+      <td class="py-3 px-4 font-mono">${order.avgFillPrice ? order.avgFillPrice.toFixed(2) : '-'}</td>
+      <td class="py-3 px-4">
+        <span class="px-2 py-1 rounded ${getStatusColor(order.status)}">${order.status}</span>
+      </td>
+      <td class="py-3 px-4 text-xs text-slate-400">${order.source}</td>
+      <td class="py-3 px-4 font-mono text-sm">${order.notionalUsd ? '$' + order.notionalUsd.toFixed(2) : '-'}</td>
+    </tr>
+  `).join('');
+}
+
+function getStatusColor(status) {
+  switch(status) {
+    case 'FILLED': return 'bg-green-900/50 text-green-400';
+    case 'REJECTED': return 'bg-red-900/50 text-red-400';
+    case 'CANCELED': return 'bg-gray-900/50 text-gray-400';
+    case 'NEW': return 'bg-yellow-900/50 text-yellow-400';
+    default: return 'bg-slate-900/50 text-slate-400';
+  }
+}
+
+// Panic close all
+async function panicCloseAll() {
+  if (!confirm('⚠️ Are you sure you want to PANIC CLOSE ALL POSITIONS? This will close all positions at market price immediately.')) {
+    return;
+  }
+
+  const reason = prompt('Enter reason for panic close:', 'Manual panic close');
+  if (!reason) return;
+
+  try {
+    const response = await fetch('/api/engine/execution/panic-close-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+
+    const data = await response.json();
+
+    if (data.ok) {
+      alert('✅ Panic close initiated for all positions');
+      fetchExecutionState();
+      fetchOrderHistory();
+    } else {
+      alert('❌ Failed: ' + data.error);
+    }
+  } catch (error) {
+    alert('❌ Network error: ' + error.message);
+  }
+}
+
+// Toggle safe mode
+async function toggleSafeMode() {
+  const action = confirm('Toggle Safe Mode?\n\nSafe Mode blocks all new non-reduceOnly orders.');
+  if (!action) return;
+
+  // This is a placeholder - implement actual safe mode toggle endpoint
+  alert('Safe mode toggle not yet implemented in backend API');
+}
+
+// Cancel specific order
+async function cancelOrder(clientOrderId) {
+  if (!confirm('Cancel this order?')) return;
+
+  // Placeholder - implement cancel endpoint
+  alert('Cancel order not yet fully implemented');
+}
+
+// Auto-refresh
+setInterval(() => {
+  fetchExecutionState();
+  fetchOrderHistory();
+}, 3000); // 3 seconds
+
+// Initial load
+fetchExecutionState();
+fetchOrderHistory();
+</script>
+
+</body>
+</html>
