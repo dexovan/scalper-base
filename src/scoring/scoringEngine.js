@@ -213,14 +213,14 @@ class ScoringEngine {
    */
   async updateScoreForSymbol(symbol) {
     try {
-      // Get FeatureEngine instance
+      // Get FeatureEngine instance (exported from monitorApi.js)
       const { featureEngine } = await import('../http/monitorApi.js');
       if (!featureEngine) {
         throw new Error('FeatureEngine not available');
       }
 
-      // Get RegimeEngine instance
-      const { regimeEngine } = await import('../regime/regimeEngine.js');
+      // Get RegimeEngine instance (from global - set in index.js)
+      const regimeEngine = global.regimeEngine;
       if (!regimeEngine) {
         throw new Error('RegimeEngine not available');
       }
