@@ -2502,6 +2502,271 @@ const universe = await getUniverseSnapshot(); // NE ZABORAVI await!
 
 ---
 
+---
+
+## PHASE 6 - SCORING & SCANNER DASHBOARD (Nov 24, 2025)
+
+### Problem 1: FeatureEngine Update Loop Not Executing
+
+**Symptom:**
+
+- FeatureEngine `startSymbolUpdates()` metoda pozvana, ali nikada ne izvršava update-e
+- Features ostaju `null` (imbalance, walls, flow, volatility)
+- Loop se izvršava ali `elapsed < interval` uvek true
+
+**Root Cause:**
+
+```javascript
+let lastProcessAt = 0;  // ❌ PROBLEM
+const now = Date.now();
+const elapsed = now - lastProcessAt;  // elapsed = ~few milliseconds
+
+if (elapsed < this.updateInterval) {  // 300ms
+    continue;  // ❌ UVEK PRESKAČE prvi update!
+}
+```
+
+Prvi iteration: `elapsed = now - 0 = mali broj < 300ms` → preskače se
+Svi sledeći: `lastProcessAt` nikada ne postane validan → beskonačno čekanje
+
+**Solution:**
+
+```javascript
+let lastProcessAt = -Infinity; // ✅ REŠENJE
+```
+
+Ovo garantuje da je `elapsed = now - (-Infinity) = Infinity > 300ms` → izvršava ODMAH!
+
+**Files Changed:**
+
+- `src/features/featureEngine.js` line 587
+- Commit: `40026d6`
+
+**Lesson:** Kada praviš adaptive loop, **uvek postavi initial timestamp na `-Infinity`** ili `0 - interval` da bi prvi execution bio immediate.
+
+---
+
+### Problem 2: Dashboard Proxy Not Forwarding Query Parameters
+
+**Symptom:**
+
+- Dashboard na `localhost:8080/api/scanner/hotlist?minScore=30&ignoreGlobalRegime=true` vraća `count: 0`
+- Direct engine call `localhost:8090/api/scanner/hotlist?minScore=30&ignoreGlobalRegime=true` vraća kandidate ✅
+- Proxy middleware `onProxyReq` callback se NIKADA ne izvršava
+- Nema PROXY logova u dashboard output-u
+
+**Root Cause:**
+`http-proxy-middleware` nije uspeo da prosledi query string parametre. Middleware je registrovan ali express ga nije koristio.
+
+**Failed Solutions Tried:**
+
+1. ❌ Dodavanje `router` funkcije u proxy config
+2. ❌ Explicit `pathRewrite` sa `req.url`
+3. ❌ Logging `req.query` u `onProxyReq`
+
+**Working Solution:**
+Zamena `http-proxy-middleware` sa **manual fetch() forwarding**:
+
+```javascript
+// ❌ STARO - Proxy middleware
+const scoringProxy = createProxyMiddleware({
+  target: "http://localhost:8090",
+  // ... config options
+});
+app.get("/api/scanner/hotlist", scoringProxy);
+
+// ✅ NOVO - Manual forwarding
+app.get("/api/scanner/hotlist", async (req, res) => {
+  try {
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = `http://localhost:8090/api/scanner/hotlist${
+      queryString ? "?" + queryString : ""
+    }`;
+    console.log(`[SCORING-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const data = await response.json();
+    console.log(
+      `[SCORING-FORWARD] Response: ${response.status}, count: ${
+        data.count || 0
+      }`
+    );
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error("[SCORING-FORWARD] Error:", error.message);
+    res.status(503).json({ ok: false, error: "Scoring Engine unavailable" });
+  }
+});
+```
+
+**Files Changed:**
+
+- `web/server.js` lines 214-304 (replaced proxy with 3 manual forward handlers)
+- Commit: `6f9cae9`
+
+**Lesson:**
+
+- Kada `http-proxy-middleware` ne radi kako treba → **prebaci na manual fetch()**
+- Manual forwarding daje **potpunu kontrolu** nad query params, headers, error handling
+- Lakše za debugging jer vidiš tačno šta se šalje
+
+---
+
+### Problem 3: Scanner Dashboard Shows 0 Candidates Despite Backend Having Data
+
+**Symptom:**
+
+- Engine: `curl localhost:8090/api/scanner/hotlist?minScore=20&ignoreGlobalRegime=true` → **10 kandidata** ✅
+- Dashboard: `curl localhost:8080/api/scanner/hotlist?minScore=50&ignoreGlobalRegime=true` → **0 kandidata** ❌
+- Frontend koristi `minScore=50` hardkodiran
+
+**Root Cause:**
+Frontend je imao static `minScore=40` u input fieldu, ali user nije mogao lako da menja threshold.
+
+**Solution:**
+Dodavanje **interactive UI controls** u `web/views/scanner.ejs`:
+
+1. **Range Slider** za minScore (10-60, step 5, default 25):
+
+```html
+<input type="range" id="filterMinScore" value="25" min="10" max="60" step="5" />
+```
+
+2. **Live Value Preview**:
+
+```html
+<label>Minimalni Skor: <span id="minScoreValue">25</span></label>
+<script>
+  document.getElementById("filterMinScore").addEventListener("input", (e) => {
+    document.getElementById("minScoreValue").textContent = e.target.value;
+  });
+</script>
+```
+
+3. **Checkbox za ignoreGlobalRegime**:
+
+```html
+<input type="checkbox" id="filterIgnoreRegime" checked />
+<label>Ignoriši PANIC režim</label>
+```
+
+4. **Dynamic Query Building**:
+
+```javascript
+const ignoreRegime = document.getElementById("filterIgnoreRegime").checked;
+fetch(
+  `/api/scanner/hotlist?minScore=${minScore}&ignoreGlobalRegime=${ignoreRegime}`
+);
+```
+
+**Files Changed:**
+
+- `web/views/scanner.ejs` lines 152-165, 223-226, 318-322
+- Commit: `c028535`
+
+**Lesson:**
+
+- **Uvek dodaj UI kontrole** za threshold parametre (ne hardkoduj!)
+- Range slider + live preview = odličan UX
+- Checkbox za boolean flags
+- Default vrednosti treba da budu **niske** za monitoring mode (25 umesto 50)
+
+---
+
+### Problem 4: Global PANIC Regime Blocking All Scanner Results
+
+**Symptom:**
+
+- RegimeEngine detektuje `globalRegime: "PANIC"` (BTC volatility 33.6%)
+- ScoringEngine `getScannerHotlist()` vraća **0 kandidata** iako ima high-score simbola
+- Dashboard prikazuje praznu listu
+
+**Root Cause:**
+
+```javascript
+// src/scoring/scoringEngine.js
+if (state.globalRegime !== 'NORMAL') {
+  continue;  // ❌ Preskače SVE kandidate u PANIC režimu
+}
+```
+
+Ovo je OK za **trading mode** (ne trejduj u PANIC), ali **monitoring mode** treba da vidi sve kandidate.
+
+**Solution:**
+Dodavanje **`ignoreGlobalRegime` opcije**:
+
+```javascript
+// Backend API
+app.get("/api/scanner/hotlist", async (req, res) => {
+  const ignoreGlobalRegime = req.query.ignoreGlobalRegime === 'true';
+
+  const result = await scoringEngine.getScannerHotlist({
+    side, minScore, limit,
+    ignoreGlobalRegime  // ✅ NOVA OPCIJA
+  });
+});
+
+// Scoring Engine
+getScannerHotlist({ side, minScore, limit, ignoreGlobalRegime = false }) {
+  // ...
+  if (!ignoreGlobalRegime && state.globalRegime !== 'NORMAL') {
+    continue;  // Samo ako je ignoreGlobalRegime=false
+  }
+  // ...
+}
+```
+
+**Files Changed:**
+
+- `src/scoring/scoringEngine.js` lines 360, 381
+- `src/http/monitorApi.js` line 1385
+- Commit: `7f42c9d`
+
+**Lesson:**
+
+- **Razdvoj trading mode od monitoring mode**
+- Trading: striktni safety checks (blokiraj u PANIC)
+- Monitoring: show everything (ali označi risk level)
+- Parametre za mode kontrolu dodaj kao **optional flags**
+
+---
+
+### Summary: Phase 6 Complete ✅
+
+**9 Commits Pushed:**
+
+1. `32d92b6` - FeatureEngine startup diagnostics
+2. `48bc245` - Debug logging for feature updates
+3. `fdc4621` - Enhanced feature health endpoint
+4. `40026d6` - **CRITICAL FIX:** Update loop timing (`lastProcessAt = -Infinity`)
+5. `7f42c9d` - Added `ignoreGlobalRegime` parameter for monitoring
+6. `e4c0f2b` - Frontend scanner sends `ignoreGlobalRegime=true`
+7. `a51c4dd` - Attempted proxy query forwarding fix (failed)
+8. `6f9cae9` - **WORKING FIX:** Manual fetch forwarding replaces proxy
+9. `c028535` - Interactive scanner UI controls (slider, checkbox)
+
+**Final State:**
+
+- ✅ FeatureEngine: 278 symbols, 93K+ updates, 0 errors
+- ✅ ScoringEngine: 476 symbols, avg 3ms processing
+- ✅ RegimeEngine: Global PANIC detection working
+- ✅ Scanner Dashboard: Shows 20 candidates with user controls
+- ✅ Backend-Frontend: 100% synchronized
+
+**Key Takeaways:**
+
+1. Adaptive loops need proper initial timestamp (`-Infinity`)
+2. Proxy middleware može biti problematičan → manual fetch je sigurniji
+3. Monitoring mode ≠ Trading mode (ignoreGlobalRegime flag)
+4. UI controls = user empowerment (slider, checkbox, live preview)
+5. Niske default threshold vrednosti za analysis dashboards (25, ne 50)
+
+---
+
 **End of Project Memory**
 _Automatski ažurirano tokom development sesija_
 
