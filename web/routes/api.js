@@ -332,22 +332,65 @@ router.get("/symbol/:symbol/candles/:timeframe", async (req, res) => {
     const { symbol, timeframe } = req.params;
     const limit = parseInt(req.query.limit) || 100;
 
-    const candles = getCandles(symbol, timeframe, limit);
+    // Proxy to engine API (port 8090) - Dashboard and Engine are separate processes!
+    const options = {
+      hostname: 'localhost',
+      port: 8090,
+      path: `/api/symbol/${symbol}/candles/${timeframe}?limit=${limit}`,
+      method: 'GET',
+      timeout: 5000
+    };
 
-    return res.json({
-      ok: true,
-      symbol,
-      timeframe,
-      candles: candles || [],
-      count: candles ? candles.length : 0,
-      timestamp: new Date().toISOString()
+    const proxyReq = http.request(options, (proxyRes) => {
+      let data = '';
+
+      proxyRes.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      proxyRes.on('end', () => {
+        try {
+          const jsonData = JSON.parse(data);
+          res.json(jsonData);
+        } catch (error) {
+          console.error(`[API] Failed to parse engine candles response:`, error.message);
+          res.status(500).json({
+            ok: false,
+            message: "Failed to parse engine response",
+            error: error.message
+          });
+        }
+      });
     });
+
+    proxyReq.on('error', (error) => {
+      console.error(`[API] Engine proxy error for candles:`, error.message);
+      res.status(500).json({
+        ok: false,
+        message: "Engine API unavailable",
+        error: error.message
+      });
+    });
+
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy();
+      res.status(504).json({
+        ok: false,
+        message: "Engine API timeout"
+      });
+    });
+
+    proxyReq.end();
+
   } catch (error) {
     console.error(`Error fetching candles for ${req.params.symbol}:`, error);
     return res.status(500).json({
       ok: false,
       message: "Failed to fetch candles",
       error: error.message
+    });
+  }
+});
     });
   }
 });
