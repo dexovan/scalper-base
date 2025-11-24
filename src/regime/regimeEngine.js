@@ -400,6 +400,7 @@ class RegimeEngine {
       }
 
       // Add to symbol list
+      const features = this.featureEngine.getFeatureState(symbol);
       stats.symbols.list.push({
         symbol,
         regime: reg,
@@ -407,7 +408,10 @@ class RegimeEngine {
         allowShort: regime.allowShort,
         updatedAt: regime.updatedAt,
         tier: this.primeTier.has(symbol) ? 'PRIME' :
-              this.normalTier.has(symbol) ? 'NORMAL' : 'WILD'
+              this.normalTier.has(symbol) ? 'NORMAL' : 'WILD',
+        pumpScore: features?.pumpSignals?.pumpLikelihoodScore || 0,
+        spoofScore: features?.walls?.spoofingScore || 0,
+        volatilityScore: features?.volatility?.volatilityScore || 0
       });
     }
 

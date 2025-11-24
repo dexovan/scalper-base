@@ -402,7 +402,11 @@
                         symbolRegimesData = data.overview.symbols.list.map(s => ({
                             symbol: s.symbol,
                             regime: s,
-                            features: { pumpScore: 0, spoofScore: 0, volatility: 0 }
+                            features: {
+                                pumpScore: s.pumpScore || 0,
+                                spoofScore: s.spoofScore || 0,
+                                volatility: s.volatilityScore || 0
+                            }
                         }));
                         renderSymbolTable();
                     }
