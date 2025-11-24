@@ -207,40 +207,68 @@ app.get("/api/regime/global", regimeProxy);
 app.get("/api/regime/:symbol", regimeProxy);
 
 // ===========================================
-// PROXY → SCORING ENGINE API (port 8090)
-// CRITICAL: Must be BEFORE /api/* catch-all routes!
+// MANUAL FORWARDING → SCORING ENGINE API (port 8090)
+// Using fetch() for reliable query parameter forwarding
 // ===========================================
 
-const scoringProxy = createProxyMiddleware({
-  target: "http://localhost:8090",
-  changeOrigin: true,
-  timeout: 30000,
-  proxyTimeout: 30000,
-  // Preserve query string explicitly
-  router: (req) => {
-    return "http://localhost:8090";
-  },
-  pathRewrite: (path, req) => {
-    // Return full path with query string
-    return req.url;
-  },
-  onProxyReq: (proxyReq, req, res) => {
-    // Preserve full URL with query string
-    const fullPath = req.url || req.originalUrl;
-    console.log(`[PROXY-SCORING] ${req.method} http://localhost:8080${fullPath} → http://localhost:8090${fullPath}`);
-  },
-  onProxyRes: (proxyRes, req, res) => {
-    console.log(`[PROXY-SCORING] Response: ${proxyRes.statusCode}`);
-  },
-  onError: (err, req, res) => {
-    console.error('[PROXY-SCORING] Error:', err.message);
+app.get("/api/scanner/hotlist", async (req, res) => {
+  try {
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = `http://localhost:8090/api/scanner/hotlist${queryString ? '?' + queryString : ''}`;
+    console.log(`[SCORING-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[SCORING-FORWARD] Response: ${response.status}, count: ${data.count || 0}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[SCORING-FORWARD] Error:', error.message);
     res.status(503).json({ ok: false, error: 'Scoring Engine unavailable' });
   }
 });
 
-app.get("/api/scanner/hotlist", scoringProxy);
-app.get("/api/scoring/stats", scoringProxy);
-app.get("/api/symbol/:symbol/score", scoringProxy);
+app.get("/api/scoring/stats", async (req, res) => {
+  try {
+    const url = `http://localhost:8090/api/scoring/stats`;
+    console.log(`[SCORING-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[SCORING-FORWARD] Response: ${response.status}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[SCORING-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'Scoring Engine unavailable' });
+  }
+});
+
+app.get("/api/symbol/:symbol/score", async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const url = `http://localhost:8090/api/symbol/${symbol}/score`;
+    console.log(`[SCORING-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[SCORING-FORWARD] Response: ${response.status}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[SCORING-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'Scoring Engine unavailable' });
+  }
+});
 
 // ---------------------------------------
 // DB INIT (ATTACH DB TO REQ)
