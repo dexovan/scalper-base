@@ -343,6 +343,12 @@ function get24hDataStatus() {
 }
 
 // ============================================================
+// FEATURE ENGINE INSTANCE (shared across index.js and API)
+// ============================================================
+export const featureEngine = new FeatureEngine();
+console.log("🔧 Feature Engine instance created (module-level)");
+
+// ============================================================
 // START ENGINE API SERVER
 // ============================================================
 export function startMonitorApiServer(port = 8090) {
@@ -1151,10 +1157,6 @@ export function startMonitorApiServer(port = 8090) {
   // FAZA 4: FEATURE ENGINE API ROUTES
   // ============================================================
 
-  // Create Feature Engine instance (will be initialized in app.listen callback)
-  const featureEngine = new FeatureEngine();
-  console.log("🔧 Feature Engine instance created");
-
   // Register WebSocket event callback for adaptive intervals
   OrderbookManager.setWebSocketEventCallback(() => {
     featureEngine.trackWebSocketEvent();
@@ -1373,6 +1375,5 @@ export {
   start24hDataRefresh,
   stop24hDataRefresh,
   get24hDataStatus,
-  fetch24hData,
-  featureEngine // Export featureEngine for RegimeEngine
+  fetch24hData
 };
