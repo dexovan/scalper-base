@@ -43,6 +43,7 @@ function ensureSymbolState(symbol) {
     state.symbols[symbol] = {
       symbol,
       lastUpdateAt: null,
+      lastTickAt: null, // Activity heartbeat - updated on every WS event
       priceInfo: {
         lastPrice: null,
         bestBid: null,
@@ -95,6 +96,7 @@ function onOrderbookEvent(symbol, eventData) {
     // Update timestamps
     s.orderbook.lastUpdateAt = now;
     s.lastUpdateAt = now;
+    s.lastTickAt = Date.now(); // Activity heartbeat
 
     // DISABLED: Orderbook snapshots fill disk too fast (400k+ files in hours)
     // Async store to disk (ne čekamo)
@@ -261,8 +263,9 @@ function onTradeEvent(symbol, eventData) {
     // Update candles from trade
     updateCandlesFromTrade(s, eventData);
 
-    // Update timestamp
+    // Update timestamps
     s.lastUpdateAt = now;
+    s.lastTickAt = Date.now(); // Activity heartbeat
 
     // DISABLED: Trades stream fills disk too fast (1.6GB + 299 files in 4 hours!)
     // Async store to disk
@@ -543,6 +546,47 @@ function stopStatsPersistence() {
 }
 
 // ================================================================
+// SYMBOL HEALTH CHECK (for Regime Engine)
+// ================================================================
+
+/**
+ * Proverava zdravlje simbola na osnovu activity heartbeat-a
+ * @param {string} symbol
+ * @returns {Object} { isActive, staleness, lastTickAt, timeSinceLastTick }
+ */
+function getSymbolHealth(symbol) {
+  const s = state.symbols[symbol];
+  if (!s || !s.lastTickAt) {
+    return {
+      isActive: false,
+      staleness: "UNKNOWN",
+      lastTickAt: null,
+      timeSinceLastTick: null
+    };
+  }
+
+  const now = Date.now();
+  const timeSinceLastTick = now - s.lastTickAt;
+
+  let staleness = "FRESH";
+  let isActive = true;
+
+  if (timeSinceLastTick > 5000) {
+    staleness = "STALE";
+    isActive = false;
+  } else if (timeSinceLastTick > 2000) {
+    staleness = "DEGRADED";
+  }
+
+  return {
+    isActive,
+    staleness,
+    lastTickAt: s.lastTickAt,
+    timeSinceLastTick
+  };
+}
+
+// ================================================================
 // EXPORTS
 // ================================================================
 
@@ -555,6 +599,7 @@ export {
   getRecentTrades,
   getCandles,
   getActiveSymbols,
+  getSymbolHealth,
   getStats,
   startStatsPersistence,
   stopStatsPersistence,
@@ -570,6 +615,7 @@ export default {
   getRecentTrades,
   getCandles,
   getActiveSymbols,
+  getSymbolHealth,
   getStats,
   startStatsPersistence,
   stopStatsPersistence,

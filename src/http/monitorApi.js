@@ -900,6 +900,29 @@ export function startMonitorApiServer(port = 8090) {
     }
   });
 
+  // GET /api/symbol/:symbol/health - Symbol activity health check
+  app.get("/api/symbol/:symbol/health", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const health = OrderbookManager.getSymbolHealth(symbol);
+
+      return res.json({
+        ok: true,
+        symbol,
+        health,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [API] Error fetching health for ${req.params.symbol}:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        symbol: req.params.symbol,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // GET /api/microstructure/symbols - List of active symbols with microstructure
   app.get("/api/microstructure/symbols", async (req, res) => {
     try {
