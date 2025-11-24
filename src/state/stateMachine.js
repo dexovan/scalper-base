@@ -101,6 +101,11 @@ export function shutdownStateMachine() {
 export function handleEvent(event) {
   const { symbol, type, timestamp } = event;
 
+  // Debug: log every event (temporary)
+  if (Math.random() < 0.01) { // Log 1% of events to avoid spam
+    console.log(`[StateMachine] handleEvent: ${symbol} - ${type}`);
+  }
+
   // Get or create context
   let context = stateMachineState.perSymbol.get(symbol);
   if (!context) {
