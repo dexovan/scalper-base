@@ -209,10 +209,7 @@ app.use(
     target: "http://localhost:8090",
     changeOrigin: true,
     timeout: 30000,
-    proxyTimeout: 30000,
-    pathRewrite: {
-      // Don't rewrite - Engine expects /api/symbol/* paths
-    }
+    proxyTimeout: 30000
   })
 );
 
