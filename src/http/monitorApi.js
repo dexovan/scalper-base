@@ -1548,6 +1548,168 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // RISK ENGINE API
+  // ============================================================
+
+  // GET /api/risk/overview - Get complete risk snapshot
+  app.get("/api/risk/overview", async (req, res) => {
+    try {
+      if (!global.riskEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Risk Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const snapshot = global.riskEngine.getRiskSnapshot();
+
+      res.json({
+        ok: true,
+        data: snapshot,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [RISK/OVERVIEW] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/risk/limits - Get risk configuration limits
+  app.get("/api/risk/limits", async (req, res) => {
+    try {
+      if (!global.riskEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Risk Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const config = global.riskEngine.getRiskConfig();
+
+      res.json({
+        ok: true,
+        limits: config,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [RISK/LIMITS] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/positions - Get all active positions
+  app.get("/api/positions", async (req, res) => {
+    try {
+      if (!global.riskEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Risk Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const positionTracker = await import('../risk/positionTracker.js');
+      const positions = positionTracker.getAllPositions(true); // active only
+      const summary = positionTracker.getPortfolioSummary();
+
+      res.json({
+        ok: true,
+        positions,
+        summary,
+        count: positions.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [POSITIONS] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/positions/:symbol - Get positions for specific symbol
+  app.get("/api/positions/:symbol", async (req, res) => {
+    try {
+      if (!global.riskEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Risk Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const symbol = req.params.symbol.toUpperCase();
+      const positionTracker = await import('../risk/positionTracker.js');
+
+      const longPos = positionTracker.getPosition(symbol, "LONG");
+      const shortPos = positionTracker.getPosition(symbol, "SHORT");
+
+      const positions = [];
+      if (longPos && longPos.isOpen) positions.push(longPos);
+      if (shortPos && shortPos.isOpen) positions.push(shortPos);
+
+      res.json({
+        ok: true,
+        symbol,
+        positions,
+        count: positions.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [POSITIONS/${req.params.symbol}] Error:`, error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/trades_log/:date - Get daily trade history
+  app.get("/api/trades_log/:date", async (req, res) => {
+    try {
+      if (!global.riskEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Risk Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const dateKey = req.params.date; // YYYY-MM-DD format
+      const dailyStats = global.riskEngine.getDailyStats();
+
+      // For now, return daily stats (full trade log will be in future phases)
+      res.json({
+        ok: true,
+        date: dateKey,
+        stats: dailyStats,
+        trades: [], // TODO: Implement trade log persistence
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [TRADES_LOG/${req.params.date}] Error:`, error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // START SERVER
   // ============================================================
   app.listen(port, "0.0.0.0", async () => {

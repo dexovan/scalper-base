@@ -271,6 +271,42 @@ async function startEngine() {
     console.log(`   Event logging: enabled`);
     console.log("=============================");
 
+    // =====================================================
+    // PHASE 8: RISK ENGINE INITIALIZATION
+    // =====================================================
+    console.log("=============================");
+    console.log("💰 RISK: Starting Risk Engine...");
+    console.log("=============================");
+
+    console.log("💰 [RISK] Importing Risk Engine...");
+    const riskEngine = await import('./risk/riskEngine.js');
+    console.log("💰 [RISK] Risk Engine imported");
+
+    // Initialize with SIM mode (10K starting equity)
+    const riskConfig = {
+        maxRiskPerTradePct: 1.0,
+        maxPortfolioHeatPct: 6.0,
+        maxDailyLossPct: 5.0,
+        maxOpenPositions: 5
+    };
+
+    console.log("💰 [RISK] Calling initRiskEngine()...");
+    riskEngine.initRiskEngine(riskConfig, "SIM", 10000);
+    console.log("💰 [RISK] initRiskEngine() completed");
+
+    // Store in global for API access
+    global.riskEngine = riskEngine;
+    console.log("💰 [RISK] Stored in global");
+
+    const riskSnapshot = riskEngine.getRiskSnapshot();
+    console.log("💰 [RISK] Risk Engine started successfully:");
+    console.log(`   Mode: SIM (Simulated)`);
+    console.log(`   Starting equity: $${riskSnapshot.account.equityTotal.toFixed(2)}`);
+    console.log(`   Max risk per trade: ${riskConfig.maxRiskPerTradePct}%`);
+    console.log(`   Max portfolio heat: ${riskConfig.maxPortfolioHeatPct}%`);
+    console.log(`   Max daily loss: ${riskConfig.maxDailyLossPct}%`);
+    console.log("=============================");
+
     metrics.heartbeat();
 }
 

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Risk Monitor</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding: 20px;
+      background: rgba(30, 41, 59, 0.8);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-info {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(51, 65, 85, 0.6);
+      color: #cbd5e1;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .back-link:hover {
+      background: rgba(71, 85, 105, 0.8);
+      transform: translateX(-2px);
+    }
+
+    /* Global Risk Panel */
+    .risk-panel {
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .risk-panel h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 10px;
+      padding: 20px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      transition: transform 0.2s;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(148, 163, 184, 0.2);
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 4px;
+    }
+
+    .stat-value.positive { color: #22c55e; }
+    .stat-value.negative { color: #ef4444; }
+    .stat-value.warning { color: #f59e0b; }
+
+    .stat-subtext {
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    /* Risk Flags */
+    .flags-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .flag-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .flag-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .flag-indicator.green { background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.6); }
+    .flag-indicator.red { background: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+    .flag-indicator.yellow { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+
+    .flag-label {
+      font-size: 13px;
+      color: #cbd5e1;
+      flex: 1;
+    }
+
+    .flag-status {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .flag-status.ok { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+    .flag-status.blocked { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .flag-status.warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+
+    /* Positions Table */
+    .positions-section {
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      border-radius: 12px;
+      padding: 24px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .positions-section h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .positions-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .positions-table th {
+      background: rgba(30, 41, 59, 0.8);
+      padding: 14px 16px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .positions-table td {
+      padding: 14px 16px;
+      font-size: 14px;
+      color: #e2e8f0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.05);
+    }
+
+    .positions-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .positions-table tr:hover {
+      background: rgba(51, 65, 85, 0.3);
+    }
+
+    .side-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .side-badge.long {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+    }
+
+    .side-badge.short {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #64748b;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .error-message {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+      padding: 16px;
+      border-radius: 8px;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>💰 Risk Monitor</h1>
+      <div class="header-info">
+        <span id="lastUpdate">Loading...</span>
+        <a href="/dashboard" class="back-link">← Dashboard</a>
+      </div>
+    </div>
+
+    <!-- Global Risk Panel -->
+    <div class="risk-panel">
+      <h2>📊 Global Risk Metrics</h2>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Equity</div>
+          <div class="stat-value" id="equity">$0.00</div>
+          <div class="stat-subtext">Available: <span id="balance">$0.00</span></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Unrealized PnL</div>
+          <div class="stat-value" id="unrealizedPnl">$0.00</div>
+          <div class="stat-subtext">Open positions: <span id="positionCount">0</span></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Portfolio Heat</div>
+          <div class="stat-value" id="portfolioHeat">0.0%</div>
+          <div class="stat-subtext">Max: <span id="maxHeat">6.0%</span></div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Daily PnL</div>
+          <div class="stat-value" id="dailyPnl">$0.00</div>
+          <div class="stat-subtext">Limit: <span id="dailyLimit">-5.0%</span></div>
+        </div>
+      </div>
+
+      <h2 style="margin-top: 24px;">🚦 Risk Flags</h2>
+      <div class="flags-grid" id="flagsContainer">
+        <div class="loading pulse">Loading risk flags...</div>
+      </div>
+    </div>
+
+    <!-- Active Positions -->
+    <div class="positions-section">
+      <h2>📈 Active Positions</h2>
+      <div id="positionsContainer">
+        <div class="loading pulse">Loading positions...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Auto-refresh every 5 seconds
+    const REFRESH_INTERVAL = 5000;
+    let refreshTimer;
+
+    async function fetchRiskData() {
+      try {
+        const response = await fetch('/api/engine/risk/overview');
+        const result = await response.json();
+
+        if (!result.ok) {
+          throw new Error(result.error || 'Failed to fetch risk data');
+        }
+
+        return result.data;
+      } catch (error) {
+        console.error('Error fetching risk data:', error);
+        throw error;
+      }
+    }
+
+    async function fetchPositions() {
+      try {
+        const response = await fetch('/api/engine/positions');
+        const result = await response.json();
+
+        if (!result.ok) {
+          throw new Error(result.error || 'Failed to fetch positions');
+        }
+
+        return result;
+      } catch (error) {
+        console.error('Error fetching positions:', error);
+        throw error;
+      }
+    }
+
+    function updateRiskMetrics(data) {
+      const { account, riskFlags, dailyStats } = data;
+
+      // Update stat cards
+      document.getElementById('equity').textContent = '$' + (account?.equityTotal || 0).toFixed(2);
+      document.getElementById('equity').className = 'stat-value';
+
+      document.getElementById('balance').textContent = '$' + (account?.balanceAvailable || 0).toFixed(2);
+
+      const unrealizedPnl = account?.openPnlUnrealized || 0;
+      const unrealizedEl = document.getElementById('unrealizedPnl');
+      unrealizedEl.textContent = '$' + unrealizedPnl.toFixed(2);
+      unrealizedEl.className = 'stat-value ' + (unrealizedPnl >= 0 ? 'positive' : 'negative');
+
+      const heatPct = riskFlags?.portfolioHeatPct || 0;
+      const heatEl = document.getElementById('portfolioHeat');
+      heatEl.textContent = heatPct.toFixed(1) + '%';
+      heatEl.className = 'stat-value ' + (heatPct > 5 ? 'warning' : heatPct > 4 ? 'warning' : '');
+
+      const dailyPnl = dailyStats?.dayRealizedPnl || 0;
+      const dailyEl = document.getElementById('dailyPnl');
+      dailyEl.textContent = '$' + dailyPnl.toFixed(2);
+      dailyEl.className = 'stat-value ' + (dailyPnl >= 0 ? 'positive' : 'negative');
+
+      // Update risk flags
+      const flagsHtml = `
+        <div class="flag-item">
+          <div class="flag-indicator ${riskFlags?.riskAllowNewPositions ? 'green' : 'red'}"></div>
+          <div class="flag-label">New Positions</div>
+          <div class="flag-status ${riskFlags?.riskAllowNewPositions ? 'ok' : 'blocked'}">
+            ${riskFlags?.riskAllowNewPositions ? 'ALLOWED' : 'BLOCKED'}
+          </div>
+        </div>
+        <div class="flag-item">
+          <div class="flag-indicator ${riskFlags?.riskAllowNewLong ? 'green' : 'red'}"></div>
+          <div class="flag-label">New Long Positions</div>
+          <div class="flag-status ${riskFlags?.riskAllowNewLong ? 'ok' : 'blocked'}">
+            ${riskFlags?.riskAllowNewLong ? 'ALLOWED' : 'BLOCKED'}
+          </div>
+        </div>
+        <div class="flag-item">
+          <div class="flag-indicator ${riskFlags?.riskAllowNewShort ? 'green' : 'red'}"></div>
+          <div class="flag-label">New Short Positions</div>
+          <div class="flag-status ${riskFlags?.riskAllowNewShort ? 'ok' : 'blocked'}">
+            ${riskFlags?.riskAllowNewShort ? 'ALLOWED' : 'BLOCKED'}
+          </div>
+        </div>
+        <div class="flag-item">
+          <div class="flag-indicator ${riskFlags?.dailyLossLimitHit ? 'red' : riskFlags?.nearDailyLossLimit ? 'yellow' : 'green'}"></div>
+          <div class="flag-label">Daily Loss Limit</div>
+          <div class="flag-status ${riskFlags?.dailyLossLimitHit ? 'blocked' : riskFlags?.nearDailyLossLimit ? 'warning' : 'ok'}">
+            ${riskFlags?.dailyLossLimitHit ? 'HIT' : riskFlags?.nearDailyLossLimit ? 'NEAR' : 'OK'}
+          </div>
+        </div>
+      `;
+      document.getElementById('flagsContainer').innerHTML = flagsHtml;
+    }
+
+    function updatePositionsTable(result) {
+      const positions = result.positions || [];
+      const summary = result.summary || {};
+
+      document.getElementById('positionCount').textContent = positions.length;
+
+      if (positions.length === 0) {
+        document.getElementById('positionsContainer').innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <div>No active positions</div>
+          </div>
+        `;
+        return;
+      }
+
+      const rows = positions.map(pos => {
+        const duration = pos.enteredAt ? Math.floor((Date.now() - new Date(pos.enteredAt).getTime()) / 1000) : 0;
+        const durationStr = duration > 3600
+          ? `${Math.floor(duration / 3600)}h ${Math.floor((duration % 3600) / 60)}m`
+          : `${Math.floor(duration / 60)}m ${duration % 60}s`;
+
+        return `
+          <tr>
+            <td><strong>${pos.symbol}</strong></td>
+            <td><span class="side-badge ${pos.side.toLowerCase()}">${pos.side}</span></td>
+            <td>$${(pos.entryPrice || 0).toFixed(2)}</td>
+            <td>${(pos.qty || 0).toFixed(4)}</td>
+            <td>${pos.leverage || 1}x</td>
+            <td class="${(pos.unrealizedPnl || 0) >= 0 ? 'positive' : 'negative'}">
+              $${(pos.unrealizedPnl || 0).toFixed(2)}
+            </td>
+            <td class="positive">$${(pos.MFE || 0).toFixed(2)}</td>
+            <td class="negative">$${(pos.MAE || 0).toFixed(2)}</td>
+            <td>${durationStr}</td>
+          </tr>
+        `;
+      }).join('');
+
+      document.getElementById('positionsContainer').innerHTML = `
+        <table class="positions-table">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Side</th>
+              <th>Entry</th>
+              <th>Quantity</th>
+              <th>Leverage</th>
+              <th>Unrealized PnL</th>
+              <th>MFE</th>
+              <th>MAE</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function refreshData() {
+      try {
+        const [riskData, positionsData] = await Promise.all([
+          fetchRiskData(),
+          fetchPositions()
+        ]);
+
+        updateRiskMetrics(riskData);
+        updatePositionsTable(positionsData);
+
+        // Update timestamp
+        const now = new Date();
+        document.getElementById('lastUpdate').textContent =
+          `Last update: ${now.toLocaleTimeString()}`;
+
+      } catch (error) {
+        console.error('Refresh failed:', error);
+        document.getElementById('flagsContainer').innerHTML = `
+          <div class="error-message">⚠️ ${error.message}</div>
+        `;
+      }
+    }
+
+    // Initial load
+    refreshData();
+
+    // Auto-refresh
+    refreshTimer = setInterval(refreshData, REFRESH_INTERVAL);
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (refreshTimer) clearInterval(refreshTimer);
+    });
+  </script>
+</body>
+</html>

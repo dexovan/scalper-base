@@ -314,6 +314,87 @@ app.get("/api/engine/symbol/:symbol/events", async (req, res) => {
   }
 });
 
+// ===========================================
+// RISK ENGINE API FORWARDING (port 8090) - PHASE 8
+// ===========================================
+
+app.get("/api/engine/risk/overview", async (req, res) => {
+  try {
+    const url = `http://localhost:8090/api/risk/overview`;
+    console.log(`[RISK-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[RISK-FORWARD] Response: ${response.status}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[RISK-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'Risk Engine unavailable' });
+  }
+});
+
+app.get("/api/engine/risk/limits", async (req, res) => {
+  try {
+    const url = `http://localhost:8090/api/risk/limits`;
+    console.log(`[RISK-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[RISK-FORWARD] Response: ${response.status}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[RISK-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'Risk Engine unavailable' });
+  }
+});
+
+app.get("/api/engine/positions", async (req, res) => {
+  try {
+    const url = `http://localhost:8090/api/positions`;
+    console.log(`[RISK-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[RISK-FORWARD] Response: ${response.status}, positions: ${data.count || 0}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[RISK-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'Risk Engine unavailable' });
+  }
+});
+
+app.get("/api/engine/positions/:symbol", async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const url = `http://localhost:8090/api/positions/${symbol}`;
+    console.log(`[RISK-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[RISK-FORWARD] Response: ${response.status}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[RISK-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'Risk Engine unavailable' });
+  }
+});
+
 app.get("/api/symbol/:symbol/score", async (req, res) => {
   try {
     const { symbol } = req.params;
@@ -548,7 +629,16 @@ app.get("/states", requireAuth, (req, res) => {
   });
 });
 
-// 🔟 FEATURE ENGINE PAGE (FAZA 4)
+// 🔟 RISK MONITOR PAGE (FAZA 8)
+app.get("/risk", requireAuth, (req, res) => {
+  res.render("risk", {
+    title: "Risk Monitor",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
+// 1️⃣1️⃣ FEATURE ENGINE PAGE (FAZA 4)
 app.get("/features", requireAuth, (req, res) => {
   res.render("features", {
     title: "Feature Engine",
