@@ -295,13 +295,10 @@ app.use(
 app.use(
   "/api/regime",
   createProxyMiddleware({
-    target: "http://localhost:8090/api/regime",
+    target: "http://localhost:8090",
     changeOrigin: true,
     timeout: 30000,
-    proxyTimeout: 30000,
-    pathRewrite: {
-      "^/api/regime": ""
-    }
+    proxyTimeout: 30000
   })
 );
 
