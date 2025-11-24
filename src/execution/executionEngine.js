@@ -481,7 +481,7 @@ function getPosition(symbol) {
 // =======================================
 async function saveExecutionSnapshot() {
   try {
-    const snapshotPath = path.join(paths.data, "system", "execution_snapshot.json");
+    const snapshotPath = path.join(paths.DATA_DIR, "system", "execution_snapshot.json");
 
     const snapshot = {
       ...getExecutionState(),
