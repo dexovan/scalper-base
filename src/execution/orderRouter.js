@@ -215,6 +215,11 @@ async function routeToLive(orderRequest, marketSnapshot) {
  */
 async function logOrder(executionOrder) {
   try {
+    console.log("🔍 [ORDER ROUTER] logOrder paths debug:", {
+      pathsExists: !!paths,
+      DATA_DIR: paths?.DATA_DIR,
+      typeofPaths: typeof paths
+    });
     const date = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
     const logDir = path.join(paths.DATA_DIR, "orders");
     const logFile = path.join(logDir, `day-${date}.json`);
@@ -238,6 +243,12 @@ async function logOrder(executionOrder) {
  */
 export async function readOrderLog(date) {
   try {
+    console.log("🔍 [ORDER ROUTER] readOrderLog paths debug:", {
+      pathsExists: !!paths,
+      DATA_DIR: paths?.DATA_DIR,
+      typeofPaths: typeof paths,
+      pathsKeys: paths ? Object.keys(paths) : 'undefined'
+    });
     const logFile = path.join(paths.DATA_DIR, "orders", `day-${date}.json`);
     const content = await fs.readFile(logFile, "utf8");
 
