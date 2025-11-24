@@ -210,6 +210,10 @@ async function fetchStates() {
     stateStats = data.summary || {};
 
     console.log(`Loaded ${allSymbols.length} symbols from State Machine`);
+    if (allSymbols.length > 0) {
+      console.log('First symbol sample:', allSymbols[0]);
+      console.log('Symbol property type:', typeof allSymbols[0].symbol, allSymbols[0].symbol);
+    }
 
     updateStats();
     updateStateDistribution();
