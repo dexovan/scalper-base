@@ -397,5 +397,111 @@ router.get("/symbol/:symbol/candles/:timeframe", async (req, res) => {
   }
 });
 
+/* ---------------------------------------------------------
+   STATE MACHINE API ENDPOINTS
+--------------------------------------------------------- */
+
+// GET /api/states/overview - Get overview of all symbols with state
+router.get("/states/overview", (req, res) => {
+  try {
+    const stateMachine = global.stateMachine;
+
+    if (!stateMachine) {
+      return res.status(503).json({
+        ok: false,
+        message: "State Machine not initialized"
+      });
+    }
+
+    const overview = stateMachine.getStatesOverview();
+    const statistics = stateMachine.getStateStatistics();
+
+    res.json({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      summary: statistics,
+      entries: overview
+    });
+  } catch (error) {
+    console.error("[API] Error fetching states overview:", error);
+    res.status(500).json({
+      ok: false,
+      message: "Failed to fetch states overview",
+      error: error.message
+    });
+  }
+});
+
+// GET /api/symbol/:symbol/state - Get detailed state for one symbol
+router.get("/symbol/:symbol/state", (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const stateMachine = global.stateMachine;
+
+    if (!stateMachine) {
+      return res.status(503).json({
+        ok: false,
+        message: "State Machine not initialized"
+      });
+    }
+
+    const symbolState = stateMachine.getSymbolState(symbol);
+
+    if (!symbolState) {
+      return res.status(404).json({
+        ok: false,
+        message: `Symbol ${symbol} not found in State Machine`
+      });
+    }
+
+    res.json({
+      ok: true,
+      symbol,
+      timestamp: new Date().toISOString(),
+      state: symbolState
+    });
+  } catch (error) {
+    console.error(`[API] Error fetching state for ${req.params.symbol}:`, error);
+    res.status(500).json({
+      ok: false,
+      message: "Failed to fetch symbol state",
+      error: error.message
+    });
+  }
+});
+
+// GET /api/symbol/:symbol/events?limit=50 - Get event log for symbol
+router.get("/symbol/:symbol/events", (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+    const stateMachine = global.stateMachine;
+
+    if (!stateMachine) {
+      return res.status(503).json({
+        ok: false,
+        message: "State Machine not initialized"
+      });
+    }
+
+    const events = stateMachine.readEventLog(symbol, limit);
+
+    res.json({
+      ok: true,
+      symbol,
+      limit,
+      timestamp: new Date().toISOString(),
+      events
+    });
+  } catch (error) {
+    console.error(`[API] Error fetching events for ${req.params.symbol}:`, error);
+    res.status(500).json({
+      ok: false,
+      message: "Failed to fetch symbol events",
+      error: error.message
+    });
+  }
+});
+
 export default router;
 
