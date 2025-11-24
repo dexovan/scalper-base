@@ -3,6 +3,9 @@
  * AI Scalper Engine – Phase 2 (Universe + WS Dynamic Subscription)
  */
 
+console.log("🔥🔥🔥 [INDEX.JS] FILE LOADED - TOP OF FILE 🔥🔥🔥");
+console.log("🔥🔥🔥 [INDEX.JS] TIMESTAMP:", new Date().toISOString(), "🔥🔥🔥");
+
 import {
   initUniverse,
   refreshUniversePeriodically,
@@ -42,6 +45,7 @@ import * as OrderbookManager from "./microstructure/OrderbookManager.js";
 import { logEngineStartup } from "./regime/regimeLogger.js";
 
 async function startEngine() {
+  console.log("🔥🔥🔥 [INDEX.JS] startEngine() CALLED 🔥🔥🔥");
   console.log("====================================================");
   console.log("🚀 AI Scalper Engine – Phase 2 Booting...");
   console.log("📁 KORAK 2: File Storage Implementation Active!");
