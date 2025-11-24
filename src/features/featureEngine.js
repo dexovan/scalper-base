@@ -111,29 +111,39 @@ class FeatureEngine {
      * Initialize the Feature Engine
      */
     async init() {
+        console.log('🔧 [FEATURE ENGINE] init() called');
+
         try {
+            console.log('🔧 [FEATURE ENGINE] Initializing Feature Engine...');
             this.logger.info('Initializing Feature Engine...');
 
             // Ensure data directory exists
             await this.ensureDataDirectory();
+            console.log('🔧 [FEATURE ENGINE] Data directory ensured');
 
             // Load universe symbols
             const symbols = await getUniverseSymbols(true); // Filter active only
+            console.log(`🔧 [FEATURE ENGINE] Loaded ${symbols.length} active symbols from universe`);
             this.logger.info(`Loaded ${symbols.length} active symbols from universe (filtered)`);
 
             // Initialize feature states for all symbols
+            let initCount = 0;
             for (const symbol of symbols) {
                 this.featureStates.set(symbol, this.createEmptyFeatureState(symbol));
+                initCount++;
             }
+            console.log(`✅ [FEATURE ENGINE] Initialized ${initCount} feature states`);
 
             // Start periodic save
             // DISABLED: Disk persistence fills disk too fast (500+ symbols × 10KB each = 5MB every 10s = 1.8GB/hour!)
             // this.startPeriodicSave();
 
             this.isInitialized = true;
+            console.log('✅ [FEATURE ENGINE] init() complete - isInitialized =', this.isInitialized);
             this.logger.info('Feature Engine initialized successfully');
 
         } catch (error) {
+            console.error('❌ [FEATURE ENGINE] Init failed:', error);
             this.logger.error('Failed to initialize Feature Engine:', error);
             throw error;
         }
@@ -143,47 +153,62 @@ class FeatureEngine {
      * Start the feature engine (begin processing)
      */
     async start() {
+        console.log('🔧 [FEATURE ENGINE] start() called');
+
         if (!this.isInitialized) {
             throw new Error('Feature Engine must be initialized before starting');
         }
 
         if (this.isRunning) {
+            console.log('⚠️ [FEATURE ENGINE] Already running, skipping start()');
             this.logger.warn('Feature Engine is already running');
             return;
         }
 
+        console.log('🔧 [FEATURE ENGINE] Starting Feature Engine processing...');
         this.logger.info('Starting Feature Engine processing...');
         this.isRunning = true;
 
         // Start update loops ONLY for symbols with OrderbookManager data
         const allSymbols = Array.from(this.featureStates.keys());
+        console.log(`🔧 [FEATURE ENGINE] Loaded ${allSymbols.length} symbols from universe`);
 
         // Wait briefly for OrderbookManager to accumulate initial data
+        console.log('🔧 [FEATURE ENGINE] Waiting 3s for OrderbookManager data...');
         await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log('🔧 [FEATURE ENGINE] Wait complete, checking active symbols...');
 
         const { getActiveSymbols } = await import('../microstructure/OrderbookManager.js');
         const activeSymbols = getActiveSymbols();
 
+        console.log(`🔧 [FEATURE ENGINE] Active symbols with data: ${activeSymbols.length}`);
         this.logger.info(`[DIAGNOSTIC] Symbols in universe: ${allSymbols.length}, Symbols with orderbook data: ${activeSymbols.length}`);
 
         if (activeSymbols.length === 0) {
+            console.log('⚠️ [FEATURE ENGINE] No symbols yet, scheduling retry in 5s');
             this.logger.warn('No symbols with orderbook data yet - will retry in 5 seconds');
             setTimeout(() => this.startActiveSymbolUpdates(), 5000);
         } else {
+            console.log(`✅ [FEATURE ENGINE] Starting updates for ${activeSymbols.length} symbols: ${activeSymbols.slice(0, 5).join(', ')}...`);
             this.logger.info(`[DIAGNOSTIC] Starting updates for symbols: ${activeSymbols.slice(0, 10).join(', ')}...`);
 
+            let startedCount = 0;
             for (const symbol of activeSymbols) {
                 // Only start updates for symbols that are in our universe
                 if (this.featureStates.has(symbol)) {
                     this.startSymbolUpdates(symbol);
+                    startedCount++;
                 }
             }
 
+            console.log(`✅ [FEATURE ENGINE] Started ${startedCount} symbol update loops`);
             this.logger.info(`Feature Engine started - processing ${activeSymbols.length} active symbols (out of ${allSymbols.length} in universe)`);
         }
 
         // Start performance monitoring
+        console.log('🔧 [FEATURE ENGINE] Starting performance monitoring...');
         this.startPerformanceMonitoring();
+        console.log('✅ [FEATURE ENGINE] Feature Engine fully started');
     }
 
     /**
