@@ -206,12 +206,12 @@ app.use(
 app.use(
   "/api/symbol",
   createProxyMiddleware({
-    target: "http://localhost:8090/api/symbol",
+    target: "http://localhost:8090",
     changeOrigin: true,
     timeout: 30000,
     proxyTimeout: 30000,
     pathRewrite: {
-      "^/api/symbol": ""
+      // Don't rewrite - Engine expects /api/symbol/* paths
     }
   })
 );
