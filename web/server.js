@@ -276,7 +276,25 @@ app.use(
 
 // ===========================================
 // PROXY → REGIME ENGINE API (port 8090)
+// ORDER MATTERS: Specific routes BEFORE parameterized routes!
 // ===========================================
+
+// Generic regime endpoints (e.g., /api/regime/overview, /api/regime/global)
+app.use(
+  "/api/regime",
+  createProxyMiddleware({
+    target: "http://localhost:8090",
+    changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
+    onProxyReq: (proxyReq, req, res) => {
+      console.log(`[PROXY] ${req.method} ${req.path} → http://localhost:8090${req.path}`);
+    }
+  })
+);
+
+// Symbol-specific regime endpoint (e.g., /api/regime/BTCUSDT)
+// This must come AFTER /api/regime to avoid catching /overview etc.
 app.use(
   "/api/regime/:symbol",
   createProxyMiddleware({
@@ -289,16 +307,6 @@ app.use(
       const symbol = req.params.symbol;
       return `/api/symbol/${symbol}/regime`;
     }
-  })
-);
-
-app.use(
-  "/api/regime",
-  createProxyMiddleware({
-    target: "http://localhost:8090",
-    changeOrigin: true,
-    timeout: 30000,
-    proxyTimeout: 30000
   })
 );
 
