@@ -395,6 +395,69 @@ app.get("/api/engine/positions/:symbol", async (req, res) => {
   }
 });
 
+// ===========================================
+// TP/SL ENGINE API FORWARDING (port 8090) - PHASE 9
+// ===========================================
+
+app.get("/api/engine/tpsl/overview", async (req, res) => {
+  try {
+    const url = `http://localhost:8090/api/tpsl/overview`;
+    console.log(`[TPSL-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[TPSL-FORWARD] Response: ${response.status}, count: ${data.count || 0}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[TPSL-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'TP/SL Engine unavailable' });
+  }
+});
+
+app.get("/api/engine/tpsl/:symbol", async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = `http://localhost:8090/api/tpsl/${symbol}${queryString ? '?' + queryString : ''}`;
+    console.log(`[TPSL-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[TPSL-FORWARD] Response: ${response.status}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[TPSL-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'TP/SL Engine unavailable' });
+  }
+});
+
+app.get("/api/engine/positions/enhanced", async (req, res) => {
+  try {
+    const url = `http://localhost:8090/api/positions/enhanced`;
+    console.log(`[TPSL-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[TPSL-FORWARD] Response: ${response.status}, positions: ${data.count || 0}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[TPSL-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'TP/SL Engine unavailable' });
+  }
+});
+
 app.get("/api/symbol/:symbol/score", async (req, res) => {
   try {
     const { symbol } = req.params;
@@ -638,7 +701,16 @@ app.get("/risk", requireAuth, (req, res) => {
   });
 });
 
-// 1️⃣1️⃣ FEATURE ENGINE PAGE (FAZA 4)
+// 1️⃣1️⃣ POSITIONS PAGE (FAZA 9) - TP/SL Visualization
+app.get("/positions", requireAuth, (req, res) => {
+  res.render("positions", {
+    title: "Positions & TP/SL",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
+// 1️⃣2️⃣ FEATURE ENGINE PAGE (FAZA 4)
 app.get("/features", requireAuth, (req, res) => {
   res.render("features", {
     title: "Feature Engine",

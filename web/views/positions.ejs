@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Positions & TP/SL</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding: 20px;
+      background: rgba(30, 41, 59, 0.8);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-info {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      font-size: 14px;
+      color: #94a3b8;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(51, 65, 85, 0.6);
+      color: #cbd5e1;
+      text-decoration: none;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .back-link:hover {
+      background: rgba(71, 85, 105, 0.8);
+      transform: translateX(-2px);
+    }
+
+    /* Position Card */
+    .position-card {
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .position-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .position-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .position-symbol {
+      font-size: 24px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+
+    .position-side {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .position-side.long {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .position-side.short {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .position-pnl {
+      text-align: right;
+    }
+
+    .pnl-value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .pnl-value.positive { color: #22c55e; }
+    .pnl-value.negative { color: #ef4444; }
+
+    .pnl-pct {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    /* TP/SL Visualization Bar */
+    .tpsl-visualization {
+      margin: 30px 0;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .tpsl-title {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .price-bar {
+      position: relative;
+      height: 60px;
+      background: linear-gradient(90deg, #ef4444 0%, #f59e0b 30%, #22c55e 60%, #10b981 100%);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .price-marker {
+      position: absolute;
+      top: -8px;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .price-marker-line {
+      width: 2px;
+      height: 76px;
+      background: white;
+    }
+
+    .price-marker-label {
+      background: rgba(15, 23, 42, 0.95);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      margin-bottom: 4px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+
+    .price-marker.current .price-marker-line {
+      width: 3px;
+      background: #3b82f6;
+    }
+
+    .price-marker.current .price-marker-label {
+      background: #3b82f6;
+      color: white;
+      border-color: #60a5fa;
+    }
+
+    .price-levels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .stat-item {
+      background: rgba(15, 23, 42, 0.4);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.1);
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+
+    .stat-value.positive { color: #22c55e; }
+    .stat-value.negative { color: #ef4444; }
+
+    /* Badges */
+    .badges {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge.be-active {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .badge.trailing-active {
+      background: rgba(59, 130, 246, 0.2);
+      color: #3b82f6;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .badge.tp1-hit {
+      background: rgba(245, 158, 11, 0.2);
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .badge.override {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: #64748b;
+    }
+
+    .empty-state-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .error-message {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>📈 Positions & TP/SL Monitor</h1>
+      <div class="header-info">
+        <span id="lastUpdate">Loading...</span>
+        <a href="/dashboard" class="back-link">← Dashboard</a>
+      </div>
+    </div>
+
+    <!-- Positions Container -->
+    <div id="positionsContainer">
+      <div class="loading pulse">Loading positions with TP/SL data...</div>
+    </div>
+  </div>
+
+  <script>
+    const REFRESH_INTERVAL = 3000; // 3 seconds
+    let refreshTimer;
+
+    async function fetchPositionsWithTpsl() {
+      try {
+        const response = await fetch('/api/engine/positions/enhanced');
+        const result = await response.json();
+
+        if (!result.ok) {
+          throw new Error(result.error || 'Failed to fetch positions');
+        }
+
+        return result;
+      } catch (error) {
+        console.error('Error fetching positions:', error);
+        throw error;
+      }
+    }
+
+    function calculatePricePosition(price, minPrice, maxPrice) {
+      const range = maxPrice - minPrice;
+      const position = ((price - minPrice) / range) * 100;
+      return Math.max(0, Math.min(100, position));
+    }
+
+    function renderPosition(position) {
+      const { symbol, side, entryPrice, qty, leverage, unrealizedPnl, unrealizedPnlPct, tpsl } = position;
+
+      if (!tpsl) {
+        return `
+          <div class="position-card">
+            <div class="position-header">
+              <div class="position-title">
+                <span class="position-symbol">${symbol}</span>
+                <span class="position-side ${side.toLowerCase()}">${side}</span>
+              </div>
+              <div class="position-pnl">
+                <div class="pnl-value ${unrealizedPnl >= 0 ? 'positive' : 'negative'}">
+                  $${unrealizedPnl.toFixed(2)}
+                </div>
+                <div class="pnl-pct">${unrealizedPnlPct >= 0 ? '+' : ''}${unrealizedPnlPct.toFixed(2)}%</div>
+              </div>
+            </div>
+            <div style="color: #64748b; font-size: 14px;">⚠️ No TP/SL data available</div>
+          </div>
+        `;
+      }
+
+      const { tp1Price, tp2Price, stopLossPrice, breakEvenPrice, isBreakEvenHit, trailingActive, isTp1Hit, isTp2Hit, pumpOverrideApplied, spoofingOverrideApplied, volatilityOverrideApplied } = tpsl;
+
+      // Get current price from position or use entry as fallback
+      const currentPrice = position.currentPrice || entryPrice;
+
+      // Calculate price range for visualization
+      const allPrices = [entryPrice, tp1Price, tp2Price, stopLossPrice, breakEvenPrice, currentPrice].filter(p => p != null);
+      const minPrice = Math.min(...allPrices) * 0.995;
+      const maxPrice = Math.max(...allPrices) * 1.005;
+
+      // Calculate positions on the bar
+      const slPos = calculatePricePosition(stopLossPrice, minPrice, maxPrice);
+      const entryPos = calculatePricePosition(entryPrice, minPrice, maxPrice);
+      const bePos = calculatePricePosition(breakEvenPrice, minPrice, maxPrice);
+      const tp1Pos = calculatePricePosition(tp1Price, minPrice, maxPrice);
+      const tp2Pos = calculatePricePosition(tp2Price, minPrice, maxPrice);
+      const currentPos = calculatePricePosition(currentPrice, minPrice, maxPrice);
+
+      // MFE and MAE
+      const mfe = position.maxFavorableExcursion || 0;
+      const mae = position.maxAdverseExcursion || 0;
+
+      const badges = [];
+      if (isBreakEvenHit) badges.push('<span class="badge be-active">✓ Break-Even Active</span>');
+      if (trailingActive) badges.push('<span class="badge trailing-active">↗ Trailing Active</span>');
+      if (isTp1Hit) badges.push('<span class="badge tp1-hit">⭐ TP1 Hit</span>');
+      if (isTp2Hit) badges.push('<span class="badge tp1-hit">⭐⭐ TP2 Hit</span>');
+      if (pumpOverrideApplied) badges.push('<span class="badge override">🔥 Pump Override</span>');
+      if (spoofingOverrideApplied) badges.push('<span class="badge override">👻 Spoof Override</span>');
+      if (volatilityOverrideApplied) badges.push('<span class="badge override">⚡ Volatility Override</span>');
+
+      return `
+        <div class="position-card">
+          <div class="position-header">
+            <div class="position-title">
+              <span class="position-symbol">${symbol}</span>
+              <span class="position-side ${side.toLowerCase()}">${side}</span>
+            </div>
+            <div class="position-pnl">
+              <div class="pnl-value ${unrealizedPnl >= 0 ? 'positive' : 'negative'}">
+                $${unrealizedPnl.toFixed(2)}
+              </div>
+              <div class="pnl-pct">${unrealizedPnlPct >= 0 ? '+' : ''}${unrealizedPnlPct.toFixed(2)}%</div>
+            </div>
+          </div>
+
+          <div class="tpsl-visualization">
+            <div class="tpsl-title">Price Levels</div>
+            <div class="price-bar">
+              <div class="price-marker" style="left: ${slPos}%;">
+                <div class="price-marker-label" style="background: #ef4444;">SL: $${stopLossPrice.toFixed(6)}</div>
+                <div class="price-marker-line" style="background: #ef4444;"></div>
+              </div>
+              <div class="price-marker" style="left: ${entryPos}%;">
+                <div class="price-marker-label" style="background: #64748b;">Entry: $${entryPrice.toFixed(6)}</div>
+                <div class="price-marker-line" style="background: #64748b;"></div>
+              </div>
+              ${isBreakEvenHit ? `
+                <div class="price-marker" style="left: ${bePos}%;">
+                  <div class="price-marker-label" style="background: #10b981;">BE: $${breakEvenPrice.toFixed(6)}</div>
+                  <div class="price-marker-line" style="background: #10b981;"></div>
+                </div>
+              ` : ''}
+              <div class="price-marker current" style="left: ${currentPos}%;">
+                <div class="price-marker-label">NOW: $${currentPrice.toFixed(6)}</div>
+                <div class="price-marker-line"></div>
+              </div>
+              <div class="price-marker" style="left: ${tp1Pos}%;">
+                <div class="price-marker-label" style="background: #f59e0b;">TP1: $${tp1Price.toFixed(6)}</div>
+                <div class="price-marker-line" style="background: #f59e0b;"></div>
+              </div>
+              <div class="price-marker" style="left: ${tp2Pos}%;">
+                <div class="price-marker-label" style="background: #22c55e;">TP2: $${tp2Price.toFixed(6)}</div>
+                <div class="price-marker-line" style="background: #22c55e;"></div>
+              </div>
+            </div>
+            <div class="price-levels">
+              <span>SL: -${((1 - stopLossPrice/entryPrice) * 100).toFixed(2)}%</span>
+              <span>TP1: +${((tp1Price/entryPrice - 1) * 100).toFixed(2)}%</span>
+              <span>TP2: +${((tp2Price/entryPrice - 1) * 100).toFixed(2)}%</span>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-label">Entry Price</div>
+              <div class="stat-value">$${entryPrice.toFixed(6)}</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Quantity</div>
+              <div class="stat-value">${qty.toFixed(4)}</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Leverage</div>
+              <div class="stat-value">${leverage}x</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">MFE / MAE</div>
+              <div class="stat-value">
+                <span class="positive">$${mfe.toFixed(2)}</span> /
+                <span class="negative">$${mae.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          ${badges.length > 0 ? `<div class="badges">${badges.join('')}</div>` : ''}
+        </div>
+      `;
+    }
+
+    async function refreshData() {
+      try {
+        const result = await fetchPositionsWithTpsl();
+        const positions = result.positions || [];
+
+        // Update timestamp
+        const now = new Date();
+        document.getElementById('lastUpdate').textContent =
+          `Last update: ${now.toLocaleTimeString()} • ${positions.length} position${positions.length !== 1 ? 's' : ''}`;
+
+        // Render positions
+        const container = document.getElementById('positionsContainer');
+
+        if (positions.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📭</div>
+              <div style="font-size: 18px; margin-bottom: 8px;">No Active Positions</div>
+              <div>Open a position to see TP/SL visualization here</div>
+            </div>
+          `;
+          return;
+        }
+
+        const html = positions.map(renderPosition).join('');
+        container.innerHTML = html;
+
+      } catch (error) {
+        console.error('Refresh failed:', error);
+        document.getElementById('positionsContainer').innerHTML = `
+          <div class="error-message">⚠️ ${error.message}</div>
+        `;
+      }
+    }
+
+    // Initial load
+    refreshData();
+
+    // Auto-refresh
+    refreshTimer = setInterval(refreshData, REFRESH_INTERVAL);
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (refreshTimer) clearInterval(refreshTimer);
+    });
+  </script>
+</body>
+</html>

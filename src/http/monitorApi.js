@@ -1710,6 +1710,122 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // TP/SL ENGINE API
+  // ============================================================
+
+  // GET /api/tpsl/overview - Get all active TP/SL states
+  app.get("/api/tpsl/overview", async (req, res) => {
+    try {
+      if (!global.tpslEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "TP/SL Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const allStates = global.tpslEngine.getAllTpslStates();
+
+      res.json({
+        ok: true,
+        tpslStates: allStates,
+        count: allStates.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [TPSL/OVERVIEW] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/tpsl/:symbol - Get TP/SL state for specific symbol
+  app.get("/api/tpsl/:symbol", async (req, res) => {
+    try {
+      if (!global.tpslEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "TP/SL Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const symbol = req.params.symbol.toUpperCase();
+      const side = req.query.side || "LONG"; // Default to LONG if not specified
+
+      const tpslState = global.tpslEngine.getTpslState(symbol, side);
+
+      if (!tpslState) {
+        return res.status(404).json({
+          ok: false,
+          error: `No TP/SL state for ${symbol} ${side}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      res.json({
+        ok: true,
+        symbol,
+        side,
+        tpslState,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [TPSL/${req.params.symbol}] Error:`, error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/positions/enhanced - Get positions with TP/SL data
+  app.get("/api/positions/enhanced", async (req, res) => {
+    try {
+      if (!global.riskEngine || !global.tpslEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Risk Engine or TP/SL Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const positionTracker = await import('../risk/positionTracker.js');
+      const positions = positionTracker.getAllPositions(true); // active only
+
+      // Enrich positions with TP/SL data
+      const enrichedPositions = positions.map(pos => {
+        const tpslState = global.tpslEngine.getTpslState(pos.symbol, pos.side);
+        return {
+          ...pos,
+          tpsl: tpslState || null
+        };
+      });
+
+      const summary = positionTracker.getPortfolioSummary();
+
+      res.json({
+        ok: true,
+        positions: enrichedPositions,
+        summary,
+        count: enrichedPositions.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [POSITIONS/ENHANCED] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // START SERVER
   // ============================================================
   app.listen(port, "0.0.0.0", async () => {
