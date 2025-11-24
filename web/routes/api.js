@@ -391,12 +391,6 @@ router.get("/symbol/:symbol/candles/:timeframe", async (req, res) => {
     });
   }
 });
-    });
-  }
-});
-
-
-
 
 export default router;
 
