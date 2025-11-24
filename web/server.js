@@ -214,8 +214,11 @@ app.use(
     changeOrigin: true,
     timeout: 30000,
     proxyTimeout: 30000,
+    pathRewrite: {
+      "^/": "/api/symbol/" // Add back the /api/symbol prefix that Express stripped
+    },
     onProxyReq: (proxyReq, req, res) => {
-      console.log(`🔀 [PROXY] Forwarding to Engine: ${req.method} ${req.url}`);
+      console.log(`🔀 [PROXY] Forwarding to Engine: ${proxyReq.path}`);
     },
     onProxyRes: (proxyRes, req, res) => {
       console.log(`🔀 [PROXY] Engine responded: ${proxyRes.statusCode}`);
