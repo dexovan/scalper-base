@@ -217,15 +217,19 @@ export function getStatesOverview() {
       symbol,
       currentState: context.currentState,
       activeSide: context.activeSide,
+      enteredCurrentStateAt: context.enteredCurrentStateAt,
+      lastEventAt: context.lastEventAt,
       regime: context.regimeSnapshot.symbolRegime,
       globalRegime: context.regimeSnapshot.globalRegime,
       lastStateChangeAt: context.lastStateChangeAt,
       lastStateChangeReason: context.lastStateChangeReason,
-      // Include key metrics
-      finalScoreLong: context.signalSnapshot.lastFinalScoreLong,
-      finalScoreShort: context.signalSnapshot.lastFinalScoreShort,
-      signalLong: context.signalSnapshot.lastSignalLong,
-      signalShort: context.signalSnapshot.lastSignalShort
+      // Include key metrics in lastSnapshot format for compatibility
+      lastSnapshot: {
+        finalScoreLong: context.signalSnapshot.lastFinalScoreLong,
+        finalScoreShort: context.signalSnapshot.lastFinalScoreShort,
+        signalLong: context.signalSnapshot.lastSignalLong,
+        signalShort: context.signalSnapshot.lastSignalShort
+      }
     });
   }
 
