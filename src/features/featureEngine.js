@@ -28,7 +28,7 @@ import PumpPreSignalsEngine from './pumpPreSignals.js';
 
 import logger from '../utils/logger.js';
 import { getUniverseSymbols, getSymbolMeta } from '../market/universe_v2.js';
-import { getOrderbookSummary, getRecentTrades, getCandles } from '../microstructure/OrderbookManager.js';
+import { getOrderbookSummary, getRecentTrades, getCandles, touchSymbolActivity } from '../microstructure/OrderbookManager.js';
 
 class FeatureEngine {
     constructor(config = {}) {
@@ -263,6 +263,9 @@ class FeatureEngine {
                 }
                 return false;
             }
+
+            // Mark symbol as active (even if no WebSocket stream)
+            touchSymbolActivity(symbol);
 
             // DEBUG: Log success
             if (!this._updateSuccessCount) this._updateSuccessCount = 0;

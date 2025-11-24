@@ -600,6 +600,34 @@ function getSymbolHealth(symbol) {
 }
 
 // ================================================================
+// SYMBOL ACTIVITY TOUCH (for REST-only symbols)
+// ================================================================
+
+/**
+ * Mark symbol as active even without WebSocket tick
+ * Used by FeatureEngine when processing REST API data
+ */
+function touchSymbolActivity(symbol) {
+  let s = state.symbols[symbol];
+
+  if (!s) {
+    // Initialize minimal state if symbol doesn't exist
+    s = {
+      symbol,
+      lastTickAt: Date.now(),
+      lastUpdateAt: Date.now(),
+      orderbook: { bids: [], asks: [], lastUpdateAt: Date.now() },
+      trades: [],
+      candles: { '1m': [] }
+    };
+    state.symbols[symbol] = s;
+  } else {
+    // Just update tick timestamp
+    s.lastTickAt = Date.now();
+  }
+}
+
+// ================================================================
 // EXPORTS
 // ================================================================
 
@@ -613,6 +641,7 @@ export {
   getCandles,
   getActiveSymbols,
   getSymbolHealth,
+  touchSymbolActivity,
   setWebSocketEventCallback,
   getStats,
   startStatsPersistence,
@@ -630,6 +659,7 @@ export default {
   getCandles,
   getActiveSymbols,
   getSymbolHealth,
+  touchSymbolActivity,
   setWebSocketEventCallback,
   getStats,
   startStatsPersistence,
