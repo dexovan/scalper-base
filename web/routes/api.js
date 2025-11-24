@@ -261,12 +261,59 @@ router.get("/symbol/:symbol/trades", async (req, res) => {
     const { symbol } = req.params;
     const limit = parseInt(req.query.limit) || 50;
 
-    const trades = getRecentTrades(symbol, limit);
+    // Proxy to engine API (port 8090) - Dashboard and Engine are separate processes!
+    const options = {
+      hostname: 'localhost',
+      port: 8090,
+      path: `/api/symbol/${symbol}/trades?limit=${limit}`,
+      method: 'GET',
+      timeout: 5000
+    };
 
-    return res.json({
-      success: true,
-      data: trades || []
+    const proxyReq = http.request(options, (proxyRes) => {
+      let data = '';
+
+      proxyRes.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      proxyRes.on('end', () => {
+        try {
+          const jsonData = JSON.parse(data);
+          res.json({
+            success: jsonData.ok || false,
+            data: jsonData.trades || []
+          });
+        } catch (error) {
+          console.error(`[API] Failed to parse engine trades response:`, error.message);
+          res.status(500).json({
+            success: false,
+            message: "Failed to parse engine response",
+            error: error.message
+          });
+        }
+      });
     });
+
+    proxyReq.on('error', (error) => {
+      console.error(`[API] Engine proxy error for trades:`, error.message);
+      res.status(500).json({
+        success: false,
+        message: "Engine API unavailable",
+        error: error.message
+      });
+    });
+
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy();
+      res.status(504).json({
+        success: false,
+        message: "Engine API timeout"
+      });
+    });
+
+    proxyReq.end();
+
   } catch (error) {
     console.error(`Error fetching trades for ${req.params.symbol}:`, error);
     return res.status(500).json({
