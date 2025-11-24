@@ -307,6 +307,43 @@ async function startEngine() {
     console.log(`   Max daily loss: ${riskConfig.maxDailyLossPct}%`);
     console.log("=============================");
 
+    // =====================================================
+    // PHASE 9: TP/SL ENGINE INITIALIZATION
+    // =====================================================
+    console.log("=============================");
+    console.log("📊 TP/SL: Starting TP/SL Engine...");
+    console.log("=============================");
+
+    console.log("📊 [TP/SL] Importing TP/SL Engine...");
+    const tpslEngine = await import('./execution/tpslEngine.js');
+    console.log("📊 [TP/SL] TP/SL Engine imported");
+
+    // Initialize with default config
+    const tpslConfig = {
+        planner: {
+            tp1DistancePct: 0.50,
+            tp2DistancePct: 1.00,
+            slDistancePct: 0.25,
+            breakEvenBufferPct: 0.05,
+            trailingDistancePct: 0.10
+        }
+    };
+
+    console.log("📊 [TP/SL] Calling initTpslEngine()...");
+    tpslEngine.initTpslEngine(tpslConfig);
+    console.log("📊 [TP/SL] initTpslEngine() completed");
+
+    // Store in global for API access
+    global.tpslEngine = tpslEngine;
+    console.log("📊 [TP/SL] Stored in global");
+
+    console.log("📊 [TP/SL] TP/SL Engine started successfully:");
+    console.log(`   TP1 distance: ${tpslConfig.planner.tp1DistancePct}%`);
+    console.log(`   TP2 distance: ${tpslConfig.planner.tp2DistancePct}%`);
+    console.log(`   SL distance: ${tpslConfig.planner.slDistancePct}%`);
+    console.log(`   Trailing distance: ${tpslConfig.planner.trailingDistancePct}%`);
+    console.log("=============================");
+
     metrics.heartbeat();
 }
 
