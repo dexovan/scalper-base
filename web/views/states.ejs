@@ -349,7 +349,7 @@ function renderTable(symbols) {
         </td>
         <td class="px-4 py-3 text-slate-300 text-xs">${formatDuration(duration)}</td>
         <td class="px-4 py-3 text-slate-300 text-xs">
-          ${item.lastSnapshot?.finalScoreLong !== undefined
+          ${item.lastSnapshot?.finalScoreLong != null && item.lastSnapshot?.finalScoreShort != null
             ? `L:${item.lastSnapshot.finalScoreLong.toFixed(1)} / S:${item.lastSnapshot.finalScoreShort.toFixed(1)}`
             : '-'
           }
