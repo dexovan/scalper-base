@@ -727,7 +727,7 @@ app.get("/positions", requireAuth, (req, res) => {
 });
 
 // 1️⃣2️⃣ EXECUTION PAGE (FAZA 10) - Order Management & Panic Controls
-app.get("/execution", requireAuth, (req, res) => {
+app.get("/execution", (req, res) => {
   res.render("execution", {
     title: "Execution Engine",
     user: req.user?.username || "trader",
