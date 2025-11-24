@@ -22,8 +22,10 @@ export function createDefaultContext(symbol) {
 
     // Current state
     currentState: TradeState.FLAT,
+    enteredCurrentStateAt: now, // When entered current state
     lastStateChangeAt: now,
     lastStateChangeReason: "INIT",
+    lastEventAt: now, // Last event received
     activeSide: null, // "LONG" | "SHORT" | null
 
     // Signal snapshot from ScoringEngine
@@ -151,6 +153,9 @@ export function applyTransition(context, event) {
   const newContext = JSON.parse(JSON.stringify(context));
   const { type, payload, timestamp } = event;
 
+  // Always update lastEventAt
+  newContext.lastEventAt = timestamp;
+
   // Update snapshots first (always, regardless of state)
   if (type === EventType.SCORING_UPDATE) {
     newContext.signalSnapshot = {
@@ -184,6 +189,7 @@ export function applyTransition(context, event) {
 
   if (transition.nextState && transition.nextState !== newContext.currentState) {
     newContext.currentState = transition.nextState;
+    newContext.enteredCurrentStateAt = timestamp; // Track when entered this state
     newContext.lastStateChangeAt = timestamp;
     newContext.lastStateChangeReason = transition.reason;
 
