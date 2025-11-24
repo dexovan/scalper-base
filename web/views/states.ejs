@@ -1,0 +1,464 @@
+<!-- State Machine Monitor - Phase 7 -->
+<link rel="stylesheet" href="/css/dashboard.css">
+
+<div class="space-y-4">
+
+  <!-- Header Section -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/80 p-4">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-bold tracking-tight text-slate-100">State Machine Monitor</h2>
+        <p class="mt-1 text-sm text-slate-400">Real-time FSM state tracking per symbol (Phase 7)</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="sm-status-badge" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-medium">
+          <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+          Loading...
+        </span>
+        <button id="refresh-btn" class="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition">
+          🔄 Refresh
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Statistics Cards -->
+  <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <!-- Total Symbols -->
+    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <p class="text-xs font-medium text-slate-400 uppercase tracking-wide">Total Symbols</p>
+      <p class="mt-2 text-3xl font-bold tracking-tight text-slate-100" id="stat-total">-</p>
+    </div>
+
+    <!-- Active Scenarios -->
+    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <p class="text-xs font-medium text-slate-400 uppercase tracking-wide">Active Scenarios</p>
+      <p class="mt-2 text-3xl font-bold tracking-tight text-emerald-400" id="stat-active">-</p>
+      <p class="mt-1 text-xs text-slate-500">
+        <span id="stat-long-count">0</span> LONG · <span id="stat-short-count">0</span> SHORT
+      </p>
+    </div>
+
+    <!-- In Position -->
+    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <p class="text-xs font-medium text-slate-400 uppercase tracking-wide">In Position</p>
+      <p class="mt-2 text-3xl font-bold tracking-tight text-blue-400" id="stat-positions">-</p>
+      <p class="mt-1 text-xs text-slate-500">Live trades</p>
+    </div>
+
+    <!-- Blocked -->
+    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <p class="text-xs font-medium text-slate-400 uppercase tracking-wide">Blocked</p>
+      <p class="mt-2 text-3xl font-bold tracking-tight text-red-400" id="stat-blocked">-</p>
+      <p class="mt-1 text-xs text-slate-500">Regime blocked</p>
+    </div>
+  </section>
+
+  <!-- State Distribution -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+    <h3 class="text-lg font-semibold text-slate-100 mb-3">State Distribution</h3>
+    <div id="state-distribution" class="flex flex-wrap gap-2">
+      <!-- Dynamically populated -->
+    </div>
+  </section>
+
+  <!-- Filter Bar -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+    <div class="flex flex-wrap items-center gap-3">
+      <label class="text-sm font-medium text-slate-300">Filter:</label>
+
+      <select id="filter-state" class="px-3 py-1.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="ALL">All States</option>
+        <option value="FLAT">FLAT</option>
+        <option value="WATCHING">WATCHING (Long/Short)</option>
+        <option value="ARMED">ARMED (Long/Short)</option>
+        <option value="ORDER_PLACED">ORDER_PLACED</option>
+        <option value="IN_POSITION">IN_POSITION</option>
+        <option value="MANAGING">MANAGING</option>
+        <option value="EXITED">EXITED</option>
+        <option value="COOLDOWN">COOLDOWN</option>
+        <option value="BLOCKED_REGIME">BLOCKED_REGIME</option>
+      </select>
+
+      <select id="filter-side" class="px-3 py-1.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="ALL">All Sides</option>
+        <option value="LONG">LONG only</option>
+        <option value="SHORT">SHORT only</option>
+        <option value="NULL">No active side</option>
+      </select>
+
+      <input type="text" id="filter-search" placeholder="Search symbol..." class="px-3 py-1.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+      <button id="clear-filters-btn" class="ml-auto px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition">
+        Clear Filters
+      </button>
+    </div>
+  </section>
+
+  <!-- Symbols Table -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/60 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-800/50 border-b border-slate-700">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Symbol</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">State</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Side</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Duration</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Last Score</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Last Update</th>
+            <th class="px-4 py-3 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="symbols-table-body" class="divide-y divide-slate-800">
+          <!-- Dynamically populated -->
+        </tbody>
+      </table>
+    </div>
+    <div id="loading-indicator" class="p-8 text-center text-slate-400">
+      <div class="inline-block w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin"></div>
+      <p class="mt-3 text-sm">Loading symbols...</p>
+    </div>
+    <div id="no-results" class="hidden p-8 text-center text-slate-400">
+      <p class="text-sm">No symbols match the current filters</p>
+    </div>
+  </section>
+
+</div>
+
+<!-- Symbol Details Modal -->
+<div id="symbol-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+  <div class="bg-slate-900 rounded-lg border border-slate-700 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+    <div class="sticky top-0 bg-slate-900 border-b border-slate-700 p-4 flex items-center justify-between">
+      <h3 class="text-lg font-semibold text-slate-100" id="modal-symbol-title">Symbol Details</h3>
+      <button id="close-modal-btn" class="text-slate-400 hover:text-slate-200 text-2xl leading-none">&times;</button>
+    </div>
+    <div class="p-4 space-y-4" id="modal-content">
+      <!-- Dynamically populated -->
+    </div>
+  </div>
+</div>
+
+<script>
+// State Machine Monitor JavaScript
+let allSymbols = [];
+let stateStats = {};
+
+// State color mapping
+const STATE_COLORS = {
+  'FLAT': 'bg-slate-600',
+  'WATCHING_LONG': 'bg-blue-600',
+  'WATCHING_SHORT': 'bg-purple-600',
+  'ARMED_LONG': 'bg-amber-600',
+  'ARMED_SHORT': 'bg-orange-600',
+  'ORDER_PLACED_LONG': 'bg-yellow-600',
+  'ORDER_PLACED_SHORT': 'bg-yellow-700',
+  'IN_POSITION_LONG': 'bg-emerald-600',
+  'IN_POSITION_SHORT': 'bg-red-600',
+  'MANAGING_LONG': 'bg-green-600',
+  'MANAGING_SHORT': 'bg-pink-600',
+  'EXITED': 'bg-slate-500',
+  'COOLDOWN': 'bg-cyan-600',
+  'BLOCKED_REGIME': 'bg-red-700',
+  'PAUSED_MANUAL': 'bg-gray-700'
+};
+
+// Format timestamp
+function formatTime(timestamp) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHr = Math.floor(diffMin / 60);
+
+  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return date.toLocaleString();
+}
+
+// Format duration in state
+function formatDuration(ms) {
+  const sec = Math.floor(ms / 1000);
+  const min = Math.floor(sec / 60);
+  const hr = Math.floor(min / 60);
+  const days = Math.floor(hr / 24);
+
+  if (days > 0) return `${days}d ${hr % 24}h`;
+  if (hr > 0) return `${hr}h ${min % 60}m`;
+  if (min > 0) return `${min}m ${sec % 60}s`;
+  return `${sec}s`;
+}
+
+// Fetch data from API
+async function fetchStates() {
+  try {
+    const response = await fetch('/api/engine/states/overview');
+    if (!response.ok) throw new Error('API error');
+
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Unknown error');
+
+    allSymbols = data.entries || [];
+    stateStats = data.summary || {};
+
+    updateStats();
+    updateStateDistribution();
+    applyFilters();
+
+    document.getElementById('sm-status-badge').innerHTML = `
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+      State Machine Active
+    `;
+    document.getElementById('sm-status-badge').className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium';
+  } catch (error) {
+    console.error('Failed to fetch states:', error);
+    document.getElementById('sm-status-badge').innerHTML = `
+      <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+      Error: ${error.message}
+    `;
+    document.getElementById('sm-status-badge').className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-medium';
+  }
+}
+
+// Update statistics cards
+function updateStats() {
+  document.getElementById('stat-total').textContent = stateStats.totalSymbols || 0;
+  document.getElementById('stat-active').textContent = stateStats.activeScenarios || 0;
+  document.getElementById('stat-long-count').textContent = stateStats.bySide?.LONG || 0;
+  document.getElementById('stat-short-count').textContent = stateStats.bySide?.SHORT || 0;
+  document.getElementById('stat-blocked').textContent = stateStats.blockedSymbols || 0;
+
+  // Count IN_POSITION states
+  const positionCount = (stateStats.byState?.IN_POSITION_LONG || 0) + (stateStats.byState?.IN_POSITION_SHORT || 0);
+  document.getElementById('stat-positions').textContent = positionCount;
+}
+
+// Update state distribution badges
+function updateStateDistribution() {
+  const container = document.getElementById('state-distribution');
+  container.innerHTML = '';
+
+  const states = stateStats.byState || {};
+  const sortedStates = Object.entries(states).sort((a, b) => b[1] - a[1]);
+
+  sortedStates.forEach(([state, count]) => {
+    const badge = document.createElement('span');
+    badge.className = `inline-flex items-center gap-2 px-3 py-1.5 rounded-md ${STATE_COLORS[state] || 'bg-slate-600'} text-white text-xs font-medium`;
+    badge.innerHTML = `<span>${state}</span><span class="font-bold">${count}</span>`;
+    container.appendChild(badge);
+  });
+
+  if (sortedStates.length === 0) {
+    container.innerHTML = '<span class="text-slate-500 text-sm">No data</span>';
+  }
+}
+
+// Apply filters and render table
+function applyFilters() {
+  const stateFilter = document.getElementById('filter-state').value;
+  const sideFilter = document.getElementById('filter-side').value;
+  const searchQuery = document.getElementById('filter-search').value.toUpperCase();
+
+  let filtered = allSymbols.filter(item => {
+    // State filter
+    if (stateFilter !== 'ALL') {
+      if (stateFilter === 'WATCHING' && !item.currentState.startsWith('WATCHING')) return false;
+      if (stateFilter === 'ARMED' && !item.currentState.startsWith('ARMED')) return false;
+      if (stateFilter === 'ORDER_PLACED' && !item.currentState.startsWith('ORDER_PLACED')) return false;
+      if (stateFilter === 'IN_POSITION' && !item.currentState.startsWith('IN_POSITION')) return false;
+      if (stateFilter === 'MANAGING' && !item.currentState.startsWith('MANAGING')) return false;
+      if (!item.currentState.includes(stateFilter) && !['WATCHING', 'ARMED', 'ORDER_PLACED', 'IN_POSITION', 'MANAGING'].includes(stateFilter)) return false;
+    }
+
+    // Side filter
+    if (sideFilter !== 'ALL') {
+      if (sideFilter === 'NULL' && item.activeSide !== null) return false;
+      if (sideFilter !== 'NULL' && item.activeSide !== sideFilter) return false;
+    }
+
+    // Search filter
+    if (searchQuery && !item.symbol.includes(searchQuery)) return false;
+
+    return true;
+  });
+
+  renderTable(filtered);
+}
+
+// Render symbols table
+function renderTable(symbols) {
+  const tbody = document.getElementById('symbols-table-body');
+  const loading = document.getElementById('loading-indicator');
+  const noResults = document.getElementById('no-results');
+
+  loading.classList.add('hidden');
+
+  if (symbols.length === 0) {
+    tbody.innerHTML = '';
+    noResults.classList.remove('hidden');
+    return;
+  }
+
+  noResults.classList.add('hidden');
+
+  // Sort by state priority (active states first)
+  const priority = ['IN_POSITION', 'MANAGING', 'ORDER_PLACED', 'ARMED', 'WATCHING', 'EXITED', 'COOLDOWN', 'BLOCKED_REGIME', 'FLAT'];
+  symbols.sort((a, b) => {
+    const aPriority = priority.findIndex(p => a.currentState.includes(p));
+    const bPriority = priority.findIndex(p => b.currentState.includes(p));
+    if (aPriority !== bPriority) return aPriority - bPriority;
+    return a.symbol.localeCompare(b.symbol);
+  });
+
+  tbody.innerHTML = symbols.map(item => {
+    const stateColor = STATE_COLORS[item.currentState] || 'bg-slate-600';
+    const duration = Date.now() - new Date(item.enteredCurrentStateAt).getTime();
+
+    return `
+      <tr class="hover:bg-slate-800/50 transition">
+        <td class="px-4 py-3">
+          <span class="font-mono text-slate-100 font-medium">${item.symbol}</span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="inline-flex px-2 py-1 rounded text-xs font-medium ${stateColor} text-white">
+            ${item.currentState}
+          </span>
+        </td>
+        <td class="px-4 py-3">
+          ${item.activeSide
+            ? `<span class="inline-flex px-2 py-1 rounded text-xs font-medium ${item.activeSide === 'LONG' ? 'bg-blue-500/20 text-blue-300' : 'bg-purple-500/20 text-purple-300'}">${item.activeSide}</span>`
+            : '<span class="text-slate-500 text-xs">-</span>'
+          }
+        </td>
+        <td class="px-4 py-3 text-slate-300 text-xs">${formatDuration(duration)}</td>
+        <td class="px-4 py-3 text-slate-300 text-xs">
+          ${item.lastSnapshot?.finalScoreLong !== undefined
+            ? `L:${item.lastSnapshot.finalScoreLong.toFixed(1)} / S:${item.lastSnapshot.finalScoreShort.toFixed(1)}`
+            : '-'
+          }
+        </td>
+        <td class="px-4 py-3 text-slate-400 text-xs">${formatTime(item.lastEventAt)}</td>
+        <td class="px-4 py-3 text-center">
+          <button onclick="showSymbolDetails('${item.symbol}')" class="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition">
+            Details
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Show symbol details modal
+async function showSymbolDetails(symbol) {
+  try {
+    const response = await fetch(`/api/engine/symbol/${symbol}/state`);
+    if (!response.ok) throw new Error('API error');
+
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Unknown error');
+
+    const state = data.state;
+    const modalContent = document.getElementById('modal-content');
+
+    modalContent.innerHTML = `
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <p class="text-xs text-slate-400 uppercase">Symbol</p>
+            <p class="text-lg font-mono font-bold text-slate-100">${state.symbol}</p>
+          </div>
+          <div>
+            <p class="text-xs text-slate-400 uppercase">Current State</p>
+            <span class="inline-flex px-3 py-1 rounded ${STATE_COLORS[state.currentState] || 'bg-slate-600'} text-white text-sm font-medium">
+              ${state.currentState}
+            </span>
+          </div>
+          <div>
+            <p class="text-xs text-slate-400 uppercase">Active Side</p>
+            <p class="text-sm text-slate-300">${state.activeSide || 'None'}</p>
+          </div>
+          <div>
+            <p class="text-xs text-slate-400 uppercase">State Duration</p>
+            <p class="text-sm text-slate-300">${formatDuration(Date.now() - new Date(state.enteredCurrentStateAt).getTime())}</p>
+          </div>
+        </div>
+
+        ${state.lastSnapshot ? `
+        <div class="border-t border-slate-700 pt-4">
+          <p class="text-sm font-medium text-slate-300 mb-2">Last Snapshot</p>
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <span class="text-slate-400">Score Long:</span>
+              <span class="text-slate-100 font-mono ml-2">${state.lastSnapshot.finalScoreLong?.toFixed(2) || 'N/A'}</span>
+            </div>
+            <div>
+              <span class="text-slate-400">Score Short:</span>
+              <span class="text-slate-100 font-mono ml-2">${state.lastSnapshot.finalScoreShort?.toFixed(2) || 'N/A'}</span>
+            </div>
+            <div>
+              <span class="text-slate-400">Signal Long:</span>
+              <span class="text-slate-100 font-mono ml-2">${state.lastSnapshot.signalLong || 'NONE'}</span>
+            </div>
+            <div>
+              <span class="text-slate-400">Signal Short:</span>
+              <span class="text-slate-100 font-mono ml-2">${state.lastSnapshot.signalShort || 'NONE'}</span>
+            </div>
+          </div>
+        </div>
+        ` : ''}
+
+        <div class="border-t border-slate-700 pt-4">
+          <p class="text-sm font-medium text-slate-300 mb-2">Timestamps</p>
+          <div class="space-y-1 text-xs text-slate-400">
+            <div>Entered State: <span class="text-slate-300">${new Date(state.enteredCurrentStateAt).toLocaleString()}</span></div>
+            <div>Last Event: <span class="text-slate-300">${new Date(state.lastEventAt).toLocaleString()}</span></div>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-700 pt-4">
+          <a href="/api/engine/symbol/${symbol}/events?limit=100" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition">
+            📜 View Event Log
+          </a>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modal-symbol-title').textContent = `${symbol} - State Details`;
+    document.getElementById('symbol-modal').classList.remove('hidden');
+  } catch (error) {
+    alert('Failed to load symbol details: ' + error.message);
+  }
+}
+
+// Close modal
+document.getElementById('close-modal-btn').addEventListener('click', () => {
+  document.getElementById('symbol-modal').classList.add('hidden');
+});
+
+// Close modal on outside click
+document.getElementById('symbol-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'symbol-modal') {
+    document.getElementById('symbol-modal').classList.add('hidden');
+  }
+});
+
+// Event listeners
+document.getElementById('refresh-btn').addEventListener('click', fetchStates);
+document.getElementById('filter-state').addEventListener('change', applyFilters);
+document.getElementById('filter-side').addEventListener('change', applyFilters);
+document.getElementById('filter-search').addEventListener('input', applyFilters);
+document.getElementById('clear-filters-btn').addEventListener('click', () => {
+  document.getElementById('filter-state').value = 'ALL';
+  document.getElementById('filter-side').value = 'ALL';
+  document.getElementById('filter-search').value = '';
+  applyFilters();
+});
+
+// Initial load
+fetchStates();
+
+// Auto-refresh every 5 seconds
+setInterval(fetchStates, 5000);
+</script>

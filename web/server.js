@@ -250,6 +250,70 @@ app.get("/api/scoring/stats", async (req, res) => {
   }
 });
 
+// ===========================================
+// STATE MACHINE API FORWARDING (port 8090) - PHASE 7
+// ===========================================
+
+app.get("/api/engine/states/overview", async (req, res) => {
+  try {
+    const url = `http://localhost:8090/api/states/overview`;
+    console.log(`[STATE-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[STATE-FORWARD] Response: ${response.status}, symbols: ${data.summary?.totalSymbols || 0}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[STATE-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'State Machine unavailable' });
+  }
+});
+
+app.get("/api/engine/symbol/:symbol/state", async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const url = `http://localhost:8090/api/symbol/${symbol}/state`;
+    console.log(`[STATE-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[STATE-FORWARD] Response: ${response.status}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[STATE-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'State Machine unavailable' });
+  }
+});
+
+app.get("/api/engine/symbol/:symbol/events", async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = `http://localhost:8090/api/symbol/${symbol}/events${queryString ? '?' + queryString : ''}`;
+    console.log(`[STATE-FORWARD] GET ${req.originalUrl} → ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await response.json();
+    console.log(`[STATE-FORWARD] Response: ${response.status}, events: ${data.count || 0}`);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[STATE-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'State Machine unavailable' });
+  }
+});
+
 app.get("/api/symbol/:symbol/score", async (req, res) => {
   try {
     const { symbol } = req.params;
@@ -475,7 +539,16 @@ app.get("/scanner", requireAuth, (req, res) => {
   });
 });
 
-// 9️⃣ FEATURE ENGINE PAGE (FAZA 4)
+// 9️⃣ STATE MACHINE MONITOR PAGE (FAZA 7)
+app.get("/states", requireAuth, (req, res) => {
+  res.render("states", {
+    title: "State Machine Monitor",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
+// 🔟 FEATURE ENGINE PAGE (FAZA 4)
 app.get("/features", requireAuth, (req, res) => {
   res.render("features", {
     title: "Feature Engine",
