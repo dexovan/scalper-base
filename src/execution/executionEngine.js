@@ -215,6 +215,12 @@ function buildOrderRequest(request) {
   } else if (request.action === "REVERSE") {
     // Close current + open opposite
     side = request.side === "LONG" ? "SELL" : "BUY";
+  } else if (request.side === "LONG" || request.side === "SHORT") {
+    // Direct side mapping when no action specified
+    side = request.side === "LONG" ? "BUY" : "SELL";
+  } else {
+    // Already BUY/SELL
+    side = request.side;
   }
 
   // Generate client order ID
@@ -222,8 +228,8 @@ function buildOrderRequest(request) {
   const random = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
   const clientOrderId = `${CONFIG.execution.clientOrderIdPrefix}-${timestamp}-${random}`;
 
-  // Calculate qty from qtyUsd or use qtyContracts
-  let qty = request.qtyContracts || 0;
+  // Calculate qty from qtyUsd or use qtyContracts or qty
+  let qty = request.qtyContracts || request.qty || 0;
   if (request.qtyUsd && !qty) {
     const marketSnapshot = getMarketSnapshot(request.symbol);
     const price = marketSnapshot.lastPrice || 0;
