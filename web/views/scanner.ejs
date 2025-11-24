@@ -150,12 +150,18 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs text-slate-400 mb-1">Minimalni Skor</label>
-                    <input type="number" id="filterMinScore" value="40" min="0" max="100" class="px-3 py-1.5 w-24 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200">
+                    <label class="block text-xs text-slate-400 mb-1">Minimalni Skor: <span id="minScoreValue" class="text-purple-400 font-semibold">25</span></label>
+                    <input type="range" id="filterMinScore" value="25" min="10" max="60" step="5" class="w-32 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-600">
                 </div>
                 <div>
                     <label class="block text-xs text-slate-400 mb-1">Limit</label>
-                    <input type="number" id="filterLimit" value="20" min="1" max="50" class="px-3 py-1.5 w-24 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200">
+                    <input type="number" id="filterLimit" value="20" min="5" max="50" step="5" class="px-3 py-1.5 w-20 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200">
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="filterIgnoreRegime" checked class="w-4 h-4 rounded bg-slate-700 border-slate-600 text-purple-600 focus:ring-purple-500">
+                        <span class="text-xs text-slate-300">Ignoriši PANIC režim</span>
+                    </label>
                 </div>
                 <div class="flex items-end">
                     <button id="applyFilters" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium transition">
@@ -222,9 +228,9 @@
                 const side = document.getElementById('filterSide').value;
                 const minScore = document.getElementById('filterMinScore').value;
                 const limit = document.getElementById('filterLimit').value;
+                const ignoreRegime = document.getElementById('filterIgnoreRegime').checked;
 
-                // Always ignore global regime for dashboard viewing
-                const response = await fetch(`/api/scanner/hotlist?side=${side}&minScore=${minScore}&limit=${limit}&ignoreGlobalRegime=true`);
+                const response = await fetch(`/api/scanner/hotlist?side=${side}&minScore=${minScore}&limit=${limit}&ignoreGlobalRegime=${ignoreRegime}`);
                 const data = await response.json();
 
                 if (data.ok) {
@@ -308,6 +314,11 @@
         // ================================================================
         // EVENT LISTENERS
         // ================================================================
+
+        // Range slider live update
+        document.getElementById('filterMinScore').addEventListener('input', (e) => {
+            document.getElementById('minScoreValue').textContent = e.target.value;
+        });
 
         document.getElementById('applyFilters').addEventListener('click', fetchHotlist);
 
