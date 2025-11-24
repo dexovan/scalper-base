@@ -585,17 +585,30 @@ class FeatureEngine {
     startSymbolUpdates(symbol) {
         // Use adaptive interval instead of fixed tier-based interval
         let lastProcessAt = 0;
+        let loopCount = 0;
 
         const updateLoop = async () => {
             if (!this.isRunning) return;
 
+            loopCount++;
             const now = Date.now();
             const dynamicInterval = this.getAdaptiveInterval();
+            const elapsed = now - lastProcessAt;
+
+            // DEBUG: Log first 3 loops for BTCUSDT only
+            if (symbol === 'BTCUSDT' && loopCount <= 3) {
+                console.log(`🔧 [FEATURE LOOP ${loopCount}] ${symbol}: elapsed=${elapsed}ms, interval=${dynamicInterval}ms, will_update=${elapsed >= dynamicInterval}`);
+            }
 
             // Only process if enough time has passed
             if (now - lastProcessAt >= dynamicInterval) {
                 await this.updateFeaturesForSymbol(symbol);
                 lastProcessAt = now;
+
+                // DEBUG: Confirm update happened
+                if (symbol === 'BTCUSDT' && loopCount <= 3) {
+                    console.log(`✅ [FEATURE LOOP ${loopCount}] ${symbol}: UPDATE COMPLETED`);
+                }
             }
 
             // Schedule next check with minimum interval to stay responsive
