@@ -281,6 +281,11 @@ function handleFlatState(event, context) {
 
   const { signalLong, signalShort, finalScoreLong, finalScoreShort } = event.payload;
 
+  // Debug: log interesting signals (1% sample)
+  if (Math.random() < 0.01 && (signalLong !== 'NONE' || signalShort !== 'NONE')) {
+    console.log(`[StateModel] ${context.symbol}: L=${signalLong}(${finalScoreLong.toFixed(1)}) S=${signalShort}(${finalScoreShort.toFixed(1)})`);
+  }
+
   // Check LONG signals
   if (signalLong === "ARM") {
     const check = canStartNewScenario(context, "LONG");
