@@ -236,6 +236,36 @@ async function startEngine() {
   console.log(`   Signals: ARM=${scoringStats.signalCounts.ARM_LONG + scoringStats.signalCounts.ARM_SHORT}, WATCH=${scoringStats.signalCounts.WATCH_LONG + scoringStats.signalCounts.WATCH_SHORT}`);
   console.log("=============================");
 
+  // =====================================================
+  // PHASE 7: STATE MACHINE INITIALIZATION
+  // =====================================================
+  console.log("=============================");
+  console.log("⚙️  STATE MACHINE: Starting State Machine...");
+  console.log("=============================");
+
+  console.log("⚙️  [STATE] Importing State Machine...");
+  const stateMachine = await import('./state/stateMachine.js');
+  console.log("⚙️  [STATE] State Machine imported");
+
+  // Get universe symbols (Prime + Normal for now)
+  const primeSymbols = getSymbolsByCategory("Prime");
+  const normalSymbols = getSymbolsByCategory("Normal");
+  const allSymbols = [...primeSymbols, ...normalSymbols];
+
+  console.log(`⚙️  [STATE] Initializing for ${allSymbols.length} symbols...`);
+  const smStats = stateMachine.initStateMachine(allSymbols);
+  console.log("⚙️  [STATE] initStateMachine() completed");
+
+  // Store in global for API access
+  global.stateMachine = stateMachine;
+  console.log("⚙️  [STATE] Stored in global");
+
+  console.log("⚙️  [STATE] State Machine started successfully:");
+  console.log(`   Symbols tracked: ${smStats.symbolCount}`);
+  console.log(`   Tick interval: ${smStats.tickInterval}ms`);
+  console.log(`   Event logging: enabled`);
+  console.log("=============================");
+
   metrics.heartbeat();
 }
 

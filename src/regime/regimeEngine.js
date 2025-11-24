@@ -250,6 +250,32 @@ class RegimeEngine {
       this.lastUpdateAt = new Date();
       this.pendingPersist = true;
 
+      // ================================================================
+      // PHASE 7: Send REGIME_UPDATE event to State Machine
+      // ================================================================
+      try {
+        const stateMachine = global.stateMachine;
+        if (stateMachine) {
+          const { createStateEvent, createRegimeUpdatePayload } = require('../state/stateEvents.js');
+
+          const event = createStateEvent(
+            'REGIME_UPDATE',
+            symbol,
+            createRegimeUpdatePayload(
+              newRegime.current,
+              this.globalRegime.current,
+              newRegime.cooldownActive || false,
+              newRegime.cooldownEndsAt || null
+            )
+          );
+
+          stateMachine.handleEvent(event);
+        }
+      } catch (smError) {
+        // Non-fatal: State Machine integration is optional
+        // logger.debug(`State Machine integration skipped: ${smError.message}`);
+      }
+
     } catch (err) {
       logger.error(`[REGIME ENGINE] Error updating ${symbol}: ${err.message}`);
     }

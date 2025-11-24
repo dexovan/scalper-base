@@ -337,6 +337,32 @@ class ScoringEngine {
         this.hotlistCache.cachedAt = null; // Invalidate cache
       }
 
+      // ================================================================
+      // PHASE 7: Send SCORING_UPDATE event to State Machine
+      // ================================================================
+      try {
+        const stateMachine = global.stateMachine;
+        if (stateMachine) {
+          const { createStateEvent, createScoringUpdatePayload } = await import('../state/stateEvents.js');
+
+          const event = createStateEvent(
+            'SCORING_UPDATE',
+            symbol,
+            createScoringUpdatePayload(
+              scoreState.finalLong,
+              scoreState.finalShort,
+              scoreState.signalLong,
+              scoreState.signalShort
+            )
+          );
+
+          stateMachine.handleEvent(event);
+        }
+      } catch (smError) {
+        // Non-fatal: State Machine integration is optional
+        this.logger.debug(`State Machine integration skipped: ${smError.message}`);
+      }
+
     } catch (error) {
       this.logger.error(`Failed to update score for ${symbol}:`, error.message);
       throw error;
