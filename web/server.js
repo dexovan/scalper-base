@@ -180,9 +180,30 @@ const regimeProxy = createProxyMiddleware({
     console.error('[PROXY-REGIME] Error:', err.message);
     res.status(503).json({ ok: false, error: 'Regime Engine unavailable' });
   }
-});app.get("/api/regime/overview", regimeProxy);
+});
+
+// Manual forwarding for POST /api/regime/check-trade (proxy doesn't handle POST body well)
+app.post("/api/regime/check-trade", async (req, res) => {
+  try {
+    console.log(`[REGIME-FORWARD] POST /api/regime/check-trade`, req.body);
+
+    const response = await fetch("http://localhost:8090/api/regime/check-trade", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body)
+    });
+
+    const data = await response.json();
+    console.log(`[REGIME-FORWARD] Response:`, response.status, data);
+    res.status(response.status).json(data);
+  } catch (error) {
+    console.error('[REGIME-FORWARD] Error:', error.message);
+    res.status(503).json({ ok: false, error: 'Regime Engine unavailable' });
+  }
+});
+
+app.get("/api/regime/overview", regimeProxy);
 app.get("/api/regime/global", regimeProxy);
-app.post("/api/regime/check-trade", regimeProxy);
 app.get("/api/regime/:symbol", regimeProxy);
 
 // ---------------------------------------
