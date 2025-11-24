@@ -206,6 +206,32 @@ app.get("/api/regime/overview", regimeProxy);
 app.get("/api/regime/global", regimeProxy);
 app.get("/api/regime/:symbol", regimeProxy);
 
+// ===========================================
+// PROXY → SCORING ENGINE API (port 8090)
+// CRITICAL: Must be BEFORE /api/* catch-all routes!
+// ===========================================
+
+const scoringProxy = createProxyMiddleware({
+  target: "http://localhost:8090",
+  changeOrigin: true,
+  timeout: 30000,
+  proxyTimeout: 30000,
+  onProxyReq: (proxyReq, req, res) => {
+    console.log(`[PROXY-SCORING] ${req.method} ${req.originalUrl} → http://localhost:8090${req.path}`);
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    console.log(`[PROXY-SCORING] Response: ${proxyRes.statusCode}`);
+  },
+  onError: (err, req, res) => {
+    console.error('[PROXY-SCORING] Error:', err.message);
+    res.status(503).json({ ok: false, error: 'Scoring Engine unavailable' });
+  }
+});
+
+app.get("/api/scanner/hotlist", scoringProxy);
+app.get("/api/scoring/stats", scoringProxy);
+app.get("/api/symbol/:symbol/score", scoringProxy);
+
 // ---------------------------------------
 // DB INIT (ATTACH DB TO REQ)
 // ---------------------------------------
