@@ -433,9 +433,15 @@ class FeatureEngine {
         }
 
         for (const [symbol, state] of this.featureStates.entries()) {
+            // Calculate orderbook freshness
+            const orderbookFreshness = state.lastUpdateAt
+                ? Date.now() - new Date(state.lastUpdateAt).getTime()
+                : null;
+
             overview.push({
                 symbol,
                 lastUpdateAt: state.lastUpdateAt,
+                orderbookFreshness, // ms since last orderbook update
                 tobImbalance: state.imbalance?.tobImbalance || 0,
                 spoofingScore: state.walls?.spoofingScore || 0,
                 volatilityScore: state.volatility?.volatilityScore || 0,
