@@ -7,15 +7,15 @@ console.log("🔥🔥🔥 [INDEX.JS] FILE LOADED - TOP OF FILE 🔥🔥🔥");
 console.log("🔥🔥🔥 [INDEX.JS] TIMESTAMP:", new Date().toISOString(), "🔥🔥🔥");
 
 import {
-  initUniverse,
-  refreshUniversePeriodically,
-  getSymbolsByCategory,
-  getUniverseSnapshot
+    initUniverse,
+    refreshUniversePeriodically,
+    getSymbolsByCategory,
+    getUniverseSnapshot
 } from "./market/universe_v2.js";
 
 import {
-  initPublicConnection,
-  onPublicEvent
+    initPublicConnection,
+    onPublicEvent
 } from "./connectors/bybitPublic.js";
 
 import { publicEmitter } from "./connectors/bybitPublic.js";
@@ -45,231 +45,236 @@ import * as OrderbookManager from "./microstructure/OrderbookManager.js";
 import { logEngineStartup } from "./regime/regimeLogger.js";
 
 async function startEngine() {
-  console.log("🔥🔥🔥 [INDEX.JS] startEngine() CALLED 🔥🔥🔥");
-  console.log("====================================================");
-  console.log("🚀 AI Scalper Engine – Phase 2 Booting...");
-  console.log("📁 KORAK 2: File Storage Implementation Active!");
-  console.log("====================================================");
+    console.log("🔥🔥🔥 [INDEX.JS] startEngine() CALLED 🔥🔥🔥");
+    console.log("====================================================");
+    console.log("🚀 AI Scalper Engine – Phase 2 Booting...");
+    console.log("📁 KORAK 2: File Storage Implementation Active!");
+    console.log("====================================================");
 
-  console.log("🔍 DEBUG: About to initialize Universe and WebSocket...");
+    console.log("🔍 DEBUG: About to initialize Universe and WebSocket...");
 
-  metrics.markDecision();
-  metrics.heartbeat();
+    metrics.markDecision();
+    metrics.heartbeat();
 
-  // --------------------------
-  // UNIVERSE INIT
-  // --------------------------
-  console.log("🌍 [ENGINE] About to call initUniverse()...");
-  await initUniverse();
-  console.log("🌍 [ENGINE] initUniverse() completed!");
+    // --------------------------
+    // UNIVERSE INIT
+    // --------------------------
+    console.log("🌍 [ENGINE] About to call initUniverse()...");
+    await initUniverse();
+    console.log("🌍 [ENGINE] initUniverse() completed!");
 
-  // Verify universe loaded
-  const universeCheck = await getUniverseSnapshot();
-  console.log("🌍 [ENGINE] Universe verification:", {
-    totalSymbols: universeCheck?.stats?.totalSymbols || 0,
-    fetchedAt: universeCheck?.fetchedAt || 'N/A',
-    symbolCount: Object.keys(universeCheck?.symbols || {}).length
-  });
+    // Verify universe loaded
+    const universeCheck = await getUniverseSnapshot();
+    console.log("🌍 [ENGINE] Universe verification:", {
+        totalSymbols: universeCheck?.stats?.totalSymbols || 0,
+        fetchedAt: universeCheck?.fetchedAt || 'N/A',
+        symbolCount: Object.keys(universeCheck?.symbols || {}).length
+    });
 
-  // MAIN WS (dynamic)
-  console.log("🔍 DEBUG: Calling initPublicConnection...");
-  await initPublicConnection(); // koristi CONFIG.custom.primeSymbols
+    // MAIN WS (dynamic)
+    console.log("🔍 DEBUG: Calling initPublicConnection...");
+    await initPublicConnection(); // koristi CONFIG.custom.primeSymbols
 
-  console.log("🔍 DEBUG: Initializing EventHub...");
-  initEventHub();
+    console.log("🔍 DEBUG: Initializing EventHub...");
+    initEventHub();
 
-  const primeSymbols = getSymbolsByCategory("Prime");
-  if (primeSymbols.length > 0) {
-    subscribeSymbols(primeSymbols);
-    console.log("📡 PRIME subscribed:", primeSymbols);
-  }
-
-  // =====================================================
-  // PHASE 2 VARIJANTA B - EVENT HANDLER
-  // =====================================================
-  onPublicEvent((evt) => {
-    // evt = { type: "ticker" | "trade", timestamp, symbol, payload }
-
-    if (evt.type === "ticker") {
-      // FULLY DISABLED: Console.log spam fills logs at 50,000+ logs/second = GIGABYTES/hour!
-      // Even 0.01% sampling still generates too many logs (193MB in minutes!)
-      // All ticker processing happens silently now
-
-      // const lastPrice = evt.payload.lastPrice || evt.payload.price || "";
-      // console.log("[TICKER]", evt.symbol, lastPrice);
-
-      // DISABLED: Tickers disk storage fills disk too fast
-      // KORAK 2: Save ticker data to CSV file
-      // saveTicker(evt.symbol, evt.payload);
-
-    } else if (evt.type === "trade") {
-      // FULLY DISABLED: Console.log spam fills logs at hundreds of logs/second!
-      // Even 0.1% sampling still generates too many logs (193MB in minutes!)
-      // All trade processing happens silently now
-
-      // const side = evt.payload.S;
-      // const price = evt.payload.p;
-      // const qty = evt.payload.v;
-      // const tickDir = evt.payload.L;
-      // console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
-
-      // DISABLED: Trades disk storage fills disk too fast (15GB+ in days!)
-      // KORAK 2: Save trade data to CSV file
-      // saveTrade(evt.symbol, evt.payload);
+    const primeSymbols = getSymbolsByCategory("Prime");
+    if (primeSymbols.length > 0) {
+        subscribeSymbols(primeSymbols);
+        console.log("📡 PRIME subscribed:", primeSymbols);
     }
-  });
 
-  // DISABLED: Universe refresh writes to disk every 15s (500+ symbols × 1KB = 500KB+ per write = 2MB/min = 2.9GB/day!)
-  // refreshUniversePeriodically();
-  console.log("⚠️ [ENGINE] Universe periodic refresh DISABLED - preventing disk fill");
+    // =====================================================
+    // PHASE 2 VARIJANTA B - EVENT HANDLER
+    // =====================================================
+    onPublicEvent((evt) => {
+        // evt = { type: "ticker" | "trade", timestamp, symbol, payload }
 
-  // KORAK 2: Display storage stats
-  const storageStats = await getStorageStats();
-  if (storageStats) {
-    console.log("📁 Data Storage Stats:");
-    console.log(`   Date: ${storageStats.date}`);
-    console.log(`   Ticker files: ${storageStats.todayFiles?.tickers || 0}`);
-    console.log(`   Trade files: ${storageStats.todayFiles?.trades || 0}`);
-    console.log(`   Ticker size: ${(storageStats.todaySizes?.tickers / 1024).toFixed(1)} KB`);
-    console.log(`   Trade size: ${(storageStats.todaySizes?.trades / 1024).toFixed(1)} KB`);
-  }
+        if (evt.type === "ticker") {
+            // FULLY DISABLED: Console.log spam fills logs at 50,000+ logs/second = GIGABYTES/hour!
+            // Even 0.01% sampling still generates too many logs (193MB in minutes!)
+            // All ticker processing happens silently now
 
-  console.log("=====================================================");
-  console.log("🌍 Universe service started.");
-  console.log("📡 Public WS active.");
-  console.log("🧠 AI Event Hub active.");
-  console.log("💾 File Storage active.");
-  console.log("⚡ Engine running normally.");
+            // const lastPrice = evt.payload.lastPrice || evt.payload.price || "";
+            // console.log("[TICKER]", evt.symbol, lastPrice);
 
-  // =====================================================
-  // METRICS-WEBSOCKET INSTANCE
-  // =====================================================
-  console.log("=============================");
-  console.log("📡 METRICS: Creating WS...");
-  console.log("=============================");
+            // DISABLED: Tickers disk storage fills disk too fast
+            // KORAK 2: Save ticker data to CSV file
+            // saveTicker(evt.symbol, evt.payload);
 
-  const metricsWS = new BybitPublicWS();
+        } else if (evt.type === "trade") {
+            // FULLY DISABLED: Console.log spam fills logs at hundreds of logs/second!
+            // Even 0.1% sampling still generates too many logs (193MB in minutes!)
+            // All trade processing happens silently now
 
-  console.log("📡 METRICS: Calling connect() now...");
+            // const side = evt.payload.S;
+            // const price = evt.payload.p;
+            // const qty = evt.payload.v;
+            // const tickDir = evt.payload.L;
+            // console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
 
-  metricsWS.connect({
-    symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
-    channels: ["tickers", "publicTrade"],
+            // DISABLED: Trades disk storage fills disk too fast (15GB+ in days!)
+            // KORAK 2: Save trade data to CSV file
+            // saveTrade(evt.symbol, evt.payload);
+        }
+    });
 
-    // MUST HAVE THE RAW MESSAGE
-    onEvent: (msg) => {
-      wsMetrics.wsMarkMessage();
+    // DISABLED: Universe refresh writes to disk every 15s (500+ symbols × 1KB = 500KB+ per write = 2MB/min = 2.9GB/day!)
+    // refreshUniversePeriodically();
+    console.log("⚠️ [ENGINE] Universe periodic refresh DISABLED - preventing disk fill");
 
-      // OPTIONAL DEBUG
-      // console.log("[METRICS-WS] EVENT:", msg.topic);
+    // KORAK 2: Display storage stats
+    const storageStats = await getStorageStats();
+    if (storageStats) {
+        console.log("📁 Data Storage Stats:");
+        console.log(`   Date: ${storageStats.date}`);
+        console.log(`   Ticker files: ${storageStats.todayFiles?.tickers || 0}`);
+        console.log(`   Trade files: ${storageStats.todayFiles?.trades || 0}`);
+        console.log(`   Ticker size: ${(storageStats.todaySizes?.tickers / 1024).toFixed(1)} KB`);
+        console.log(`   Trade size: ${(storageStats.todaySizes?.trades / 1024).toFixed(1)} KB`);
     }
-  });
 
-  console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);
+    console.log("=====================================================");
+    console.log("🌍 Universe service started.");
+    console.log("📡 Public WS active.");
+    console.log("🧠 AI Event Hub active.");
+    console.log("💾 File Storage active.");
+    console.log("⚡ Engine running normally.");
 
-  console.log("⚡ Engine running normally.");
+    // =====================================================
+    // METRICS-WEBSOCKET INSTANCE
+    // =====================================================
+    console.log("=============================");
+    console.log("📡 METRICS: Creating WS...");
+    console.log("=============================");
 
-  console.log("🚀 DEBUG: Ready to start Monitor API…");
+    const metricsWS = new BybitPublicWS();
 
-  // Attach real-time listeners for dashboard
-  console.log("🔗 DEBUG: About to call attachRealtimeListeners with publicEmitter:", typeof publicEmitter);
-  attachRealtimeListeners(publicEmitter);
-  console.log("📡 Real-time dashboard listeners attached");
+    console.log("📡 METRICS: Calling connect() now...");
 
-  await startMonitorApiServer(8090); // AWAIT to ensure FeatureEngine is ready
-  console.log("🚀 DEBUG: Monitor API started AND FeatureEngine ready");
+    metricsWS.connect({
+        symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
+        channels: ["tickers", "publicTrade"],
 
-  // =====================================================
-  // PHASE 5: REGIME ENGINE INITIALIZATION
-  // =====================================================
-  console.log("=============================");
-  console.log("🛡️  REGIME: Starting Regime Engine...");
-  console.log("=============================");
+        // MUST HAVE THE RAW MESSAGE
+        onEvent: (msg) => {
+            wsMetrics.wsMarkMessage();
 
-  console.log("🛡️  [REGIME] Creating RegimeEngine instance...");
-  const regimeEngine = new RegimeEngine(featureEngine, OrderbookManager);
-  console.log("🛡️  [REGIME] RegimeEngine instance created");
+            // OPTIONAL DEBUG
+            // console.log("[METRICS-WS] EVENT:", msg.topic);
+        }
+    });
 
-  // Store in global for API access
-  global.regimeEngine = regimeEngine;
-  console.log("🛡️  [REGIME] Stored in global");
+    console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);
 
-  console.log("🛡️  [REGIME] Calling regimeEngine.start()...");
-  await regimeEngine.start();
-  console.log("🛡️  [REGIME] regimeEngine.start() completed");
+    console.log("⚡ Engine running normally.");
 
-  // Log startup stats
-  const stats = {
-    primeSymbols: regimeEngine.primeTier.size,
-    normalSymbols: regimeEngine.normalTier.size,
-    wildSymbols: regimeEngine.wildTier.size,
-    totalSymbols: regimeEngine.primeTier.size + regimeEngine.normalTier.size + regimeEngine.wildTier.size
-  };
+    console.log("🚀 DEBUG: Ready to start Monitor API…");
 
-  logEngineStartup(stats);
+    // Attach real-time listeners for dashboard
+    console.log("🔗 DEBUG: About to call attachRealtimeListeners with publicEmitter:", typeof publicEmitter);
+    attachRealtimeListeners(publicEmitter);
+    console.log("📡 Real-time dashboard listeners attached");
 
-  console.log("🛡️  [REGIME] Engine started successfully:");
-  console.log(`   Prime tier: ${stats.primeSymbols} symbols (1s updates)`);
-  console.log(`   Normal tier: ${stats.normalSymbols} symbols (2s updates)`);
-  console.log(`   Wild tier: ${stats.wildSymbols} symbols (3-5s updates)`);
-  console.log("=============================");
+    await startMonitorApiServer(8090); // AWAIT to ensure FeatureEngine is ready
+    console.log("🚀 DEBUG: Monitor API started AND FeatureEngine ready");
 
-  // =====================================================
-  // PHASE 6: SCORING ENGINE INITIALIZATION
-  // =====================================================
-  console.log("=============================");
-  console.log("🎯 SCORING: Starting Scoring Engine...");
-  console.log("=============================");
+    // =====================================================
+    // PHASE 5: REGIME ENGINE INITIALIZATION
+    // =====================================================
+    console.log("=============================");
+    console.log("🛡️  REGIME: Starting Regime Engine...");
+    console.log("=============================");
 
-  console.log("🎯 [SCORING] Importing Scoring Engine...");
-  const { scoringEngine } = await import('./scoring/scoringEngine.js');
-  console.log("🎯 [SCORING] Scoring Engine imported");
+    console.log("🛡️  [REGIME] Creating RegimeEngine instance...");
+    const regimeEngine = new RegimeEngine(featureEngine, OrderbookManager);
+    console.log("🛡️  [REGIME] RegimeEngine instance created");
 
-  console.log("🎯 [SCORING] Calling scoringEngine.start()...");
-  await scoringEngine.start();
-  console.log("🎯 [SCORING] scoringEngine.start() completed");
+    // Store in global for API access
+    global.regimeEngine = regimeEngine;
+    console.log("🛡️  [REGIME] Stored in global");
 
-  const scoringStats = scoringEngine.getStats();
-  console.log("🎯 [SCORING] Engine started successfully:");
-  console.log(`   Total symbols: ${scoringStats.totalSymbols}`);
-  console.log(`   Update interval: ${scoringEngine.config.updateIntervalMs}ms`);
-  console.log(`   Signals: ARM=${scoringStats.signalCounts.ARM_LONG + scoringStats.signalCounts.ARM_SHORT}, WATCH=${scoringStats.signalCounts.WATCH_LONG + scoringStats.signalCounts.WATCH_SHORT}`);
-  console.log("=============================");
+    console.log("🛡️  [REGIME] Calling regimeEngine.start()...");
+    await regimeEngine.start();
+    console.log("🛡️  [REGIME] regimeEngine.start() completed");
 
-  // =====================================================
-  // PHASE 7: STATE MACHINE INITIALIZATION
-  // =====================================================
-  console.log("=============================");
-  console.log("⚙️  STATE MACHINE: Starting State Machine...");
-  console.log("=============================");
+    // Log startup stats
+    const stats = {
+        primeSymbols: regimeEngine.primeTier.size,
+        normalSymbols: regimeEngine.normalTier.size,
+        wildSymbols: regimeEngine.wildTier.size,
+        totalSymbols: regimeEngine.primeTier.size + regimeEngine.normalTier.size + regimeEngine.wildTier.size
+    };
 
-  console.log("⚙️  [STATE] Importing State Machine...");
-  const stateMachine = await import('./state/stateMachine.js');
-  console.log("⚙️  [STATE] State Machine imported");
+    logEngineStartup(stats);
 
-  // Get universe symbols (Prime + Normal for now)
-  const smPrimeSymbols = await getSymbolsByCategory("Prime");
-  const smNormalSymbols = await getSymbolsByCategory("Normal");
-  const allSymbols = [...smPrimeSymbols, ...smNormalSymbols];
+    console.log("🛡️  [REGIME] Engine started successfully:");
+    console.log(`   Prime tier: ${stats.primeSymbols} symbols (1s updates)`);
+    console.log(`   Normal tier: ${stats.normalSymbols} symbols (2s updates)`);
+    console.log(`   Wild tier: ${stats.wildSymbols} symbols (3-5s updates)`);
+    console.log("=============================");
 
-  console.log(`⚙️  [STATE] Initializing for ${allSymbols.length} symbols...`);
-  const smStats = stateMachine.initStateMachine(allSymbols);
-  console.log("⚙️  [STATE] initStateMachine() completed");
+    // =====================================================
+    // PHASE 6: SCORING ENGINE INITIALIZATION
+    // =====================================================
+    console.log("=============================");
+    console.log("🎯 SCORING: Starting Scoring Engine...");
+    console.log("=============================");
 
-  // Store in global for API access
-  global.stateMachine = stateMachine;
-  console.log("⚙️  [STATE] Stored in global");
+    console.log("🎯 [SCORING] Importing Scoring Engine...");
+    const { scoringEngine } = await import('./scoring/scoringEngine.js');
+    console.log("🎯 [SCORING] Scoring Engine imported");
 
-  console.log("⚙️  [STATE] State Machine started successfully:");
-  console.log(`   Symbols tracked: ${smStats.symbolCount}`);
-  console.log(`   Tick interval: ${smStats.tickInterval}ms`);
-  console.log(`   Event logging: enabled`);
-  console.log("=============================");
+    console.log("🎯 [SCORING] Calling scoringEngine.start()...");
+    await scoringEngine.start();
+    console.log("🎯 [SCORING] scoringEngine.start() completed");
 
-  metrics.heartbeat();
+    const scoringStats = scoringEngine.getStats();
+    console.log("🎯 [SCORING] Engine started successfully:");
+    console.log(`   Total symbols: ${scoringStats.totalSymbols}`);
+    console.log(`   Update interval: ${scoringEngine.config.updateIntervalMs}ms`);
+    console.log(`   Signals: ARM=${scoringStats.signalCounts.ARM_LONG + scoringStats.signalCounts.ARM_SHORT}, WATCH=${scoringStats.signalCounts.WATCH_LONG + scoringStats.signalCounts.WATCH_SHORT}`);
+    console.log("=============================");
+
+    // =====================================================
+    // PHASE 7: STATE MACHINE INITIALIZATION
+    // =====================================================
+    console.log("=============================");
+    console.log("⚙️  STATE MACHINE: Starting State Machine...");
+    console.log("=============================");
+
+    console.log("⚙️  [STATE] Importing State Machine...");
+    const stateMachine = await import('./state/stateMachine.js');
+    console.log("⚙️  [STATE] State Machine imported");
+
+    // Get universe symbols (Prime + Normal for now)
+    const smPrimeSymbols = await getSymbolsByCategory("Prime");
+    const smNormalSymbols = await getSymbolsByCategory("Normal");
+
+    // Extract symbol strings from metadata objects
+    const allSymbols = [
+        ...smPrimeSymbols.map(meta => meta.symbol),
+        ...smNormalSymbols.map(meta => meta.symbol)
+    ];
+
+    console.log(`⚙️  [STATE] Initializing for ${allSymbols.length} symbols...`);
+    const smStats = stateMachine.initStateMachine(allSymbols);
+    console.log("⚙️  [STATE] initStateMachine() completed");
+
+    // Store in global for API access
+    global.stateMachine = stateMachine;
+    console.log("⚙️  [STATE] Stored in global");
+
+    console.log("⚙️  [STATE] State Machine started successfully:");
+    console.log(`   Symbols tracked: ${smStats.symbolCount}`);
+    console.log(`   Tick interval: ${smStats.tickInterval}ms`);
+    console.log(`   Event logging: enabled`);
+    console.log("=============================");
+
+    metrics.heartbeat();
 }
 
 startEngine().catch((err) => {
-  console.error("❌ ENGINE CRASHED:", err);
-  metrics.markError();
+    console.error("❌ ENGINE CRASHED:", err);
+    metrics.markError();
 });
