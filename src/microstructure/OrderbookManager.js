@@ -584,10 +584,10 @@ function getSymbolHealth(symbol) {
   let staleness = "FRESH";
   let isActive = true;
 
-  if (timeSinceLastTick > 15000) {  // 15s - allow slower symbols
+  if (timeSinceLastTick > 120000) {  // 120s (2min) - tolerate REST-only symbols
     staleness = "STALE";
     isActive = false;
-  } else if (timeSinceLastTick > 5000) {  // 5s degraded
+  } else if (timeSinceLastTick > 30000) {  // 30s degraded
     staleness = "DEGRADED";
   }
 
