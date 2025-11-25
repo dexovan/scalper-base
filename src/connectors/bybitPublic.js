@@ -256,9 +256,15 @@ async function connectWS(symbolsOverride = null) {
         // console.log(`🔄 Using trade price fallback for ${symbol}: $${price}`);
       }
 
+      // Extract bid/ask from Bybit v5 ticker format
+      const bid = parseFloat(payload.bid1Price || 0);
+      const ask = parseFloat(payload.ask1Price || 0);
+
       const tickerData = {
         symbol,
         price: price,
+        bid: bid,
+        ask: ask,
         change24h: parseFloat(payload.price24hPcnt || 0) * 100,
         volume24h: parseFloat(payload.volume24h || 0),
         timestamp: nowISO()
@@ -307,6 +313,8 @@ async function connectWS(symbolsOverride = null) {
             const updatedTicker = {
               symbol,
               price: tradePrice,
+              bid: currentTicker?.bid || 0,
+              ask: currentTicker?.ask || 0,
               change24h: currentTicker?.change24h || 0,
               volume24h: currentTicker?.volume24h || 0,
               timestamp: nowISO()
