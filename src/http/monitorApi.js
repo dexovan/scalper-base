@@ -842,8 +842,8 @@ export function startMonitorApiServer(port = 8090) {
       const orderbook = OrderbookManager.getOrderbookSummary(symbol, 50);
 
       // 3. Calculate spread - use ticker fallback if orderbook unavailable
-      let bid = ticker.bid || 0;
-      let ask = ticker.ask || 0;
+      let bid = ticker.bid || ticker.price || 0;
+      let ask = ticker.ask || ticker.price || 0;
 
       if (orderbook) {
         bid = orderbook.bestBid?.price || bid;
