@@ -156,20 +156,33 @@ async function scanSymbol(symbol) {
       const bid = liveData.bid || entryPrice;
       const ask = liveData.ask || entryPrice;
 
+      // Calculate entry
+      const entry = direction === 'LONG' ? ask : bid;
+
+      // Calculate TP/SL with proper precision (use more decimals, let Dashboard format)
+      const tp = direction === 'LONG'
+        ? ask * 1.0022  // +0.22% for LONG
+        : bid * 0.9978; // -0.22% for SHORT (price goes down)
+
+      const sl = direction === 'LONG'
+        ? bid * 0.9985  // -0.15% stop loss for LONG
+        : ask * 1.0015; // +0.15% stop loss for SHORT
+
+      // Calculate expected profit (assuming $25 margin at 5x leverage = $125 position)
+      const positionSize = 125; // $25 * 5x
+      const expectedProfit = Math.abs((tp - entry) / entry) * positionSize;
+
       const signal = {
         symbol,
         direction,
         confidence: evaluation.confidence,
         timestamp: new Date().toISOString(),
 
-        // Entry/Exit prices
-        entry: direction === 'LONG' ? ask : bid,
-        tp: direction === 'LONG'
-          ? (ask * 1.0022).toFixed(4)  // +0.22% for LONG
-          : (bid * 0.9978).toFixed(4), // -0.22% for SHORT
-        sl: direction === 'LONG'
-          ? (bid * 0.9985).toFixed(4)  // -0.15% stop loss for LONG
-          : (ask * 1.0015).toFixed(4), // +0.15% stop loss for SHORT
+        // Entry/Exit prices (keep full precision)
+        entry,
+        tp,
+        sl,
+        expectedProfit,
 
         // Supporting data
         candle: {
