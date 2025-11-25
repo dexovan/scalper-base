@@ -1825,6 +1825,62 @@ export function startMonitorApiServer(port = 8090) {
     }
   });
 
+  // POST /api/risk/test-position - Create test position (for testing only)
+  app.post("/api/risk/test-position", async (req, res) => {
+    try {
+      const positionTracker = await import('../risk/positionTracker.js');
+
+      const { symbol, side, entryPrice, qty, leverage } = req.body;
+
+      if (!symbol || !side || !entryPrice || !qty) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing required fields: symbol, side, entryPrice, qty",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Create test position
+      const position = positionTracker.onNewPositionOpened({
+        symbol,
+        side: side.toUpperCase(),
+        entryPrice: parseFloat(entryPrice),
+        qty: parseFloat(qty),
+        leverage: leverage || 1,
+        stopLossPrice: null,
+        takeProfit1Price: null,
+        takeProfit2Price: null
+      });
+
+      // Trigger TP/SL Engine to create state
+      if (global.tpslEngine) {
+        try {
+          await global.tpslEngine.onPositionOpened({
+            symbol,
+            side: side.toUpperCase(),
+            entryPrice: parseFloat(entryPrice),
+            qty: parseFloat(qty)
+          });
+        } catch (tpslError) {
+          console.warn("⚠️  [TEST-POSITION] TP/SL Engine error:", tpslError.message);
+        }
+      }
+
+      res.json({
+        ok: true,
+        position,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [TEST-POSITION] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // ============================================================
   // PHASE 10: EXECUTION ENGINE ENDPOINTS
   // ============================================================
