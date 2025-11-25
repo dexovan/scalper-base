@@ -275,6 +275,7 @@ export function recalcRiskState() {
   lastRiskSnapshot = {
     account: { ...account },
     portfolio: { ...portfolio },
+    positions: positionTracker.getAllPositions(true), // Add active positions array
     dailyStats: { ...dailyStats },
     riskFlags: { ...riskFlags },
     timestamp: new Date().toISOString()

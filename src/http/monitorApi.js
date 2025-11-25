@@ -1794,8 +1794,9 @@ export function startMonitorApiServer(port = 8090) {
         });
       }
 
-      const positionTracker = await import('../risk/positionTracker.js');
-      const positions = positionTracker.getAllPositions(true); // active only
+      // Get positions from Risk Engine (which has persistent positionTracker)
+      const riskData = global.riskEngine.getRiskSnapshot();
+      const positions = riskData.positions || [];
 
       // Enrich positions with TP/SL data
       const enrichedPositions = positions.map(pos => {
@@ -1806,7 +1807,7 @@ export function startMonitorApiServer(port = 8090) {
         };
       });
 
-      const summary = positionTracker.getPortfolioSummary();
+      const summary = riskData.portfolio || {};
 
       res.json({
         ok: true,
