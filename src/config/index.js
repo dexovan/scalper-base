@@ -53,8 +53,8 @@ const CONFIG = {
   },
 
   scoring: {
-    watchThreshold: 60,
-    armThreshold: 80,
+    watchThreshold: 12,
+    armThreshold: 22,
   },
 
   latency: {
