@@ -857,10 +857,8 @@ export function startMonitorApiServer(port = 8090) {
       // 4. Get imbalance (default to 1.0 if no orderbook)
       const imbalance = orderbook?.imbalance ?? 1.0;
 
-      // 5. Get order flow (if available from recent trades)
-      // For now, we'll use a simple proxy based on imbalance
-      // TODO: Implement proper 60s rolling order flow aggregation
-      const orderFlowNet60s = null; // Placeholder
+      // 5. Get order flow from 60s trade aggregation
+      const orderFlowNet60s = OrderbookManager.getOrderFlow60s(symbol);
 
       // 6. Return live market state
       return res.json({

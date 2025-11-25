@@ -486,6 +486,40 @@ function getRecentTrades(symbol, limit = 100) {
 }
 
 /**
+ * Računa net order flow za poslednjih 60 sekundi
+ * Vraća: buy_volume - sell_volume (pozitivno = buying pressure, negativno = selling pressure)
+ */
+function getOrderFlow60s(symbol) {
+  const symbolState = state.symbols[symbol];
+  if (!symbolState || !symbolState.trades || symbolState.trades.length === 0) {
+    return null;
+  }
+
+  const now = Date.now();
+  const cutoff = now - 60000; // 60 seconds ago
+
+  let buyVolume = 0;
+  let sellVolume = 0;
+
+  // Filter trades from last 60 seconds and calculate net flow
+  for (const trade of symbolState.trades) {
+    const tradeTime = trade.ts || new Date(trade.timestamp).getTime();
+
+    if (tradeTime >= cutoff) {
+      const volume = trade.price * trade.qty; // USD volume
+
+      if (trade.side === "Buy" || trade.side === "BUY") {
+        buyVolume += volume;
+      } else if (trade.side === "Sell" || trade.side === "SELL") {
+        sellVolume += volume;
+      }
+    }
+  }
+
+  return buyVolume - sellVolume;
+}
+
+/**
  * Vraća candles za timeframe
  */
 function getCandles(symbol, timeframe, limit = 100) {
@@ -659,6 +693,7 @@ export {
   getSymbolMicroState,
   getOrderbookSummary,
   getRecentTrades,
+  getOrderFlow60s,
   getCandles,
   getActiveSymbols,
   getSymbolHealth,
@@ -678,6 +713,7 @@ export default {
   getSymbolMicroState,
   getOrderbookSummary,
   getRecentTrades,
+  getOrderFlow60s,
   getCandles,
   getActiveSymbols,
   getSymbolHealth,
