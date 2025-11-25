@@ -820,6 +820,78 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // GET /api/symbol/:symbol/orderbook - Current orderbook
+  // ============================================================
+  // GET /api/live-market/:symbol - Live market state (for Signal Scanner)
+  // ============================================================
+  app.get("/api/live-market/:symbol", async (req, res) => {
+    try {
+      const { symbol } = req.params;
+
+      // 1. Get ticker data (price, bid, ask)
+      const ticker = latestTickers.get(symbol);
+      if (!ticker) {
+        return res.json({
+          ok: false,
+          error: `No ticker data for symbol: ${symbol}`,
+          symbol,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // 2. Get orderbook summary (imbalance, spread, walls)
+      const orderbook = OrderbookManager.getOrderbookSummary(symbol, 50);
+      if (!orderbook) {
+        return res.json({
+          ok: false,
+          error: `No orderbook data for symbol: ${symbol}`,
+          symbol,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // 3. Calculate spread
+      const bid = orderbook.bestBid?.price || ticker.bid || 0;
+      const ask = orderbook.bestAsk?.price || ticker.ask || 0;
+      const spread = bid > 0 ? ((ask - bid) / bid * 100).toFixed(4) : null;
+
+      // 4. Get imbalance
+      const imbalance = orderbook.imbalance || 1.0;
+
+      // 5. Get order flow (if available from recent trades)
+      // For now, we'll use a simple proxy based on imbalance
+      // TODO: Implement proper 60s rolling order flow aggregation
+      const orderFlowNet60s = null; // Placeholder
+
+      // 6. Return live market state
+      return res.json({
+        ok: true,
+        symbol,
+        live: {
+          price: ticker.price,
+          bid: bid,
+          ask: ask,
+          spread: parseFloat(spread),
+          spreadPercent: spread,
+          imbalance: parseFloat(imbalance.toFixed(2)),
+          orderFlowNet60s: orderFlowNet60s,
+          volume24h: ticker.volume24h || 0,
+          change24h: ticker.change24h || 0,
+          lastUpdate: ticker.timestamp || new Date().toISOString()
+        },
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [API] Error fetching live market for ${req.params.symbol}:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        symbol: req.params.symbol,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // GET /api/symbol/:symbol/orderbook - Orderbook details
   app.get("/api/symbol/:symbol/orderbook", async (req, res) => {
     try {
       const { symbol } = req.params;
