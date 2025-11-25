@@ -1798,6 +1798,11 @@ export function startMonitorApiServer(port = 8090) {
       const riskData = global.riskEngine.getRiskSnapshot();
       const positions = riskData.positions || [];
 
+      console.log(`[POSITIONS/ENHANCED] Risk snapshot has ${positions.length} positions`);
+      if (positions.length > 0) {
+        console.log(`[POSITIONS/ENHANCED] First position:`, positions[0]);
+      }
+
       // Enrich positions with TP/SL data
       const enrichedPositions = positions.map(pos => {
         const tpslState = global.tpslEngine.getTpslState(pos.symbol, pos.side);

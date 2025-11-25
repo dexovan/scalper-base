@@ -344,6 +344,8 @@ export function getDailyStats() {
  * @returns {Object} Created position
  */
 export function createTestPosition({ symbol, side, entryPrice, qty, leverage }) {
+  console.log(`[RiskEngine] Creating test position: ${symbol} ${side} @${entryPrice} qty=${qty}`);
+
   const position = positionTracker.onNewPositionOpened({
     symbol,
     side: side.toUpperCase(),
@@ -355,8 +357,14 @@ export function createTestPosition({ symbol, side, entryPrice, qty, leverage }) 
     takeProfit2Price: null
   });
 
+  console.log(`[RiskEngine] Position created:`, position);
+
   // Recalculate risk state to update snapshot
   recalcRiskState();
+
+  // Verify positions in snapshot
+  const snapshot = getRiskSnapshot();
+  console.log(`[RiskEngine] After recalc, snapshot has ${snapshot.positions.length} positions`);
 
   console.log(`✅ [RiskEngine] Test position created: ${symbol} ${side} @${entryPrice} qty=${qty}`);
   return position;
