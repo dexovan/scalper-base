@@ -312,7 +312,11 @@ async function main() {
   console.log(`  Max Spread:        ${CONFIG.maxSpread}%`);
   console.log('='.repeat(60) + '\n');
 
-  // Run first scan immediately
+  // Wait 5 seconds for Engine to be ready
+  console.log('⏳ Waiting 5s for Engine to initialize...\n');
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  // Run first scan
   await scanAllSymbols();
 
   // Then run periodic scans
