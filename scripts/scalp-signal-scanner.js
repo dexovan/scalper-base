@@ -87,17 +87,27 @@ async function fetchLiveMarketData(symbol) {
 // ============================================================
 
 function evaluateSignal(candle, liveData) {
+  // Safe extraction with defaults
+  const volatility = candle.volatility ?? 0;
+  const volumeSpike = candle.volumeSpike ?? 0;
+  const velocity = candle.velocity ?? 0;
+  const priceChange1m = candle.priceChange1m ?? 0;
+
+  const imbalance = liveData.imbalance ?? 1.0;
+  const spread = liveData.spread ?? 999; // High default so it fails spread check
+  const orderFlow = liveData.orderFlowNet60s;
+
   const checks = {
     // Historical checks
-    volatility: candle.volatility >= CONFIG.minVolatility,
-    volumeSpike: candle.volumeSpike >= CONFIG.minVolumeSpike,
-    velocity: Math.abs(candle.velocity) >= CONFIG.minVelocity,
-    momentum: Math.abs(candle.priceChange1m) >= CONFIG.minPriceChange1m,
+    volatility: volatility >= CONFIG.minVolatility,
+    volumeSpike: volumeSpike >= CONFIG.minVolumeSpike,
+    velocity: Math.abs(velocity) >= CONFIG.minVelocity,
+    momentum: Math.abs(priceChange1m) >= CONFIG.minPriceChange1m,
 
     // Live checks
-    imbalance: liveData.imbalance >= CONFIG.minImbalance,
-    spread: liveData.spread <= CONFIG.maxSpread,
-    orderFlow: liveData.orderFlowNet60s === null || liveData.orderFlowNet60s >= CONFIG.minOrderFlow,
+    imbalance: imbalance >= CONFIG.minImbalance,
+    spread: spread <= CONFIG.maxSpread,
+    orderFlow: orderFlow === null || orderFlow >= CONFIG.minOrderFlow,
   };
 
   // Count how many checks passed
@@ -219,12 +229,12 @@ async function scanAllSymbols() {
         if (candleData && liveData && candleData.candles.length > 0) {
           const c = candleData.candles[candleData.candles.length - 1];
           console.log(`\n📋 Sample: ${symbol}`);
-          console.log(`  Volatility: ${c.volatility?.toFixed(2)}% (need ${CONFIG.minVolatility}%)`);
-          console.log(`  Volume Spike: ${c.volumeSpike?.toFixed(2)}x (need ${CONFIG.minVolumeSpike}x)`);
+          console.log(`  Volatility: ${c.volatility != null ? c.volatility.toFixed(2) + '%' : 'N/A'} (need ${CONFIG.minVolatility}%)`);
+          console.log(`  Volume Spike: ${c.volumeSpike != null ? c.volumeSpike.toFixed(2) + 'x' : 'N/A'} (need ${CONFIG.minVolumeSpike}x)`);
           console.log(`  Velocity: ${Math.abs(c.velocity || 0).toFixed(3)}%/min (need ${CONFIG.minVelocity}%/min)`);
           console.log(`  Momentum (1m): ${Math.abs(c.priceChange1m || 0).toFixed(2)}% (need ${CONFIG.minPriceChange1m}%)`);
-          console.log(`  Imbalance: ${liveData.imbalance?.toFixed(2)} (need ${CONFIG.minImbalance})`);
-          console.log(`  Spread: ${liveData.spread?.toFixed(3)}% (need <${CONFIG.maxSpread}%)`);
+          console.log(`  Imbalance: ${liveData.imbalance != null ? liveData.imbalance.toFixed(2) : 'N/A'} (need ${CONFIG.minImbalance})`);
+          console.log(`  Spread: ${liveData.spread != null ? liveData.spread.toFixed(3) + '%' : 'N/A'} (need <${CONFIG.maxSpread}%)`);
           debugSampleCount++;
         }
       }

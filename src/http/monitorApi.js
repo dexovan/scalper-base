@@ -840,22 +840,20 @@ export function startMonitorApiServer(port = 8090) {
 
       // 2. Get orderbook summary (imbalance, spread, walls)
       const orderbook = OrderbookManager.getOrderbookSummary(symbol, 50);
-      if (!orderbook) {
-        return res.json({
-          ok: false,
-          error: `No orderbook data for symbol: ${symbol}`,
-          symbol,
-          timestamp: new Date().toISOString()
-        });
+
+      // 3. Calculate spread - use ticker fallback if orderbook unavailable
+      let bid = ticker.bid || 0;
+      let ask = ticker.ask || 0;
+
+      if (orderbook) {
+        bid = orderbook.bestBid?.price || bid;
+        ask = orderbook.bestAsk?.price || ask;
       }
 
-      // 3. Calculate spread
-      const bid = orderbook.bestBid?.price || ticker.bid || 0;
-      const ask = orderbook.bestAsk?.price || ticker.ask || 0;
-      const spread = bid > 0 ? ((ask - bid) / bid * 100).toFixed(4) : null;
+      const spread = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
 
-      // 4. Get imbalance
-      const imbalance = orderbook.imbalance || 1.0;
+      // 4. Get imbalance (default to 1.0 if no orderbook)
+      const imbalance = orderbook?.imbalance ?? 1.0;
 
       // 5. Get order flow (if available from recent trades)
       // For now, we'll use a simple proxy based on imbalance
@@ -870,8 +868,8 @@ export function startMonitorApiServer(port = 8090) {
           price: ticker.price,
           bid: bid,
           ask: ask,
-          spread: parseFloat(spread),
-          spreadPercent: spread,
+          spread: parseFloat(spread.toFixed(4)),
+          spreadPercent: spread.toFixed(4),
           imbalance: parseFloat(imbalance.toFixed(2)),
           orderFlowNet60s: orderFlowNet60s,
           volume24h: ticker.volume24h || 0,
