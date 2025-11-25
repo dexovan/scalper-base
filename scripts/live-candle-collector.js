@@ -43,25 +43,31 @@ let activeSymbols = [];
 
 async function fetchActiveSymbols() {
   try {
-    const url = `${CONFIG.engineApiUrl}/api/monitor/universe`;
+    const url = `${CONFIG.engineApiUrl}/api/monitor/symbols`;
     console.log(`📥 Fetching active symbols from Universe...`);
 
     const response = await fetch(url);
     const data = await response.json();
 
-    if (!data.symbols || !Array.isArray(data.symbols)) {
-      console.error('❌ Invalid Universe response');
+    if (!data.ok || !data.symbols || !Array.isArray(data.symbols)) {
+      console.error('❌ Invalid Universe response:', data);
       return activeSymbols; // Return cached list
     }
 
     // Filter: Trading status, has volume, is USDT perpetual
     const symbols = data.symbols
-      .filter(s =>
-        s.status === 'Trading' &&
-        s.volume24h > CONFIG.minVolume24h &&
-        s.symbol.endsWith('USDT')
-      )
-      .map(s => s.symbol)
+      .filter(s => {
+        const symbol = typeof s === 'string' ? s : s.symbol;
+        const volume = typeof s === 'object' ? (s.volume24h || 0) : 0;
+        const status = typeof s === 'object' ? s.status : 'Trading';
+
+        return (
+          status === 'Trading' &&
+          volume > CONFIG.minVolume24h &&
+          symbol.endsWith('USDT')
+        );
+      })
+      .map(s => typeof s === 'string' ? s : s.symbol)
       .sort();
 
     console.log(`✅ Loaded ${symbols.length} active symbols from Universe`);
