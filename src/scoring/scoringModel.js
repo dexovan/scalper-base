@@ -477,11 +477,11 @@ export function applyRegimeAndRiskFilters(
   }
 
   if (regime === 'COOLDOWN') {
-    // 80% penalty (or full block)
-    finalLong *= 0.2;
-    finalShort *= 0.2;
-    if (finalLong < 10) allowedLong = false;
-    if (finalShort < 10) allowedShort = false;
+    // 40% penalty (reduced for scalping)
+    finalLong *= 0.6;
+    finalShort *= 0.6;
+    if (finalLong < 5) allowedLong = false;
+    if (finalShort < 5) allowedShort = false;
     if (!allowedLong || !allowedShort) {
       blockedReasons.push('SYMBOL_COOLDOWN');
     }
@@ -518,18 +518,18 @@ export function applyRegimeAndRiskFilters(
     finalShort *= 0.6;
   }
 
-  // High spoof adjustment
-  const spoofPenalty = parseFloat(baseScores.components.spoofPenalty);
-  if (spoofPenalty > 60) {
-    finalLong *= 0.5;
-    finalShort *= 0.5;
-  }
+  // High spoof adjustment (disabled - already penalized in base score)
+  // const spoofPenalty = parseFloat(baseScores.components.spoofPenalty);
+  // if (spoofPenalty > 60) {
+  //   finalLong *= 0.5;
+  //   finalShort *= 0.5;
+  // }
 
-  // High pump adjustment (additional to regime filter)
-  const pumpPenaltyLong = parseFloat(baseScores.components.pumpPenalty.long);
-  if (pumpPenaltyLong > 50) {
-    finalLong *= 0.7;
-  }
+  // High pump adjustment (disabled - already handled by regime filter)
+  // const pumpPenaltyLong = parseFloat(baseScores.components.pumpPenalty.long);
+  // if (pumpPenaltyLong > 50) {
+  //   finalLong *= 0.7;
+  // }
 
   // Final clamp
   finalLong = clamp(finalLong, 0, 100);
