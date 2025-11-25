@@ -841,13 +841,15 @@ export function startMonitorApiServer(port = 8090) {
       // 2. Get orderbook summary (imbalance, spread, walls)
       const orderbook = OrderbookManager.getOrderbookSummary(symbol, 50);
 
-      // 3. Calculate spread - use ticker fallback if orderbook unavailable
+      // 3. Calculate spread - PRIORITIZE orderbook over ticker for accurate bid/ask
       let bid = ticker.bid || ticker.price || 0;
       let ask = ticker.ask || ticker.price || 0;
 
-      if (orderbook) {
-        bid = orderbook.bestBid?.price || bid;
-        ask = orderbook.bestAsk?.price || ask;
+      if (orderbook && orderbook.bestBid && orderbook.bestAsk) {
+        // Use orderbook bid/ask (more accurate than ticker which Bybit rounds)
+        // bestBid/bestAsk are numbers (prices), not objects
+        bid = orderbook.bestBid;
+        ask = orderbook.bestAsk;
       }
 
       const spread = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
