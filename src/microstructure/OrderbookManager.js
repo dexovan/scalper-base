@@ -458,11 +458,17 @@ function getOrderbookSummary(symbol, depthLimit = 10) {
   const bidsArray = bids.slice(0, depthLimit).map(level => [level.price, level.qty]);
   const asksArray = asks.slice(0, depthLimit).map(level => [level.price, level.qty]);
 
+  // Calculate orderbook imbalance (ratio of bid volume to ask volume)
+  const bidVolume = bids.slice(0, depthLimit).reduce((sum, level) => sum + level.qty, 0);
+  const askVolume = asks.slice(0, depthLimit).reduce((sum, level) => sum + level.qty, 0);
+  const imbalance = askVolume > 0 ? bidVolume / askVolume : 1.0;
+
   return {
     symbol,
     bestBid,
     bestAsk,
     spread,
+    imbalance,
     bids: bidsArray,
     asks: asksArray,
     lastUpdateAt
