@@ -199,12 +199,34 @@ async function scanAllSymbols() {
 
     console.log(`📊 Scanning ${symbols.length} symbols...`);
 
+    // Debug: Sample a few symbols to see actual values
+    let debugSampleCount = 0;
+    const maxDebugSamples = 3;
+
     // Scan all symbols
     const signals = [];
     for (const symbol of symbols) {
       const signal = await scanSymbol(symbol);
       if (signal) {
         signals.push(signal);
+      }
+
+      // Debug: Log sample data from first few symbols
+      if (debugSampleCount < maxDebugSamples && signal === null) {
+        const candleData = loadCandleData(symbol);
+        const liveData = await fetchLiveMarketData(symbol);
+
+        if (candleData && liveData && candleData.candles.length > 0) {
+          const c = candleData.candles[candleData.candles.length - 1];
+          console.log(`\n📋 Sample: ${symbol}`);
+          console.log(`  Volatility: ${c.volatility?.toFixed(2)}% (need ${CONFIG.minVolatility}%)`);
+          console.log(`  Volume Spike: ${c.volumeSpike?.toFixed(2)}x (need ${CONFIG.minVolumeSpike}x)`);
+          console.log(`  Velocity: ${Math.abs(c.velocity || 0).toFixed(3)}%/min (need ${CONFIG.minVelocity}%/min)`);
+          console.log(`  Momentum (1m): ${Math.abs(c.priceChange1m || 0).toFixed(2)}% (need ${CONFIG.minPriceChange1m}%)`);
+          console.log(`  Imbalance: ${liveData.imbalance?.toFixed(2)} (need ${CONFIG.minImbalance})`);
+          console.log(`  Spread: ${liveData.spread?.toFixed(3)}% (need <${CONFIG.maxSpread}%)`);
+          debugSampleCount++;
+        }
       }
     }
 
