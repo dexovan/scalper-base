@@ -22,20 +22,60 @@ const __dirname = path.dirname(__filename);
 // ===========================================
 
 const CONFIG = {
-  symbols: [
-    'AAVEUSDT',
-    'SOLUSDT',
-    'DOGEUSDT',
-    // Add more symbols as needed
-  ],
+  engineApiUrl: 'http://localhost:8090',  // Engine API
   interval: '1',              // 1-minute candles
   windowHours: 6,             // Keep last 6 hours
   windowSize: 360,            // 6 hours × 60 minutes = 360 candles
   updateInterval: 60000,      // Update every 60 seconds
-  dataDir: path.join(__dirname, '../data/live')
+  symbolRefreshInterval: 300000,  // Refresh symbol list every 5 minutes
+  dataDir: path.join(__dirname, '../data/live'),
+  minVolume24h: 100000        // Minimum 24h volume (USDT) to track
 };
 
 const BYBIT_API = 'https://api.bybit.com/v5';
+
+// Global state
+let activeSymbols = [];
+
+// ===========================================
+// FETCH ACTIVE SYMBOLS FROM UNIVERSE
+// ===========================================
+
+async function fetchActiveSymbols() {
+  try {
+    const url = `${CONFIG.engineApiUrl}/api/monitor/universe`;
+    console.log(`📥 Fetching active symbols from Universe...`);
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.symbols || !Array.isArray(data.symbols)) {
+      console.error('❌ Invalid Universe response');
+      return activeSymbols; // Return cached list
+    }
+
+    // Filter: Trading status, has volume, is USDT perpetual
+    const symbols = data.symbols
+      .filter(s =>
+        s.status === 'Trading' &&
+        s.volume24h > CONFIG.minVolume24h &&
+        s.symbol.endsWith('USDT')
+      )
+      .map(s => s.symbol)
+      .sort();
+
+    console.log(`✅ Loaded ${symbols.length} active symbols from Universe`);
+
+    // Cache for next time
+    activeSymbols = symbols;
+    return symbols;
+
+  } catch (error) {
+    console.error('❌ Error fetching symbols from Universe:', error.message);
+    console.log(`⚠️  Using cached list: ${activeSymbols.length} symbols`);
+    return activeSymbols; // Return cached list on error
+  }
+}
 
 // ===========================================
 // ENSURE DATA DIRECTORY EXISTS
@@ -202,21 +242,63 @@ async function updateSymbol(symbol) {
 async function updateAll() {
   console.log(`\n🔄 [${new Date().toISOString()}] Updating candles...`);
 
-  for (const symbol of CONFIG.symbols) {
+  // Get current active symbols from Universe
+  const currentSymbols = await fetchActiveSymbols();
+
+  if (currentSymbols.length === 0) {
+    console.log('⚠️  No symbols to update');
+    return;
+  }
+
+  // Update candles for all active symbols
+  for (const symbol of currentSymbols) {
     await updateSymbol(symbol);
   }
 
-  console.log(`✅ Update cycle complete\n`);
+  // Cleanup: Remove files for symbols no longer in Universe
+  await cleanupInactiveSymbols(currentSymbols);
+
+  console.log(`✅ Update cycle complete (${currentSymbols.length} symbols)\n`);
 }
 
 // ===========================================
+// CLEANUP INACTIVE SYMBOLS
+// ===========================================
+
+async function cleanupInactiveSymbols(activeSymbols) {
+  try {
+    const files = fs.readdirSync(CONFIG.dataDir);
+    const liveFiles = files.filter(f => f.endsWith('_live.json'));
+
+    for (const file of liveFiles) {
+      const symbol = file.replace('_live.json', '');
+
+      if (!activeSymbols.includes(symbol)) {
+        const filePath = path.join(CONFIG.dataDir, file);
+        fs.unlinkSync(filePath);
+        console.log(`🗑️  Removed inactive: ${symbol}`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error during cleanup:', error.message);
+  }
+}// ===========================================
 // INITIAL LOAD (BOOTSTRAP)
 // ===========================================
 
 async function initialLoad() {
   console.log('\n🚀 LIVE CANDLE COLLECTOR - INITIAL LOAD\n');
   console.log('='.repeat(60));
-  console.log(`Symbols:      ${CONFIG.symbols.join(', ')}`);
+
+  // Fetch active symbols from Universe
+  const symbols = await fetchActiveSymbols();
+
+  if (symbols.length === 0) {
+    console.error('❌ No symbols found! Check Universe API at', CONFIG.engineApiUrl);
+    process.exit(1);
+  }
+
+  console.log(`Symbols:      ${symbols.length} from Universe API`);
   console.log(`Window:       ${CONFIG.windowHours} hours (${CONFIG.windowSize} candles)`);
   console.log(`Update:       Every ${CONFIG.updateInterval / 1000} seconds`);
   console.log(`Data Dir:     ${CONFIG.dataDir}`);
@@ -225,7 +307,7 @@ async function initialLoad() {
   ensureDataDir();
 
   // Bootstrap: Fetch full window for each symbol
-  for (const symbol of CONFIG.symbols) {
+  for (const symbol of symbols) {
     console.log(`📥 Bootstrapping ${symbol}...`);
 
     try {
@@ -274,6 +356,12 @@ async function main() {
   setInterval(async () => {
     await updateAll();
   }, CONFIG.updateInterval);
+
+  // Refresh symbol list periodically (every 5 minutes)
+  setInterval(async () => {
+    console.log('🔄 Refreshing symbol list from Universe...');
+    await fetchActiveSymbols(); // Updates global cache
+  }, CONFIG.symbolRefreshInterval);
 
   // Keep process alive
   process.on('SIGINT', () => {
