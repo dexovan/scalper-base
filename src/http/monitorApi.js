@@ -1884,6 +1884,17 @@ export function startMonitorApiServer(port = 8090) {
             entryPrice: parseFloat(entryPrice),
             qty: parseFloat(qty)
           });
+
+          // Update position tracker with calculated TP/SL prices
+          const tpslState = global.tpslEngine.getTpslState(symbol, side.toUpperCase());
+          if (tpslState && global.riskEngine.updatePositionTpSl) {
+            global.riskEngine.updatePositionTpSl(symbol, side.toUpperCase(), {
+              stopLossPrice: tpslState.stopLossPrice,
+              takeProfit1Price: tpslState.tp1Price,
+              takeProfit2Price: tpslState.tp2Price
+            });
+            console.log(`✅ [TEST-POSITION] TP/SL prices synced to position tracker`);
+          }
         } catch (tpslError) {
           console.warn("⚠️  [TEST-POSITION] TP/SL Engine error:", tpslError.message);
         }

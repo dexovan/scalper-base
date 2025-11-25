@@ -371,6 +371,18 @@ export function createTestPosition({ symbol, side, entryPrice, qty, leverage }) 
 }
 
 /**
+ * Update TP/SL prices for a position
+ * @param {string} symbol
+ * @param {string} side
+ * @param {Object} tpslPrices - { stopLossPrice, takeProfit1Price, takeProfit2Price }
+ */
+export function updatePositionTpSl(symbol, side, tpslPrices) {
+  positionTracker.updatePositionTpSl(symbol, side, tpslPrices);
+  // Recalculate risk state to update snapshot
+  recalcRiskState();
+}
+
+/**
  * Cleanup
  */
 export function shutdown() {

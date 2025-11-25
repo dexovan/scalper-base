@@ -220,6 +220,29 @@ export function onPositionClosed(event) {
 }
 
 /**
+ * Update TP/SL prices for a position
+ * @param {string} symbol
+ * @param {string} side
+ * @param {Object} tpslPrices - { stopLossPrice, takeProfit1Price, takeProfit2Price }
+ */
+export function updatePositionTpSl(symbol, side, tpslPrices) {
+  const key = getPositionKey(symbol, side);
+  const position = positions.get(key);
+
+  if (!position || !position.isActive) {
+    console.warn(`[PositionTracker] Cannot update TP/SL - position not found: ${key}`);
+    return;
+  }
+
+  position.stopLossPrice = tpslPrices.stopLossPrice ?? position.stopLossPrice;
+  position.takeProfit1Price = tpslPrices.takeProfit1Price ?? position.takeProfit1Price;
+  position.takeProfit2Price = tpslPrices.takeProfit2Price ?? position.takeProfit2Price;
+  position.updatedAt = new Date().toISOString();
+
+  console.log(`[PositionTracker] Updated TP/SL for ${key}: SL=${position.stopLossPrice}, TP1=${position.takeProfit1Price}, TP2=${position.takeProfit2Price}`);
+}
+
+/**
  * Get all positions
  * @param {boolean} activeOnly - Return only active positions
  * @returns {PositionState[]}
