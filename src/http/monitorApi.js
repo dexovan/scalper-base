@@ -1829,7 +1829,13 @@ export function startMonitorApiServer(port = 8090) {
   // POST /api/risk/test-position - Create test position (for testing only)
   app.post("/api/risk/test-position", async (req, res) => {
     try {
-      const positionTracker = await import('../risk/positionTracker.js');
+      if (!global.riskEngine) {
+        return res.status(503).json({
+          ok: false,
+          error: "Risk Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
 
       const { symbol, side, entryPrice, qty, leverage } = req.body;
 
@@ -1841,16 +1847,13 @@ export function startMonitorApiServer(port = 8090) {
         });
       }
 
-      // Create test position
-      const position = positionTracker.onNewPositionOpened({
+      // Create test position through Risk Engine (uses same positionTracker instance)
+      const position = global.riskEngine.createTestPosition({
         symbol,
-        side: side.toUpperCase(),
-        entryPrice: parseFloat(entryPrice),
-        qty: parseFloat(qty),
-        leverage: leverage || 1,
-        stopLossPrice: null,
-        takeProfit1Price: null,
-        takeProfit2Price: null
+        side,
+        entryPrice,
+        qty,
+        leverage: leverage || 1
       });
 
       // Trigger TP/SL Engine to create state
@@ -1864,16 +1867,6 @@ export function startMonitorApiServer(port = 8090) {
           });
         } catch (tpslError) {
           console.warn("⚠️  [TEST-POSITION] TP/SL Engine error:", tpslError.message);
-        }
-      }
-
-      // Trigger Risk Engine recalculation to update snapshot with new position
-      if (global.riskEngine && typeof global.riskEngine.recalcRiskState === 'function') {
-        try {
-          global.riskEngine.recalcRiskState();
-          console.log("✅ [TEST-POSITION] Risk state recalculated");
-        } catch (riskError) {
-          console.warn("⚠️  [TEST-POSITION] Risk Engine recalc error:", riskError.message);
         }
       }
 

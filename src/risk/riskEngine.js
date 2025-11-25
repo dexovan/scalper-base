@@ -339,6 +339,30 @@ export function getDailyStats() {
 }
 
 /**
+ * Create test position (for testing only)
+ * @param {Object} params - Position parameters
+ * @returns {Object} Created position
+ */
+export function createTestPosition({ symbol, side, entryPrice, qty, leverage }) {
+  const position = positionTracker.onNewPositionOpened({
+    symbol,
+    side: side.toUpperCase(),
+    entryPrice: parseFloat(entryPrice),
+    qty: parseFloat(qty),
+    leverage: leverage || 1,
+    stopLossPrice: null,
+    takeProfit1Price: null,
+    takeProfit2Price: null
+  });
+
+  // Recalculate risk state to update snapshot
+  recalcRiskState();
+
+  console.log(`✅ [RiskEngine] Test position created: ${symbol} ${side} @${entryPrice} qty=${qty}`);
+  return position;
+}
+
+/**
  * Cleanup
  */
 export function shutdown() {
