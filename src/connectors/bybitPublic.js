@@ -289,6 +289,11 @@ async function connectWS(symbolsOverride = null) {
       // publicTrade data je niz trade-ova
       const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
 
+      // DEBUG: Sample 0.01% of trade events to verify they're coming through
+      if (Math.random() < 0.0001) {
+        console.log(`🔥 [TRADE DEBUG] ${symbol}: ${trades.length} trades, first side=${trades[0]?.S}, price=${trades[0]?.p}`);
+      }
+
       for (const t of trades) {
         // Store latest trade price for fallback
         const tradePrice = parseFloat(t.p || t.price || 0);
