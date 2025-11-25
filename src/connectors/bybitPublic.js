@@ -289,8 +289,8 @@ async function connectWS(symbolsOverride = null) {
       // publicTrade data je niz trade-ova
       const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
 
-      // DEBUG: Sample 0.01% of trade events to verify they're coming through
-      if (Math.random() < 0.0001) {
+      // DEBUG: Sample 1% of trade events to verify they're coming through
+      if (Math.random() < 0.01) {
         console.log(`🔥 [TRADE DEBUG] ${symbol}: ${trades.length} trades, first side=${trades[0]?.S}, price=${trades[0]?.p}`);
       }
 
