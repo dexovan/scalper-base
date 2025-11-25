@@ -38,6 +38,25 @@ module.exports = {
       merge_logs: true,
       max_memory_restart: "700M",
       node_args: "--max-old-space-size=768"
+    },
+    {
+      name: "candle-collector",
+      script: "/home/aiuser/scalper-base/scripts/live-candle-collector.js",
+      cwd: "/home/aiuser/scalper-base",
+      instances: 1,
+      exec_mode: "fork",
+      watch: false,
+      ignore_watch: ["node_modules", "logs", "data"],
+      env: {
+        NODE_ENV: "production"
+      },
+      log_file: "/home/aiuser/scalper-base/logs/pm2-candle-collector.log",
+      out_file: "/home/aiuser/scalper-base/logs/pm2-candle-collector-out.log",
+      error_file: "/home/aiuser/scalper-base/logs/pm2-candle-collector-error.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      merge_logs: true,
+      max_memory_restart: "512M",
+      node_args: "--max-old-space-size=512"
     }
   ]
 };
