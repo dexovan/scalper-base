@@ -167,6 +167,61 @@ function loadLiveData(symbol) {
 }
 
 // ===========================================
+// ENRICH CANDLE WITH COMPUTED FEATURES
+// ===========================================
+
+function enrichCandle(candle, previousCandles) {
+  // 1. Volatility: price range as % of low
+  if (candle.high && candle.low && candle.low > 0) {
+    candle.volatility = parseFloat((((candle.high - candle.low) / candle.low) * 100).toFixed(4));
+  }
+
+  // 2. Average volume (last 20 candles)
+  if (previousCandles.length >= 20) {
+    const last20 = previousCandles.slice(-20);
+    const sumVolume = last20.reduce((sum, c) => sum + (c.volume || 0), 0);
+    candle.avgVolume20 = Math.round(sumVolume / 20);
+
+    // 3. Volume spike: current volume vs avg
+    if (candle.avgVolume20 > 0 && candle.volume) {
+      candle.volumeSpike = parseFloat((candle.volume / candle.avgVolume20).toFixed(2));
+    }
+  }
+
+  // 4. Price velocity: % change per minute over 5 minutes
+  if (previousCandles.length >= 5) {
+    const candle5ago = previousCandles[previousCandles.length - 5];
+    if (candle5ago && candle5ago.close && candle.close) {
+      const priceChange5m = ((candle.close - candle5ago.close) / candle5ago.close) * 100;
+      candle.velocity = parseFloat((priceChange5m / 5).toFixed(4)); // % per minute
+      candle.priceChange5m = parseFloat(priceChange5m.toFixed(2));
+    }
+  }
+
+  // 5. Price change 1 minute ago
+  if (previousCandles.length >= 1) {
+    const candle1ago = previousCandles[previousCandles.length - 1];
+    if (candle1ago && candle1ago.close && candle.close) {
+      candle.priceChange1m = parseFloat((((candle.close - candle1ago.close) / candle1ago.close) * 100).toFixed(2));
+    }
+  }
+
+  // 6. Average range (last 20 candles)
+  if (previousCandles.length >= 20) {
+    const last20 = previousCandles.slice(-20);
+    const sumRange = last20.reduce((sum, c) => {
+      if (c.high && c.low && c.low > 0) {
+        return sum + ((c.high - c.low) / c.low * 100);
+      }
+      return sum;
+    }, 0);
+    candle.avgRange20 = parseFloat((sumRange / 20).toFixed(4));
+  }
+
+  return candle;
+}
+
+// ===========================================
 // SAVE DATA TO DISK
 // ===========================================
 
@@ -199,11 +254,16 @@ async function updateSymbol(symbol) {
       return;
     }
 
-    // 3. Merge new candles (avoid duplicates)
+    // 3. Merge new candles (avoid duplicates) and enrich with features
     const existingTimestamps = new Set(data.candles.map(c => c.timestamp));
     const uniqueNewCandles = newCandles.filter(c => !existingTimestamps.has(c.timestamp));
 
     if (uniqueNewCandles.length > 0) {
+      // Enrich each new candle with computed features
+      uniqueNewCandles.forEach(candle => {
+        enrichCandle(candle, data.candles);
+      });
+
       data.candles.push(...uniqueNewCandles);
       data.candles.sort((a, b) => a.timestamp - b.timestamp); // Ensure sorted
     }
@@ -325,6 +385,12 @@ async function initialLoad() {
         // Keep only last windowSize candles
         const windowCandles = candles.slice(-CONFIG.windowSize);
 
+        // Enrich all bootstrap candles with features
+        for (let i = 0; i < windowCandles.length; i++) {
+          const previousCandles = windowCandles.slice(0, i);
+          enrichCandle(windowCandles[i], previousCandles);
+        }
+
         const data = {
           symbol,
           windowHours: CONFIG.windowHours,
@@ -336,7 +402,7 @@ async function initialLoad() {
         };
 
         saveLiveData(data);
-        console.log(`✅ [${symbol}] Bootstrapped with ${windowCandles.length} candles`);
+        console.log(`✅ [${symbol}] Bootstrapped with ${windowCandles.length} candles (enriched)`);
       } else {
         console.log(`⚠️  [${symbol}] No candles received`);
       }
