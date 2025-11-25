@@ -1852,6 +1852,10 @@ export function startMonitorApiServer(port = 8090) {
         });
       }
 
+      console.log(`[TEST-POSITION] Creating position: ${symbol} ${side} @${entryPrice}`);
+      console.log(`[TEST-POSITION] global.riskEngine exists:`, !!global.riskEngine);
+      console.log(`[TEST-POSITION] createTestPosition exists:`, typeof global.riskEngine.createTestPosition);
+
       // Create test position through Risk Engine (uses same positionTracker instance)
       const position = global.riskEngine.createTestPosition({
         symbol,
