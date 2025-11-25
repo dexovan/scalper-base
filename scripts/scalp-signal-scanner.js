@@ -202,12 +202,31 @@ async function scanAllSymbols() {
   console.log(`\n🔍 [${new Date().toISOString()}] Starting signal scan...`);
 
   try {
-    // Get all symbol files
-    const files = fs.readdirSync(CONFIG.dataDir);
-    const symbolFiles = files.filter(f => f.endsWith('_live.json'));
-    const symbols = symbolFiles.map(f => f.replace('_live.json', ''));
+    // Get tracked symbols from Engine (only symbols with orderbook data)
+    let symbols = [];
+    try {
+      const response = await fetch(`${CONFIG.engineApiUrl}/api/tracked-symbols`);
+      const data = await response.json();
 
-    console.log(`📊 Scanning ${symbols.length} symbols...`);
+      if (data.ok && data.symbols) {
+        symbols = data.symbols;
+        console.log(`📊 Scanning ${symbols.length} tracked symbols (with orderbook data)...`);
+      } else {
+        console.log(`⚠️  Could not fetch tracked symbols, falling back to file scan`);
+        // Fallback to file scan
+        const files = fs.readdirSync(CONFIG.dataDir);
+        const symbolFiles = files.filter(f => f.endsWith('_live.json'));
+        symbols = symbolFiles.map(f => f.replace('_live.json', ''));
+        console.log(`📊 Scanning ${symbols.length} symbols from files...`);
+      }
+    } catch (error) {
+      console.error(`❌ Error fetching tracked symbols:`, error.message);
+      // Fallback to file scan
+      const files = fs.readdirSync(CONFIG.dataDir);
+      const symbolFiles = files.filter(f => f.endsWith('_live.json'));
+      symbols = symbolFiles.map(f => f.replace('_live.json', ''));
+      console.log(`📊 Scanning ${symbols.length} symbols from files (fallback)...`);
+    }
 
     // Debug: Sample a few symbols to see actual values
     let debugSampleCount = 0;

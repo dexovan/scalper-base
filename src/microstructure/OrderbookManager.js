@@ -628,6 +628,21 @@ function touchSymbolActivity(symbol) {
 }
 
 // ================================================================
+// GET ALL TRACKED SYMBOLS (for signal scanner)
+// ================================================================
+
+/**
+ * Returns list of all symbols being tracked with orderbook data
+ * @returns {string[]} Array of symbol names
+ */
+function getAllTrackedSymbols() {
+  return Object.keys(state.symbols).filter(symbol => {
+    const s = state.symbols[symbol];
+    return s.orderbook && (s.orderbook.bids.length > 0 || s.orderbook.asks.length > 0);
+  });
+}
+
+// ================================================================
 // EXPORTS
 // ================================================================
 
@@ -646,11 +661,28 @@ export {
   getStats,
   startStatsPersistence,
   stopStatsPersistence,
-  flushSnapshotsToDisk
+  flushSnapshotsToDisk,
+  getAllTrackedSymbols
 };
 
 export default {
   initMicrostructure,
+  onOrderbookEvent,
+  onTradeEvent,
+  getSymbolMicroState,
+  getOrderbookSummary,
+  getRecentTrades,
+  getCandles,
+  getActiveSymbols,
+  getSymbolHealth,
+  touchSymbolActivity,
+  setWebSocketEventCallback,
+  getStats,
+  startStatsPersistence,
+  stopStatsPersistence,
+  flushSnapshotsToDisk,
+  getAllTrackedSymbols
+};
   onOrderbookEvent,
   onTradeEvent,
   getSymbolMicroState,

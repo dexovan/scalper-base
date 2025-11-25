@@ -889,6 +889,30 @@ export function startMonitorApiServer(port = 8090) {
     }
   });
 
+  // ============================================================
+  // GET /api/tracked-symbols - List of symbols with orderbook data
+  // ============================================================
+  app.get("/api/tracked-symbols", (req, res) => {
+    try {
+      // Get all symbols that have orderbook data
+      const trackedSymbols = OrderbookManager.getAllTrackedSymbols();
+
+      return res.json({
+        ok: true,
+        count: trackedSymbols.length,
+        symbols: trackedSymbols,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [API] Error fetching tracked symbols:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // GET /api/symbol/:symbol/orderbook - Orderbook details
   app.get("/api/symbol/:symbol/orderbook", async (req, res) => {
     try {
