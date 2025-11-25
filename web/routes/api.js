@@ -422,9 +422,27 @@ router.get("/scalp-scanner", (req, res) => {
 
     // Read signals file
     const data = fs.readFileSync(signalsFile, 'utf-8');
-    const lines = data.trim().split('\n').filter(line => line.trim());
+    let signals = [];
 
-    if (lines.length === 0) {
+    try {
+      // Try parsing as single JSON object first (new format)
+      const parsed = JSON.parse(data);
+      if (parsed.signals && Array.isArray(parsed.signals)) {
+        signals = parsed.signals;
+      }
+    } catch (e) {
+      // Fallback: try parsing as newline-delimited JSON (old format)
+      const lines = data.trim().split('\n').filter(line => line.trim());
+      signals = lines.map(line => {
+        try {
+          return JSON.parse(line);
+        } catch (err) {
+          return null;
+        }
+      }).filter(Boolean);
+    }
+
+    if (signals.length === 0) {
       return res.json({
         ok: true,
         signals: [],
@@ -439,16 +457,33 @@ router.get("/scalp-scanner", (req, res) => {
       });
     }
 
-    // Parse signals (last 100)
-    const signals = lines.slice(-100).map(line => {
-      try {
-        return JSON.parse(line);
-      } catch (e) {
-        return null;
-      }
-    }).filter(Boolean).reverse(); // Most recent first
+    // Normalize signal format and extract metrics
+    signals = signals.map(signal => {
+      // Extract nested candle and live data if present
+      const volatility = signal.candle?.volatility ?? signal.volatility ?? 0;
+      const volumeSpike = signal.candle?.volumeSpike ?? signal.volumeSpike ?? 0;
+      const velocity = signal.candle?.velocity ?? signal.velocity ?? 0;
+      const momentum = Math.abs(signal.candle?.priceChange1m ?? signal.momentum ?? 0);
+      const imbalance = signal.live?.imbalance ?? signal.imbalance ?? 1.0;
+      const spread = signal.live?.spread ?? signal.spread ?? 0;
 
-    // Get latest scan metadata
+      return {
+        symbol: signal.symbol,
+        side: signal.direction || signal.side || 'LONG',
+        confidence: parseFloat(signal.confidence) || 0,
+        timestamp: signal.timestamp,
+        entry: signal.entry || signal.live?.price || 0,
+        takeProfit: parseFloat(signal.tp) || 0,
+        stopLoss: parseFloat(signal.sl) || 0,
+        expectedProfit: signal.expectedProfit || 0,
+        volatility,
+        volumeSpike,
+        velocity,
+        momentum,
+        imbalance,
+        spread
+      };
+    }).reverse(); // Most recent first    // Get latest scan metadata
     const lastSignal = signals[0];
     const lastScan = lastSignal?.timestamp || null;
 
