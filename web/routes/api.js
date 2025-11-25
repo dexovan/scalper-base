@@ -462,7 +462,7 @@ router.get("/scalp-scanner", (req, res) => {
       // Extract nested candle and live data if present
       const volatility = signal.candle?.volatility ?? signal.volatility ?? 0;
       const volumeSpike = signal.candle?.volumeSpike ?? signal.volumeSpike ?? 0;
-      const velocity = signal.candle?.velocity ?? signal.velocity ?? 0;
+      const velocity = Math.abs(signal.candle?.velocity ?? signal.velocity ?? 0); // Use absolute value!
       const momentum = Math.abs(signal.candle?.priceChange1m ?? signal.momentum ?? 0);
       const imbalance = signal.live?.imbalance ?? signal.imbalance ?? 1.0;
       const spread = signal.live?.spread ?? signal.spread ?? 0;
@@ -478,6 +478,75 @@ router.get("/scalp-scanner", (req, res) => {
         expectedProfit: signal.expectedProfit || 0,
         volatility,
         volumeSpike,
+        velocity,
+        momentum,
+        imbalance,
+        spread
+      };
+    }).reverse(); // Most recent first
+
+    // Get latest scan metadata
+    const lastSignal = signals[0];
+    const lastScan = lastSignal?.timestamp || null;
+
+    // Calculate stats from recent signals (last hour)
+    const oneHourAgo = Date.now() - 3600000;
+    const recentSignals = signals.filter(s => new Date(s.timestamp).getTime() > oneHourAgo);
+
+    // Filter stats - count symbols passing each filter (use absolute values for directional metrics)
+    const filterStats = {
+      volatility: 0,
+      volumeSpike: 0,
+      velocity: 0,
+      momentum: 0,
+      imbalance: 0,
+      spread: 0
+    };
+
+    recentSignals.forEach(signal => {
+      if (signal.volatility >= 0.15) filterStats.volatility++;
+      if (signal.volumeSpike >= 1.5) filterStats.volumeSpike++;
+      if (signal.velocity >= 0.03) filterStats.velocity++; // Already absolute from normalization
+      if (signal.momentum >= 0.1) filterStats.momentum++;
+      if (signal.imbalance >= 1.5) filterStats.imbalance++;
+      if (signal.spread <= 0.1) filterStats.spread++;
+    });
+
+    // Get top candidates (4-5 filters passing)
+    const topCandidates = recentSignals.filter(signal => {
+      const passCount = [
+        signal.volatility >= 0.15,
+        signal.volumeSpike >= 1.5,
+        signal.velocity >= 0.03,
+        signal.momentum >= 0.1,
+        signal.imbalance >= 1.5,
+        signal.spread <= 0.1
+      ].filter(Boolean).length;
+      return passCount >= 4 && passCount < 6;
+    }).slice(0, 10);
+
+    // Stats
+    const stats = {
+      totalScanned: 300, // From tracked symbols
+      signalsFound: recentSignals.length
+    };
+
+    return res.json({
+      ok: true,
+      signals: recentSignals.filter(s => {
+        // Only show signals that pass ALL 6 filters
+        return s.volatility >= 0.15 &&
+               s.volumeSpike >= 1.5 &&
+               s.velocity >= 0.03 &&
+               s.momentum >= 0.1 &&
+               s.imbalance >= 1.5 &&
+               s.spread <= 0.1;
+      }),
+      topCandidates,
+      stats,
+      filterStats,
+      lastScan
+    });
         velocity,
         momentum,
         imbalance,
