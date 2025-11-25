@@ -151,6 +151,11 @@ async function scanSymbol(symbol) {
       // Determine direction based on velocity and imbalance
       const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
 
+      // Use bid/ask if available, otherwise use price with estimated spread
+      const entryPrice = liveData.price || 0;
+      const bid = liveData.bid || entryPrice;
+      const ask = liveData.ask || entryPrice;
+
       const signal = {
         symbol,
         direction,
@@ -158,13 +163,13 @@ async function scanSymbol(symbol) {
         timestamp: new Date().toISOString(),
 
         // Entry/Exit prices
-        entry: direction === 'LONG' ? liveData.ask : liveData.bid,
+        entry: direction === 'LONG' ? ask : bid,
         tp: direction === 'LONG'
-          ? (liveData.ask * 1.0022).toFixed(4)  // +0.22% for LONG
-          : (liveData.bid * 0.9978).toFixed(4), // -0.22% for SHORT
+          ? (ask * 1.0022).toFixed(4)  // +0.22% for LONG
+          : (bid * 0.9978).toFixed(4), // -0.22% for SHORT
         sl: direction === 'LONG'
-          ? (liveData.bid * 0.9985).toFixed(4)  // -0.15% stop loss for LONG
-          : (liveData.ask * 1.0015).toFixed(4), // +0.15% stop loss for SHORT
+          ? (bid * 0.9985).toFixed(4)  // -0.15% stop loss for LONG
+          : (ask * 1.0015).toFixed(4), // +0.15% stop loss for SHORT
 
         // Supporting data
         candle: {
