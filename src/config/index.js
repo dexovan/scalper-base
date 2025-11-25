@@ -53,8 +53,20 @@ const CONFIG = {
   },
 
   scoring: {
-    watchThreshold: 12,
-    armThreshold: 22,
+    weights: {
+      orderbook: 0.30,
+      flow: 0.30,
+      walls: 0.05,
+      volatility: 0.05,
+      feeEdge: 0.30,
+      spoof: 0.3,
+      pump: 0.3,
+      news: 1.0
+    },
+    thresholds: {
+      watchThreshold: 12,
+      armThreshold: 22
+    }
   },
 
   latency: {
