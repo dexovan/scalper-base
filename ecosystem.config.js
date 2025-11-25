@@ -61,6 +61,34 @@ export default {
         PORT: 8080,
         TZ: "Europe/Belgrade"
       }
+    },
+    {
+      name: "candle-collector",
+      script: "scripts/live-candle-collector.js",
+      cwd: "/home/aiuser/scalper-base",
+      interpreter: "node",
+      instances: 1,
+      exec_mode: "fork",
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: "30s",
+      restart_delay: 5000,
+
+      // LOG ROTATION - Prevent disk fill
+      max_memory_restart: "512M",
+      error_file: "/home/aiuser/.pm2/logs/candle-collector-error.log",
+      out_file: "/home/aiuser/.pm2/logs/candle-collector-out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+
+      // Rotate logs daily, keep only 3 days
+      merge_logs: true,
+      log_type: "json",
+
+      env: {
+        NODE_ENV: "production",
+        TZ: "Europe/Belgrade"
+      }
     }
   ]
 };
