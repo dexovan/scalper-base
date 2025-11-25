@@ -699,6 +699,15 @@ app.get("/scanner", requireAuth, (req, res) => {
   });
 });
 
+// 8️⃣a SCALP SCANNER PAGE (NEW)
+app.get("/scalp-scanner", requireAuth, (req, res) => {
+  res.render("scalp-scanner", {
+    title: "Scalp Scanner",
+    user: req.user?.username || "trader",
+    currentTime: new Date().toLocaleString(),
+  });
+});
+
 // 9️⃣ STATE MACHINE MONITOR PAGE (FAZA 7)
 app.get("/states", requireAuth, (req, res) => {
   res.render("states", {

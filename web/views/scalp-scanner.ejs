@@ -1,0 +1,394 @@
+<!-- Scalp Scanner Custom Styles -->
+<style>
+.metric-badge {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium;
+}
+.metric-pass { @apply bg-emerald-500/20 text-emerald-300 border border-emerald-500/30; }
+.metric-fail { @apply bg-slate-700/50 text-slate-400 border border-slate-600; }
+.signal-card {
+  @apply rounded-lg border border-slate-800 bg-slate-900/60 p-4 hover:border-slate-700 transition-colors;
+}
+</style>
+
+<div class="space-y-4">
+
+  <!-- Header Section -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/80 px-4 py-3">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <h2 class="text-xl font-bold tracking-tight text-slate-100">⚡ Scalp Scanner</h2>
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium" id="scanner-status">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Aktivno
+          </span>
+          <span class="inline-flex items-center px-2 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium" id="scan-interval">
+            Skenira svakih 60s
+          </span>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 text-xs text-slate-400">
+        <span id="last-scan-time">Poslednje: -</span>
+        <span>|</span>
+        <button onclick="refreshData()" class="text-blue-400 hover:text-blue-300 transition">🔄 Refresh</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats Cards -->
+  <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <!-- Total Symbols Scanned -->
+    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wide">Skenirano</p>
+          <p class="mt-1 text-3xl font-bold tracking-tight text-slate-100" id="stat-total-symbols">-</p>
+          <p class="mt-1 text-xs text-slate-500">Simbola</p>
+        </div>
+        <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-xl">📊</div>
+      </div>
+    </div>
+
+    <!-- Signals Found -->
+    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wide">Signala</p>
+          <p class="mt-1 text-3xl font-bold tracking-tight text-emerald-400" id="stat-signals-found">-</p>
+          <p class="mt-1 text-xs text-slate-500">Detektovano</p>
+        </div>
+        <div class="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-xl">🎯</div>
+      </div>
+    </div>
+
+    <!-- Pass Rate -->
+    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wide">Prolaznost</p>
+          <p class="mt-1 text-3xl font-bold tracking-tight text-amber-400" id="stat-pass-rate">-%</p>
+          <p class="mt-1 text-xs text-slate-500">Simbola kvalifikuje</p>
+        </div>
+        <div class="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-xl">📈</div>
+      </div>
+    </div>
+
+    <!-- Scanner Health -->
+    <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wide">Status</p>
+          <p class="mt-1 text-3xl font-bold tracking-tight text-green-400" id="stat-health">✓</p>
+          <p class="mt-1 text-xs text-emerald-400" id="stat-health-text">Svi sistemi OK</p>
+        </div>
+        <div class="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+          <div class="w-3 h-3 rounded-full bg-green-400 animate-pulse"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Filter Status -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+    <h3 class="text-sm font-semibold text-slate-100 mb-3">📋 Aktivni Filteri</h3>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="bg-slate-800/50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 mb-1">Volatilnost</div>
+        <div class="text-lg font-bold text-blue-400">≥ 0.15%</div>
+        <div class="text-xs text-slate-500 mt-1" id="filter-volatility-pass">- prolazi</div>
+      </div>
+      <div class="bg-slate-800/50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 mb-1">Volume Spike</div>
+        <div class="text-lg font-bold text-purple-400">≥ 1.5x</div>
+        <div class="text-xs text-slate-500 mt-1" id="filter-volume-pass">- prolazi</div>
+      </div>
+      <div class="bg-slate-800/50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 mb-1">Velocity</div>
+        <div class="text-lg font-bold text-cyan-400">≥ 0.03%/min</div>
+        <div class="text-xs text-slate-500 mt-1" id="filter-velocity-pass">- prolazi</div>
+      </div>
+      <div class="bg-slate-800/50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 mb-1">Momentum</div>
+        <div class="text-lg font-bold text-green-400">≥ 0.1%</div>
+        <div class="text-xs text-slate-500 mt-1" id="filter-momentum-pass">- prolazi</div>
+      </div>
+      <div class="bg-slate-800/50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 mb-1">Imbalance</div>
+        <div class="text-lg font-bold text-amber-400">≥ 1.5</div>
+        <div class="text-xs text-slate-500 mt-1" id="filter-imbalance-pass">- prolazi</div>
+      </div>
+      <div class="bg-slate-800/50 rounded-lg p-3">
+        <div class="text-xs text-slate-400 mb-1">Spread</div>
+        <div class="text-lg font-bold text-rose-400">≤ 0.1%</div>
+        <div class="text-xs text-slate-500 mt-1" id="filter-spread-pass">- prolazi</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Signals List -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-semibold text-slate-100">🎯 Detektovani Signali</h3>
+      <div class="flex items-center gap-2">
+        <button onclick="clearSignals()" class="px-3 py-1 text-xs bg-red-500/10 border border-red-500/30 text-red-300 rounded hover:bg-red-500/20 transition">
+          🗑️ Očisti sve
+        </button>
+      </div>
+    </div>
+
+    <div id="signals-container" class="space-y-3">
+      <!-- Signals will be rendered here -->
+      <div class="text-center py-12 text-slate-500">
+        <div class="text-4xl mb-2">🔍</div>
+        <div>Učitavanje signala...</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Top Candidates (Close to qualifying) -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+    <h3 class="text-sm font-semibold text-slate-100 mb-3">🔥 Top Kandidati (Blizu praga)</h3>
+    <div id="top-candidates-container" class="space-y-2">
+      <!-- Top candidates will be rendered here -->
+      <div class="text-center py-8 text-slate-500 text-sm">
+        Učitavanje...
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+let scannerData = null;
+
+// Format time
+function formatTime(timestamp) {
+  if (!timestamp) return '-';
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// Format number with 2 decimals
+function fmt(num) {
+  if (num == null || num === 'N/A') return 'N/A';
+  return typeof num === 'number' ? num.toFixed(2) : num;
+}
+
+// Render signal card
+function renderSignal(signal) {
+  const passCount = [
+    signal.volatility >= 0.15,
+    signal.volumeSpike >= 1.5,
+    signal.velocity >= 0.03,
+    signal.momentum >= 0.1,
+    signal.imbalance >= 1.5,
+    signal.spread <= 0.1
+  ].filter(Boolean).length;
+
+  return `
+    <div class="signal-card">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-lg font-bold text-slate-100">${signal.symbol}</span>
+            <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-semibold rounded border border-emerald-500/30">
+              ${signal.side}
+            </span>
+            <span class="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-xs rounded">
+              Confidence: ${signal.confidence}%
+            </span>
+          </div>
+          <div class="text-xs text-slate-400 mt-1">
+            ${formatTime(signal.timestamp)} • Prolazi ${passCount}/6 filtera
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-slate-400">Entry</div>
+          <div class="text-lg font-bold text-blue-400">$${fmt(signal.entry)}</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 mb-3 text-xs">
+        <div>
+          <div class="text-slate-400">TP (+0.22%)</div>
+          <div class="text-green-400 font-semibold">$${fmt(signal.takeProfit)}</div>
+        </div>
+        <div>
+          <div class="text-slate-400">SL (-0.15%)</div>
+          <div class="text-red-400 font-semibold">$${fmt(signal.stopLoss)}</div>
+        </div>
+        <div>
+          <div class="text-slate-400">Očekivani Profit</div>
+          <div class="text-amber-400 font-semibold">$${fmt(signal.expectedProfit)}</div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <span class="${signal.volatility >= 0.15 ? 'metric-pass' : 'metric-fail'}">
+          Vol: ${fmt(signal.volatility)}%
+        </span>
+        <span class="${signal.volumeSpike >= 1.5 ? 'metric-pass' : 'metric-fail'}">
+          Spike: ${fmt(signal.volumeSpike)}x
+        </span>
+        <span class="${signal.velocity >= 0.03 ? 'metric-pass' : 'metric-fail'}">
+          Vel: ${fmt(signal.velocity)}%/m
+        </span>
+        <span class="${signal.momentum >= 0.1 ? 'metric-pass' : 'metric-fail'}">
+          Mom: ${fmt(signal.momentum)}%
+        </span>
+        <span class="${signal.imbalance >= 1.5 ? 'metric-pass' : 'metric-fail'}">
+          Imb: ${fmt(signal.imbalance)}
+        </span>
+        <span class="${signal.spread <= 0.1 ? 'metric-pass' : 'metric-fail'}">
+          Spr: ${fmt(signal.spread)}%
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+// Render top candidate
+function renderCandidate(candidate) {
+  const passCount = [
+    candidate.volatility >= 0.15,
+    candidate.volumeSpike >= 1.5,
+    candidate.velocity >= 0.03,
+    candidate.momentum >= 0.1,
+    candidate.imbalance >= 1.5,
+    candidate.spread <= 0.1
+  ].filter(Boolean).length;
+
+  return `
+    <div class="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg hover:bg-slate-800 transition">
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-semibold text-slate-100">${candidate.symbol}</span>
+        <span class="text-xs text-slate-400">${passCount}/6 filtera</span>
+      </div>
+      <div class="flex gap-2 text-xs">
+        <span class="${candidate.volatility >= 0.15 ? 'metric-pass' : 'metric-fail'}">
+          Vol: ${fmt(candidate.volatility)}%
+        </span>
+        <span class="${candidate.volumeSpike >= 1.5 ? 'metric-pass' : 'metric-fail'}">
+          Spike: ${fmt(candidate.volumeSpike)}x
+        </span>
+        <span class="${candidate.imbalance >= 1.5 ? 'metric-pass' : 'metric-fail'}">
+          Imb: ${fmt(candidate.imbalance)}
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+// Fetch scanner data
+async function fetchScannerData() {
+  try {
+    const response = await fetch('/api/scalp-scanner');
+    const data = await response.json();
+
+    if (data.ok) {
+      scannerData = data;
+      updateUI(data);
+    } else {
+      console.error('Failed to fetch scanner data:', data.error);
+      showError(data.error);
+    }
+  } catch (error) {
+    console.error('Error fetching scanner data:', error);
+    showError('Greška pri učitavanju podataka');
+  }
+}
+
+// Update UI with scanner data
+function updateUI(data) {
+  // Update stats
+  document.getElementById('stat-total-symbols').textContent = data.stats.totalScanned || '-';
+  document.getElementById('stat-signals-found').textContent = data.stats.signalsFound || '0';
+
+  const passRate = data.stats.totalScanned > 0
+    ? ((data.stats.signalsFound / data.stats.totalScanned) * 100).toFixed(1)
+    : '0';
+  document.getElementById('stat-pass-rate').textContent = passRate + '%';
+
+  // Update last scan time
+  document.getElementById('last-scan-time').textContent = 'Poslednje: ' + formatTime(data.lastScan);
+
+  // Update filter stats
+  if (data.filterStats) {
+    document.getElementById('filter-volatility-pass').textContent = `${data.filterStats.volatility || 0} prolazi`;
+    document.getElementById('filter-volume-pass').textContent = `${data.filterStats.volumeSpike || 0} prolazi`;
+    document.getElementById('filter-velocity-pass').textContent = `${data.filterStats.velocity || 0} prolazi`;
+    document.getElementById('filter-momentum-pass').textContent = `${data.filterStats.momentum || 0} prolazi`;
+    document.getElementById('filter-imbalance-pass').textContent = `${data.filterStats.imbalance || 0} prolazi`;
+    document.getElementById('filter-spread-pass').textContent = `${data.filterStats.spread || 0} prolazi`;
+  }
+
+  // Render signals
+  const signalsContainer = document.getElementById('signals-container');
+  if (data.signals && data.signals.length > 0) {
+    signalsContainer.innerHTML = data.signals.map(renderSignal).join('');
+  } else {
+    signalsContainer.innerHTML = `
+      <div class="text-center py-12 text-slate-500">
+        <div class="text-4xl mb-2">⏳</div>
+        <div>Nema signala u poslednjem skeniranju</div>
+        <div class="text-xs text-slate-600 mt-2">Scanner radi i detektovaće signale kad se uslovi poklope</div>
+      </div>
+    `;
+  }
+
+  // Render top candidates
+  const candidatesContainer = document.getElementById('top-candidates-container');
+  if (data.topCandidates && data.topCandidates.length > 0) {
+    candidatesContainer.innerHTML = data.topCandidates.map(renderCandidate).join('');
+  } else {
+    candidatesContainer.innerHTML = `
+      <div class="text-center py-8 text-slate-500 text-sm">
+        Nema kandidata blizu praga
+      </div>
+    `;
+  }
+}
+
+// Show error message
+function showError(message) {
+  const signalsContainer = document.getElementById('signals-container');
+  signalsContainer.innerHTML = `
+    <div class="text-center py-12 text-red-400">
+      <div class="text-4xl mb-2">⚠️</div>
+      <div>${message}</div>
+    </div>
+  `;
+}
+
+// Clear all signals
+async function clearSignals() {
+  if (!confirm('Da li ste sigurni da želite da obrišete sve signale?')) return;
+
+  try {
+    const response = await fetch('/api/scalp-scanner/clear', { method: 'POST' });
+    const data = await response.json();
+
+    if (data.ok) {
+      await refreshData();
+    } else {
+      alert('Greška: ' + data.error);
+    }
+  } catch (error) {
+    console.error('Error clearing signals:', error);
+    alert('Greška pri brisanju signala');
+  }
+}
+
+// Refresh data
+async function refreshData() {
+  await fetchScannerData();
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  fetchScannerData();
+
+  // Auto-refresh every 10 seconds
+  setInterval(fetchScannerData, 10000);
+});
+</script>

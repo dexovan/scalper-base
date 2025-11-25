@@ -397,5 +397,153 @@ router.get("/symbol/:symbol/candles/:timeframe", async (req, res) => {
   }
 });
 
+/* ---------------------------------------------------------
+   GET /api/scalp-scanner – Scalp Scanner signals & stats
+--------------------------------------------------------- */
+router.get("/scalp-scanner", (req, res) => {
+  try {
+    const signalsFile = path.join(paths.DATA_DIR, 'signals.json');
+
+    // Check if signals file exists
+    if (!fs.existsSync(signalsFile)) {
+      return res.json({
+        ok: true,
+        signals: [],
+        topCandidates: [],
+        stats: {
+          totalScanned: 0,
+          signalsFound: 0
+        },
+        filterStats: {},
+        lastScan: null,
+        message: "No signals file found - scanner hasn't run yet"
+      });
+    }
+
+    // Read signals file
+    const data = fs.readFileSync(signalsFile, 'utf-8');
+    const lines = data.trim().split('\n').filter(line => line.trim());
+
+    if (lines.length === 0) {
+      return res.json({
+        ok: true,
+        signals: [],
+        topCandidates: [],
+        stats: {
+          totalScanned: 0,
+          signalsFound: 0
+        },
+        filterStats: {},
+        lastScan: null,
+        message: "No signals detected yet"
+      });
+    }
+
+    // Parse signals (last 100)
+    const signals = lines.slice(-100).map(line => {
+      try {
+        return JSON.parse(line);
+      } catch (e) {
+        return null;
+      }
+    }).filter(Boolean).reverse(); // Most recent first
+
+    // Get latest scan metadata
+    const lastSignal = signals[0];
+    const lastScan = lastSignal?.timestamp || null;
+
+    // Calculate stats from recent signals (last hour)
+    const oneHourAgo = Date.now() - 3600000;
+    const recentSignals = signals.filter(s => new Date(s.timestamp).getTime() > oneHourAgo);
+
+    // Filter stats - count symbols passing each filter
+    const filterStats = {
+      volatility: 0,
+      volumeSpike: 0,
+      velocity: 0,
+      momentum: 0,
+      imbalance: 0,
+      spread: 0
+    };
+
+    recentSignals.forEach(signal => {
+      if (signal.volatility >= 0.15) filterStats.volatility++;
+      if (signal.volumeSpike >= 1.5) filterStats.volumeSpike++;
+      if (signal.velocity >= 0.03) filterStats.velocity++;
+      if (signal.momentum >= 0.1) filterStats.momentum++;
+      if (signal.imbalance >= 1.5) filterStats.imbalance++;
+      if (signal.spread <= 0.1) filterStats.spread++;
+    });
+
+    // Get top candidates (4-5 filters passing)
+    const topCandidates = recentSignals.filter(signal => {
+      const passCount = [
+        signal.volatility >= 0.15,
+        signal.volumeSpike >= 1.5,
+        signal.velocity >= 0.03,
+        signal.momentum >= 0.1,
+        signal.imbalance >= 1.5,
+        signal.spread <= 0.1
+      ].filter(Boolean).length;
+      return passCount >= 4 && passCount < 6;
+    }).slice(0, 10);
+
+    // Stats
+    const stats = {
+      totalScanned: 300, // From tracked symbols
+      signalsFound: recentSignals.length
+    };
+
+    return res.json({
+      ok: true,
+      signals: recentSignals.filter(s => {
+        // Only show signals that pass ALL 6 filters
+        return s.volatility >= 0.15 &&
+               s.volumeSpike >= 1.5 &&
+               s.velocity >= 0.03 &&
+               s.momentum >= 0.1 &&
+               s.imbalance >= 1.5 &&
+               s.spread <= 0.1;
+      }),
+      topCandidates,
+      stats,
+      filterStats,
+      lastScan
+    });
+
+  } catch (error) {
+    console.error('[API] Error reading scalp-scanner data:', error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+  }
+});
+
+/* ---------------------------------------------------------
+   POST /api/scalp-scanner/clear – Clear signals file
+--------------------------------------------------------- */
+router.post("/scalp-scanner/clear", (req, res) => {
+  try {
+    const signalsFile = path.join(paths.DATA_DIR, 'signals.json');
+
+    if (fs.existsSync(signalsFile)) {
+      fs.unlinkSync(signalsFile);
+    }
+
+    return res.json({
+      ok: true,
+      message: "Signals cleared"
+    });
+
+  } catch (error) {
+    console.error('[API] Error clearing signals:', error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+  }
+});
+
 export default router;
 
