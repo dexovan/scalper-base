@@ -500,12 +500,14 @@ function getOrderFlow60s(symbol) {
 
   let buyVolume = 0;
   let sellVolume = 0;
+  let recentTradesCount = 0;
 
   // Filter trades from last 60 seconds and calculate net flow
   for (const trade of symbolState.trades) {
     const tradeTime = trade.ts || new Date(trade.timestamp).getTime();
 
     if (tradeTime >= cutoff) {
+      recentTradesCount++;
       const volume = trade.price * trade.qty; // USD volume
 
       if (trade.side === "Buy" || trade.side === "BUY") {
@@ -514,6 +516,11 @@ function getOrderFlow60s(symbol) {
         sellVolume += volume;
       }
     }
+  }
+
+  // Debug log for EPTUSDT only (sample 1% to avoid spam)
+  if (symbol === "EPTUSDT" && Math.random() < 0.01) {
+    console.log(`📊 [ORDER FLOW DEBUG] ${symbol}: ${recentTradesCount} trades in 60s, buy=$${buyVolume.toFixed(2)}, sell=$${sellVolume.toFixed(2)}, net=$${(buyVolume - sellVolume).toFixed(2)}`);
   }
 
   return buyVolume - sellVolume;
