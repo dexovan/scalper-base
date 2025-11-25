@@ -683,18 +683,4 @@ export default {
   flushSnapshotsToDisk,
   getAllTrackedSymbols
 };
-  onOrderbookEvent,
-  onTradeEvent,
-  getSymbolMicroState,
-  getOrderbookSummary,
-  getRecentTrades,
-  getCandles,
-  getActiveSymbols,
-  getSymbolHealth,
-  touchSymbolActivity,
-  setWebSocketEventCallback,
-  getStats,
-  startStatsPersistence,
-  stopStatsPersistence,
-  flushSnapshotsToDisk
-};
+
