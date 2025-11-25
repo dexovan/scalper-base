@@ -1639,6 +1639,64 @@ export function startMonitorApiServer(port = 8090) {
     }
   });
 
+  // GET /api/positions/enhanced - Get positions with TP/SL data (MUST be before :symbol route!)
+  app.get("/api/positions/enhanced", async (req, res) => {
+    console.log("🔍 [POSITIONS/ENHANCED] Endpoint called");
+    try {
+      console.log("🔍 [POSITIONS/ENHANCED] Checking engines...");
+      console.log("🔍 [POSITIONS/ENHANCED] global.riskEngine exists:", !!global.riskEngine);
+      console.log("🔍 [POSITIONS/ENHANCED] global.tpslEngine exists:", !!global.tpslEngine);
+
+      if (!global.riskEngine || !global.tpslEngine) {
+        console.log("❌ [POSITIONS/ENHANCED] Engines not initialized!");
+        return res.status(503).json({
+          ok: false,
+          error: "Risk Engine or TP/SL Engine not initialized",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Get positions from Risk Engine (which has persistent positionTracker)
+      console.log("🔍 [POSITIONS/ENHANCED] Getting risk snapshot...");
+      const riskData = global.riskEngine.getRiskSnapshot();
+      console.log("🔍 [POSITIONS/ENHANCED] Risk snapshot received:", !!riskData);
+      console.log("🔍 [POSITIONS/ENHANCED] Risk snapshot keys:", Object.keys(riskData || {}));
+
+      const positions = riskData.positions || [];
+
+      console.log(`[POSITIONS/ENHANCED] Risk snapshot has ${positions.length} positions`);
+      if (positions.length > 0) {
+        console.log(`[POSITIONS/ENHANCED] First position:`, positions[0]);
+      }
+
+      // Enrich positions with TP/SL data
+      const enrichedPositions = positions.map(pos => {
+        const tpslState = global.tpslEngine.getTpslState(pos.symbol, pos.side);
+        return {
+          ...pos,
+          tpsl: tpslState || null
+        };
+      });
+
+      const summary = riskData.portfolio || {};
+
+      res.json({
+        ok: true,
+        positions: enrichedPositions,
+        summary,
+        count: enrichedPositions.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [POSITIONS/ENHANCED] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // GET /api/positions/:symbol - Get positions for specific symbol
   app.get("/api/positions/:symbol", async (req, res) => {
     try {
@@ -1775,54 +1833,6 @@ export function startMonitorApiServer(port = 8090) {
       });
     } catch (error) {
       console.error(`❌ [TPSL/${req.params.symbol}] Error:`, error);
-      res.status(500).json({
-        ok: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-    }
-  });
-
-  // GET /api/positions/enhanced - Get positions with TP/SL data
-  app.get("/api/positions/enhanced", async (req, res) => {
-    try {
-      if (!global.riskEngine || !global.tpslEngine) {
-        return res.status(503).json({
-          ok: false,
-          error: "Risk Engine or TP/SL Engine not initialized",
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      // Get positions from Risk Engine (which has persistent positionTracker)
-      const riskData = global.riskEngine.getRiskSnapshot();
-      const positions = riskData.positions || [];
-
-      console.log(`[POSITIONS/ENHANCED] Risk snapshot has ${positions.length} positions`);
-      if (positions.length > 0) {
-        console.log(`[POSITIONS/ENHANCED] First position:`, positions[0]);
-      }
-
-      // Enrich positions with TP/SL data
-      const enrichedPositions = positions.map(pos => {
-        const tpslState = global.tpslEngine.getTpslState(pos.symbol, pos.side);
-        return {
-          ...pos,
-          tpsl: tpslState || null
-        };
-      });
-
-      const summary = riskData.portfolio || {};
-
-      res.json({
-        ok: true,
-        positions: enrichedPositions,
-        summary,
-        count: enrichedPositions.length,
-        timestamp: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error("❌ [POSITIONS/ENHANCED] Error:", error);
       res.status(500).json({
         ok: false,
         error: error.message,
