@@ -1867,6 +1867,16 @@ export function startMonitorApiServer(port = 8090) {
         }
       }
 
+      // Trigger Risk Engine recalculation to update snapshot with new position
+      if (global.riskEngine && typeof global.riskEngine.recalcRiskState === 'function') {
+        try {
+          global.riskEngine.recalcRiskState();
+          console.log("✅ [TEST-POSITION] Risk state recalculated");
+        } catch (riskError) {
+          console.warn("⚠️  [TEST-POSITION] Risk Engine recalc error:", riskError.message);
+        }
+      }
+
       res.json({
         ok: true,
         position,
