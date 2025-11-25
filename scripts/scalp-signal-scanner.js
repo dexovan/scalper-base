@@ -23,14 +23,14 @@ const CONFIG = {
   scanInterval: 60000, // 60 seconds (match candle update frequency)
 
   // Historical filters (from candles)
-  minVolatility: 0.3,        // 0.3% minimum range
-  minVolumeSpike: 3.0,       // 3x average volume
-  minVelocity: 0.05,         // 0.05%/min price change speed
-  minPriceChange1m: 0.2,     // 0.2% momentum in last minute
+  minVolatility: 0.15,       // 0.15% minimum range (reduced from 0.3%)
+  minVolumeSpike: 1.5,       // 1.5x average volume (reduced from 3x)
+  minVelocity: 0.03,         // 0.03%/min price change speed (reduced from 0.05%)
+  minPriceChange1m: 0.1,     // 0.1% momentum in last minute (reduced from 0.2%)
 
   // Live filters (from Engine API)
-  minImbalance: 2.5,         // 2.5x bid/ask ratio
-  maxSpread: 0.05,           // 0.05% max spread
+  minImbalance: 1.5,         // 1.5x bid/ask ratio (reduced from 2.5)
+  maxSpread: 0.1,            // 0.1% max spread (increased from 0.05%)
   minOrderFlow: 0,           // Positive order flow (more buys than sells)
 
   // Output
