@@ -20,21 +20,22 @@ import { logGlobalTransition, logPanicMode } from './regimeLogger.js';
 // ================================================================
 
 const GLOBAL_THRESHOLDS = {
-  // PANIC mode triggers
-  PANIC_BTC_VOL_ENTER: 0.92,
-  PANIC_BTC_VOL_EXIT: 0.75,
-  PANIC_ETH_VOL_ENTER: 0.92,
-  PANIC_ETH_VOL_EXIT: 0.75,
-  PANIC_BTC_DUMP_5S_PCT: -3.5,
-  PANIC_SYMBOLS_BLOCKED_PCT: 0.40, // 40% of symbols in bad regimes
+  // PANIC mode triggers - ONLY for extreme market crashes
+  // Scalping NEEDS volatility - don't block on normal high vol!
+  PANIC_BTC_VOL_ENTER: 999, // DISABLED - volatility is good for scalping
+  PANIC_BTC_VOL_EXIT: 999,
+  PANIC_ETH_VOL_ENTER: 999, // DISABLED
+  PANIC_ETH_VOL_EXIT: 999,
+  PANIC_BTC_DUMP_5S_PCT: -5.0, // Only on extreme 5% dumps
+  PANIC_SYMBOLS_BLOCKED_PCT: 0.60, // 60% of symbols blocked (extreme)
 
-  // RISK_OFF mode triggers
-  RISK_OFF_BTC_VOL_ENTER: 0.75,
-  RISK_OFF_BTC_VOL_EXIT: 0.65,
-  RISK_OFF_ETH_VOL_ENTER: 0.70,
-  RISK_OFF_ETH_VOL_EXIT: 0.60,
-  RISK_OFF_BTC_DUMP_5S_PCT: -2.0,
-  RISK_OFF_SYMBOLS_PUMP_PCT: 0.15 // 15% of symbols in PUMP
+  // RISK_OFF mode triggers - reduced sensitivity
+  RISK_OFF_BTC_VOL_ENTER: 999, // DISABLED - we want volatility
+  RISK_OFF_BTC_VOL_EXIT: 999,
+  RISK_OFF_ETH_VOL_ENTER: 999, // DISABLED
+  RISK_OFF_ETH_VOL_EXIT: 999,
+  RISK_OFF_BTC_DUMP_5S_PCT: -3.0, // Only on 3% dumps
+  RISK_OFF_SYMBOLS_PUMP_PCT: 0.25 // 25% of symbols in PUMP (higher tolerance)
 };
 
 // ================================================================

@@ -256,21 +256,25 @@ function determineSymbolRegime(symbol, featureState, symbolHealth, previousRegim
     }
   }
 
-  // Check for new cooldown trigger (explosionFlag from volatility)
-  if (explosionFlag && prev.current !== 'COOLDOWN' && prev.current !== 'PUMP') {
-    logger.info(`[REGIME] ${symbol}: ${prev.current} → COOLDOWN (volatility explosion)`);
-    logSymbolTransition(symbol, prev.current, 'COOLDOWN', { pumpScore, spoofScore, volatilityScore });
-    logCooldownStart(symbol, THRESHOLDS.COOLDOWN_MS, prev.current);
-    newState.current = 'COOLDOWN';
-    newState.previous = prev.current;
-    newState.transitionedAt = new Date().toISOString();
-    newState.cooldownActive = true;
-    newState.cooldownEndsAt = new Date(now + THRESHOLDS.COOLDOWN_MS).toISOString();
-    newState.cooldownReason = 'Volatility explosion';
-    newState.allowLong = false;
-    newState.allowShort = false;
-    return newState;
-  }
+  // DISABLED: Volatility explosion COOLDOWN
+  // For scalping strategy, volatility explosions are OPPORTUNITIES, not risks!
+  // We WANT to trade during high volatility - that's when spreads are profitable
+  // COOLDOWN only happens after PUMP detection (manipulation), not natural volatility
+
+  // if (explosionFlag && prev.current !== 'COOLDOWN' && prev.current !== 'PUMP') {
+  //   logger.info(`[REGIME] ${symbol}: ${prev.current} → COOLDOWN (volatility explosion)`);
+  //   logSymbolTransition(symbol, prev.current, 'COOLDOWN', { pumpScore, spoofScore, volatilityScore });
+  //   logCooldownStart(symbol, THRESHOLDS.COOLDOWN_MS, prev.current);
+  //   newState.current = 'COOLDOWN';
+  //   newState.previous = prev.current;
+  //   newState.transitionedAt = new Date().toISOString();
+  //   newState.cooldownActive = true;
+  //   newState.cooldownEndsAt = new Date(now + THRESHOLDS.COOLDOWN_MS).toISOString();
+  //   newState.cooldownReason = 'Volatility explosion';
+  //   newState.allowLong = false;
+  //   newState.allowShort = false;
+  //   return newState;
+  // }
 
   // ================================================================
   // PRIORITY 6: NORMAL (default safe state)
