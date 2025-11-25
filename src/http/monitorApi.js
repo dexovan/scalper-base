@@ -854,6 +854,12 @@ export function startMonitorApiServer(port = 8090) {
 
       const spread = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
 
+      // Calculate price - use ticker, fallback to orderbook mid-price
+      let price = ticker.price;
+      if (!price && bid > 0 && ask > 0) {
+        price = (bid + ask) / 2; // Orderbook mid-price fallback
+      }
+
       // 4. Get imbalance (default to 1.0 if no orderbook)
       const imbalance = orderbook?.imbalance ?? 1.0;
 
@@ -865,7 +871,7 @@ export function startMonitorApiServer(port = 8090) {
         ok: true,
         symbol,
         live: {
-          price: ticker.price,
+          price: price,
           bid: bid,
           ask: ask,
           spread: parseFloat(spread.toFixed(4)),
