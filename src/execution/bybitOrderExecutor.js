@@ -233,6 +233,116 @@ async function setTakeProfitStopLoss(symbol, side, positionIdx, takeProfit, stop
 }
 
 // ============================================================
+// TIMING VALIDATION - Wait for Pullback
+// ============================================================
+
+async function checkPricePullback(symbol, direction, entryPrice) {
+  try {
+    console.log(`⏱️  [TIMING] Checking if price near entry zone top...`);
+
+    const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=1&limit=5`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.retCode !== 0 || !data.result?.list) {
+      console.warn(`⚠️  [TIMING] Could not fetch recent candles, skipping pullback check`);
+      return true; // Don't block trade if can't check
+    }
+
+    const recentCandles = data.result.list.slice(0, 5); // Last 5 minutes
+    const recentPrices = recentCandles.map(c => parseFloat(c[4])); // Close prices
+    const highestRecent = Math.max(...recentPrices);
+    const lowestRecent = Math.min(...recentPrices);
+    const currentPrice = entryPrice;
+
+    if (direction === 'LONG') {
+      // For LONG: check if current price is at the TOP of recent range
+      const pricePosition = (currentPrice - lowestRecent) / (highestRecent - lowestRecent);
+      console.log(`📊 [TIMING] LONG - Price position in 5min range: ${(pricePosition * 100).toFixed(1)}%`);
+
+      if (pricePosition > 0.85) { // At top 15% of range
+        console.warn(`⚠️  [TIMING] Price too close to recent HIGH (${(pricePosition * 100).toFixed(1)}% of range)`);
+        console.warn(`   Recent range: ${lowestRecent.toFixed(4)} - ${highestRecent.toFixed(4)}, Entry: ${currentPrice.toFixed(4)}`);
+        console.warn(`   ❌ SKIPPING TRADE - Wait for pullback!`);
+        return false;
+      }
+
+      console.log(`✅ [TIMING] Good entry position for LONG (${(pricePosition * 100).toFixed(1)}% of 5min range)`);
+    } else {
+      // For SHORT: check if current price is at the BOTTOM of recent range
+      const pricePosition = (highestRecent - currentPrice) / (highestRecent - lowestRecent);
+      console.log(`📊 [TIMING] SHORT - Price position in 5min range: ${(pricePosition * 100).toFixed(1)}%`);
+
+      if (pricePosition > 0.85) { // At bottom 15% of range
+        console.warn(`⚠️  [TIMING] Price too close to recent LOW (${(pricePosition * 100).toFixed(1)}% of range)`);
+        console.warn(`   Recent range: ${lowestRecent.toFixed(4)} - ${highestRecent.toFixed(4)}, Entry: ${currentPrice.toFixed(4)}`);
+        console.warn(`   ❌ SKIPPING TRADE - Wait for pullback!`);
+        return false;
+      }
+
+      console.log(`✅ [TIMING] Good entry position for SHORT (${(pricePosition * 100).toFixed(1)}% of 5min range)`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`❌ [TIMING] Error checking pullback:`, error.message);
+    return true; // Don't block trade on error
+  }
+}
+
+async function recheckMomentum(symbol, direction, originalBidDepth, originalAskDepth) {
+  try {
+    console.log(`⏱️  [TIMING] Re-checking momentum after 12 second delay...`);
+
+    // Wait 12 seconds
+    await new Promise(resolve => setTimeout(resolve, 12000));
+
+    // Fetch fresh orderbook
+    const url = `https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${symbol}&limit=25`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.retCode !== 0 || !data.result) {
+      console.warn(`⚠️  [TIMING] Could not fetch fresh orderbook, proceeding anyway`);
+      return true;
+    }
+
+    const bids = data.result.b || [];
+    const asks = data.result.a || [];
+
+    const newBidDepth = bids.slice(0, 10).reduce((sum, [price, qty]) => sum + parseFloat(price) * parseFloat(qty), 0);
+    const newAskDepth = asks.slice(0, 10).reduce((sum, [price, qty]) => sum + parseFloat(price) * parseFloat(qty), 0);
+
+    const newImbalance = direction === 'LONG'
+      ? (newBidDepth / (newBidDepth + newAskDepth))
+      : (newAskDepth / (newBidDepth + newAskDepth));
+
+    console.log(`📊 [TIMING] Momentum recheck:`);
+    console.log(`   Original: Bid=${originalBidDepth.toFixed(0)} Ask=${originalAskDepth.toFixed(0)}`);
+    console.log(`   Current:  Bid=${newBidDepth.toFixed(0)} Ask=${newAskDepth.toFixed(0)}`);
+    console.log(`   New imbalance: ${(newImbalance * 100).toFixed(1)}%`);
+
+    if (direction === 'LONG' && newImbalance < 0.55) {
+      console.warn(`⚠️  [TIMING] LONG momentum weakened: ${(newImbalance * 100).toFixed(1)}% < 55%`);
+      console.warn(`   ❌ SKIPPING TRADE - Momentum lost!`);
+      return false;
+    }
+
+    if (direction === 'SHORT' && newImbalance < 0.55) {
+      console.warn(`⚠️  [TIMING] SHORT momentum weakened: ${(newImbalance * 100).toFixed(1)}% < 55%`);
+      console.warn(`   ❌ SKIPPING TRADE - Momentum lost!`);
+      return false;
+    }
+
+    console.log(`✅ [TIMING] Momentum confirmed after delay (${(newImbalance * 100).toFixed(1)}%)`);
+    return true;
+  } catch (error) {
+    console.error(`❌ [TIMING] Error rechecking momentum:`, error.message);
+    return true; // Don't block trade on error
+  }
+}
+
+// ============================================================
 // GET INSTRUMENT INFO (Price & Qty Precision)
 // ============================================================
 
@@ -350,7 +460,7 @@ async function getWalletBalance() {
 // ============================================================
 
 export async function executeTrade(signal) {
-  const { symbol, direction, entry, tp, sl, confidence } = signal;
+  const { symbol, direction, entry, tp, sl, confidence, bidDepth, askDepth } = signal;
 
   console.log(`\n🎯 [EXECUTOR] Executing trade: ${symbol} ${direction}`);
   console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl} | Confidence: ${confidence}%`);
@@ -370,6 +480,26 @@ export async function executeTrade(signal) {
       message: 'Dry-run mode - no real trade executed'
     };
   }
+
+  // ===== TIMING VALIDATION (Phase 2) =====
+
+  console.log(`\n⏱️  [TIMING] Phase 2 validation: Checking entry timing...`);
+
+  // Step 1: Check if price is at top of recent rally (wait for pullback)
+  const pullbackOk = await checkPricePullback(symbol, direction, entry);
+  if (!pullbackOk) {
+    console.log(`❌ [EXECUTOR] Trade rejected: Price at extreme of recent range`);
+    return { success: false, error: 'Entry timing rejected - wait for pullback' };
+  }
+
+  // Step 2: Wait 12 seconds and recheck momentum
+  const momentumOk = await recheckMomentum(symbol, direction, bidDepth || 0, askDepth || 0);
+  if (!momentumOk) {
+    console.log(`❌ [EXECUTOR] Trade rejected: Momentum weakened during delay`);
+    return { success: false, error: 'Entry timing rejected - momentum lost' };
+  }
+
+  console.log(`✅ [TIMING] Entry timing validated - proceeding with trade\n`);
 
   // ===== SAFETY CHECKS =====
 
