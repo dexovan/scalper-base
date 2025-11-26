@@ -97,6 +97,13 @@ function evaluateSignal(candle, liveData) {
   const spread = liveData.spread ?? 999; // High default so it fails spread check
   const orderFlow = liveData.orderFlowNet60s;
 
+  // ADVANCED PATTERN: Detect potential SHORT with high imbalance
+  // When price is falling hard (negative momentum + velocity) AND imbalance > 1.5,
+  // it suggests a fake bid wall (spoofing) that's being sold through = STRONG SHORT
+  const isFallingHard = velocity < -0.04 && priceChange1m < -0.1;
+  const hasLargeBidWall = imbalance > 1.5;
+  const isSpoofPattern = isFallingHard && hasLargeBidWall;
+
   const checks = {
     // Historical checks
     volatility: volatility >= CONFIG.minVolatility,
@@ -104,8 +111,8 @@ function evaluateSignal(candle, liveData) {
     velocity: Math.abs(velocity) >= CONFIG.minVelocity,
     momentum: Math.abs(priceChange1m) >= CONFIG.minPriceChange1m,
 
-    // Live checks
-    imbalance: imbalance >= CONFIG.minImbalance,
+    // Live checks - Modified imbalance rule for spoof pattern
+    imbalance: imbalance >= CONFIG.minImbalance || isSpoofPattern, // Allow high imbalance for falling price (spoof detection)
     spread: spread <= CONFIG.maxSpread,
     orderFlow: orderFlow === null || orderFlow >= CONFIG.minOrderFlow,
   };
