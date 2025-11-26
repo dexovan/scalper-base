@@ -558,6 +558,7 @@ async function attemptExecution(symbol, signalState, liveData) {
   console.log(`\n🚀 [EXECUTING] ${symbol} ${signalState.direction} @ ${formatPrice(executionRequest.entry)}`);
   console.log(`   TP: ${formatPrice(executionRequest.tp)} | SL: ${formatPrice(executionRequest.sl)}`);
   console.log(`   Entry Zone: ${formatEntryZoneDisplay(signalState.entryZone)}`);
+  console.log(`   Initial Momentum: ${(executionRequest.initialMomentum * 100).toFixed(1)}% (from signalState)`);
 
   try {
     const response = await fetch(FAST_TRACK_CONFIG.executionApiUrl, {
@@ -935,6 +936,8 @@ async function scanAllSymbols() {
       const initialMomentum = direction === 'LONG'
         ? Math.max(0, (imbalance - 1.0))  // LONG: excess bid pressure (imbalance > 1.0)
         : Math.max(0, (1.0 - imbalance));  // SHORT: excess ask pressure (imbalance < 1.0)
+
+      console.log(`📊 [MOMENTUM] ${symbol} ${direction}: imbalance=${imbalance.toFixed(3)}, momentum=${(initialMomentum * 100).toFixed(1)}%`);
 
       // Initialize signal state tracking
       signalStates.set(symbol, {
