@@ -177,8 +177,10 @@ async function setTakeProfitStopLoss(symbol, side, positionIdx, takeProfit, stop
 
   const response = await bybitRequest('/v5/position/trading-stop', 'POST', params);
 
+  console.log(`📊 [BYBIT] TP/SL Response:`, JSON.stringify(response, null, 2));
+
   if (response.retCode !== 0) {
-    console.error(`⚠️  [BYBIT] TP/SL failed: ${response.retMsg}`);
+    console.error(`⚠️  [BYBIT] TP/SL failed: ${response.retMsg} (code: ${response.retCode})`);
     return null;
   }
 
@@ -379,6 +381,8 @@ export async function executeTrade(signal) {
 
   try {
     const side = direction === 'LONG' ? 'Buy' : 'Sell';
+    console.log(`📊 [EXECUTOR] Direction: ${direction} → Bybit side: ${side}`);
+
     const orderResult = await placeMarketOrder(symbol, side, qty);
 
     // Track position
@@ -393,11 +397,18 @@ export async function executeTrade(signal) {
     });
 
     // Set TP/SL (use rounded values)
-    await setTakeProfitStopLoss(symbol, side, 0, tpRounded, slRounded);
+    console.log(`🎯 [EXECUTOR] Setting TP/SL: TP=${tpRounded} (${direction === 'LONG' ? 'above' : 'below'} entry), SL=${slRounded} (${direction === 'LONG' ? 'below' : 'above'} entry)`);
+    const tpSlResult = await setTakeProfitStopLoss(symbol, side, 0, tpRounded, slRounded);
+
+    if (!tpSlResult) {
+      console.error(`⚠️  [EXECUTOR] WARNING: TP/SL may not be set! Manual intervention required.`);
+      console.error(`   Order placed but risk management incomplete!`);
+    }
 
     console.log(`✅ [EXECUTOR] Trade executed successfully!`);
     console.log(`   Order ID: ${orderResult.orderId}`);
     console.log(`   Position: ${qty} contracts @ ${entry}`);
+    console.log(`   Expected: ${direction === 'LONG' ? `Price rises to ${tpRounded}` : `Price falls to ${tpRounded}`}`);
 
     return {
       success: true,
