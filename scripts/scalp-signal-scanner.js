@@ -17,7 +17,7 @@ import {
   CONFIG as ENTRY_ZONE_CONFIG
 } from './utils/entryZoneOptimizer.js';
 import { runAllSafetyChecks } from './utils/safetyChecks.js';
-import { formatPrice, formatEntryZone, formatEntryZoneDisplay, formatPriceByTick } from './utils/priceFormatter.js';
+import { formatPrice, formatPriceByTick } from './utils/priceFormatter.js';
 import { fetchInstrumentsUSDTPerp } from '../src/connectors/bybitPublic.js';
 
 const __filename = fileURLToPath(import.meta.url);

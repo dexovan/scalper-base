@@ -50,41 +50,9 @@ export function formatPriceNumber(price, tickSize) {
   return Number(rounded.toFixed(decimals));
 }
 
-/**
- * Formats entire entry zone
- */
-export function formatEntryZone(entryZone, tickSize) {
-  if (!entryZone) return null;
-
-  return {
-    min: formatPriceNumber(entryZone.min, tickSize),
-    ideal: formatPriceNumber(entryZone.ideal, tickSize),
-    max: formatPriceNumber(entryZone.max, tickSize),
-  };
-}
-
-/**
- * Display version with nice formatting
- */
-export function formatEntryZoneDisplay(entryZone, tickSize) {
-  if (!entryZone) return 'N/A';
-
-  const min = formatPriceByTick(entryZone.min, tickSize);
-  const ideal = formatPriceByTick(entryZone.ideal, tickSize);
-  const max = formatPriceByTick(entryZone.max, tickSize);
-
-  const spread = Math.abs(
-    ((entryZone.max - entryZone.min) / entryZone.ideal) * 100
-  ).toFixed(3);
-
-  return `[${min} — ${ideal} — ${max}] (±${spread}%)`;
-}
-
 export default {
   getDecimalsFromTickSize,
   roundPriceToTick,
   formatPriceByTick,
-  formatPriceNumber,
-  formatEntryZone,
-  formatEntryZoneDisplay
+  formatPriceNumber
 };
