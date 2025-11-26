@@ -167,17 +167,33 @@ export class BybitPublicWS {
       return;
     }
 
-    const payload = {
-      op: "subscribe",
-      args: this.subscriptions,
-    };
+    // Bybit v5 limit: max 10 args per subscribe message
+    const BATCH_SIZE = 10;
+    const batches = [];
 
-    try {
-      this.ws.send(JSON.stringify(payload));
-      console.log("📡 [METRICS-WS] Subscribed:", this.subscriptions);
-    } catch (err) {
-      console.error("❌ [METRICS-WS] Subscribe error:", err.message);
+    for (let i = 0; i < this.subscriptions.length; i += BATCH_SIZE) {
+      batches.push(this.subscriptions.slice(i, i + BATCH_SIZE));
     }
+
+    console.log(`📡 [METRICS-WS] Subscribing to ${this.subscriptions.length} topics in ${batches.length} batches...`);
+
+    batches.forEach((batch, index) => {
+      setTimeout(() => {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+        const payload = {
+          op: "subscribe",
+          args: batch,
+        };
+
+        try {
+          this.ws.send(JSON.stringify(payload));
+          console.log(`📡 [METRICS-WS] Batch ${index + 1}/${batches.length}: ${batch.length} topics`);
+        } catch (err) {
+          console.error(`❌ [METRICS-WS] Subscribe batch ${index + 1} error:`, err.message);
+        }
+      }, index * 100); // 100ms delay between batches
+    });
   }
 
   _sendPong() {
