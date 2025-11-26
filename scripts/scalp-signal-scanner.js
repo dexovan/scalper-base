@@ -152,30 +152,113 @@ const CONFIG = {
 };
 
 // ============================================================
-// LIVE DATA CACHE (reduces API spam)
+// LIVE DATA MANAGER (Centralized API control)
 // ============================================================
-const liveDataCache = new Map(); // symbol -> { data, timestamp }
-const CACHE_TTL = 3000; // 3 seconds cache (fresh enough for scalping)
-
-function getCachedLiveData(symbol) {
-  const cached = liveDataCache.get(symbol);
-  if (!cached) return null;
-
-  const age = Date.now() - cached.timestamp;
-  if (age > CACHE_TTL) {
-    liveDataCache.delete(symbol);
-    return null;
+class LiveDataManager {
+  constructor() {
+    this.data = new Map(); // symbol -> live data
+    this.lastBatchFetch = 0;
+    this.trackedSymbols = [];
+    this.REFRESH_INTERVAL = 2000; // 2s - synchronized with Fast Track
   }
 
-  return cached.data;
+  // Update tracked symbols list
+  setTrackedSymbols(symbols) {
+    this.trackedSymbols = symbols;
+  }
+
+  // Get data for a symbol (from last batch fetch)
+  get(symbol) {
+    return this.data.get(symbol) || null;
+  }
+
+  // Check if data needs refresh
+  needsRefresh() {
+    const now = Date.now();
+    return (now - this.lastBatchFetch) >= this.REFRESH_INTERVAL;
+  }
+
+  // Fetch batch data if needed (centralized control)
+  async refreshIfNeeded() {
+    if (!this.needsRefresh()) {
+      return this.data; // Return existing data
+    }
+
+    if (this.trackedSymbols.length === 0) {
+      return this.data;
+    }
+
+    console.log(`🔄 [DATA] Refreshing ${this.trackedSymbols.length} symbols...`);
+
+    try {
+      const BATCH_SIZE = 50;
+      const newData = new Map();
+
+      for (let i = 0; i < this.trackedSymbols.length; i += BATCH_SIZE) {
+        const batch = this.trackedSymbols.slice(i, i + BATCH_SIZE);
+        const results = await fetchLiveMarketBatch(batch);
+
+        for (const [symbol, data] of Object.entries(results)) {
+          newData.set(symbol, data);
+        }
+
+        // Rate limit between batches
+        if (i + BATCH_SIZE < this.trackedSymbols.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      this.data = newData;
+      this.lastBatchFetch = Date.now();
+      console.log(`✅ [DATA] Refreshed ${newData.size} symbols`);
+
+      return this.data;
+    } catch (error) {
+      console.error(`❌ [DATA] Batch refresh failed:`, error.message);
+      return this.data; // Return old data on error
+    }
+  }
+
+  // Force fresh fetch for a single symbol (for execution)
+  async fetchFreshSingle(symbol) {
+    try {
+      const url = `${CONFIG.engineApiUrl}/api/live-market/${symbol}`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        console.warn(`⚠️  [DATA] HTTP ${response.status} for ${symbol}`);
+        return this.data.get(symbol) || null; // Fallback to cached
+      }
+
+      const text = await response.text();
+      const data = JSON.parse(text);
+
+      if (data.ok) {
+        // Update cache with fresh data
+        this.data.set(symbol, data.live);
+        return data.live;
+      }
+
+      return this.data.get(symbol) || null;
+    } catch (error) {
+      console.error(`❌ [DATA] Fresh fetch failed for ${symbol}:`, error.message);
+      return this.data.get(symbol) || null; // Fallback to cached
+    }
+  }
+
+  // Get age of last refresh
+  getAge() {
+    return Date.now() - this.lastBatchFetch;
+  }
 }
 
-function setCachedLiveData(symbol, data) {
-  liveDataCache.set(symbol, {
-    data,
-    timestamp: Date.now()
-  });
-};
+// Global instance
+const liveDataManager = new LiveDataManager();
 
 // ============================================================
 // LOAD CANDLE DATA FROM JSON
@@ -221,78 +304,7 @@ function loadCandleData(symbol) {
 }
 
 // ============================================================
-// FETCH LIVE MARKET DATA FROM ENGINE (with retry + timeout + CACHE)
-// ============================================================
-
-async function fetchLiveMarketData(symbol, retries = 3, useCache = true) {
-  // Check cache first (skip API call if data is fresh)
-  if (useCache) {
-    const cached = getCachedLiveData(symbol);
-    if (cached) {
-      return cached;
-    }
-  }
-
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const url = `${CONFIG.engineApiUrl}/api/live-market/${symbol}`;
-
-      // Add timeout to prevent hanging
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
-
-      // Check if response is valid
-      if (!response.ok) {
-        if (attempt === retries) {
-          console.warn(`⚠️  [API] HTTP ${response.status} for ${symbol} (after ${retries} attempts)`);
-        }
-        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
-        continue;
-      }
-
-      const text = await response.text();
-      if (!text || text.trim() === '') {
-        if (attempt === retries) {
-          console.warn(`⚠️  [API] Empty response for ${symbol} (after ${retries} attempts)`);
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-        continue;
-      }
-
-      const data = JSON.parse(text);
-
-      if (!data.ok) {
-        return null;
-      }
-
-      // Cache the result
-      setCachedLiveData(symbol, data.live);
-      return data.live;
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        if (attempt === retries) {
-          console.error(`❌ Timeout fetching live market for ${symbol} (after ${retries} attempts)`);
-        }
-      } else if (attempt === retries) {
-        console.error(`❌ Error fetching live market for ${symbol} (after ${retries} attempts):`, error.message);
-      }
-
-      // Wait before retry (exponential backoff)
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
-      }
-    }
-  }
-
-  return null; // All retries failed
-}
-
-// ============================================================
-// FETCH BATCH LIVE MARKET DATA (ANTI-OVERLOAD)
-// Requests 50 symbols at once instead of 50 separate HTTP calls
+// FETCH BATCH LIVE MARKET DATA (used by LiveDataManager)
 // ============================================================
 
 async function fetchLiveMarketBatch(symbols) {
@@ -714,10 +726,13 @@ async function fastTrackLoop() {
 
   const now = Date.now();
 
+  // Refresh data if needed (synchronized with manager)
+  await liveDataManager.refreshIfNeeded();
+
   for (const ft of fastTrackSymbols) {
     try {
-      // Quick check: use cached data (avoid API spam every 2s)
-      const liveData = await fetchLiveMarketData(ft.symbol, 3, true); // useCache=true
+      // Get data from manager (no API call, uses batch refresh)
+      const liveData = liveDataManager.get(ft.symbol);
       if (!liveData) continue;
 
       ft.lastCheck = now;
@@ -753,8 +768,8 @@ async function fastTrackLoop() {
 
         // === AUTO-EXECUTION TRIGGER ===
         if (FAST_TRACK_CONFIG.autoExecute) {
-          // Fetch FRESH data for execution (skip cache to get latest momentum/orderFlow)
-          const freshData = await fetchLiveMarketData(ft.symbol, 3, false); // useCache=false
+          // Fetch FRESH data for execution (force single fetch)
+          const freshData = await liveDataManager.fetchFreshSingle(ft.symbol);
           await attemptExecution(ft.symbol, signalState, freshData || liveData);
         }
       }
@@ -837,73 +852,52 @@ async function scanAllSymbols() {
     }
 
     // ===========================================================
-    // STAGE 1: COLLECT CANDIDATES (pre-filter with score)
+    // STAGE 1: COLLECT CANDIDATES (using centralized data manager)
     // ===========================================================
-    const BATCH_SIZE = 50;
+
+    // Set tracked symbols in manager
+    liveDataManager.setTrackedSymbols(symbols);
+
+    // Refresh data (batch fetch if needed)
+    await liveDataManager.refreshIfNeeded();
+
     const candidates = [];
 
-    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-      const batch = symbols.slice(i, i + BATCH_SIZE);
-
-      // === BATCH API CALL (50 symbols at once) ===
-      const liveDataMap = await fetchLiveMarketBatch(batch);
-
-      // Cache batch results (avoid duplicate fetching in Stage 3)
-      for (const [symbol, data] of Object.entries(liveDataMap)) {
-        setCachedLiveData(symbol, data);
-      }
-
-      // Rate-limit: 100ms pause between batches (prevents Engine overload)
-      if (i + BATCH_SIZE < symbols.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      const batchPromises = batch.map(async (symbol) => {
-        try {
-          // Load candle
-          const candleData = loadCandleData(symbol);
-          if (!candleData || !candleData.candles || candleData.candles.length === 0) {
-            return null;
-          }
-
-          const latestCandle = candleData.candles[candleData.candles.length - 1];
-
-          // Get live data from batch response
-          const liveData = liveDataMap[symbol];
-          if (!liveData) {
-            return null;
-          }
-
-          // Calculate pre-score (for hotlist ranking)
-          const score = calculateCandidateScore(latestCandle, liveData);
-
-          // Evaluate if passes basic filters
-          const evaluation = evaluateSignal(latestCandle, liveData);
-
-          // Only consider symbols that pass basic checks
-          if (evaluation.passed) {
-            const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
-            return {
-              symbol,
-              score,
-              direction,
-              candle: latestCandle,
-              liveData
-            };
-          }
-
-          return null;
-        } catch (error) {
-          return null;
+    for (const symbol of symbols) {
+      try {
+        // Load candle
+        const candleData = loadCandleData(symbol);
+        if (!candleData || !candleData.candles || candleData.candles.length === 0) {
+          continue;
         }
-      });
 
-      const batchResults = await Promise.all(batchPromises);
+        const latestCandle = candleData.candles[candleData.candles.length - 1];
 
-      for (const candidate of batchResults) {
-        if (candidate) {
-          candidates.push(candidate);
+        // Get live data from manager (no API call!)
+        const liveData = liveDataManager.get(symbol);
+        if (!liveData) {
+          continue;
         }
+
+        // Calculate pre-score (for hotlist ranking)
+        const score = calculateCandidateScore(latestCandle, liveData);
+
+        // Evaluate if passes basic filters
+        const evaluation = evaluateSignal(latestCandle, liveData);
+
+        // Only consider symbols that pass basic checks
+        if (evaluation.passed) {
+          const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
+          candidates.push({
+            symbol,
+            score,
+            direction,
+            candle: latestCandle,
+            liveData
+          });
+        }
+      } catch (error) {
+        // Silent fail
       }
     }
 
@@ -954,7 +948,7 @@ async function scanAllSymbols() {
     }
 
     // ===========================================================
-    // STAGE 3: GENERATE SIGNALS (with orderFlow validation + ENTRY ZONES)
+    // STAGE 3: GENERATE SIGNALS (using manager data - NO API CALLS!)
     // ===========================================================
     const signals = [];
 
@@ -969,9 +963,8 @@ async function scanAllSymbols() {
         continue;
       }
 
-      // Re-evaluate with CACHED data (already fetched in Stage 1 batch!)
-      // Only fetch fresh if cache expired (3s TTL)
-      const currentLiveData = await fetchLiveMarketData(symbol, 3, true); // useCache=true
+      // Use live data from manager (already fresh from Stage 1, max 2s old)
+      const currentLiveData = liveDataManager.get(symbol);
       if (!currentLiveData) continue;
 
       const evaluation = evaluateSignal(candle, currentLiveData);
