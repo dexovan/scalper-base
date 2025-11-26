@@ -106,6 +106,11 @@ export class BybitPublicWS {
             const symbol = msg.topic.replace("publicTrade.", "");
             const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
 
+            // DEBUG: Sample 1% of trade messages
+            if (Math.random() < 0.01) {
+              console.log(`🔥 [publicWS] TRADE MESSAGE: ${symbol}, ${trades.length} trades`);
+            }
+
             for (const t of trades) {
               const tradePrice = parseFloat(t.p || t.price || 0);
               const tradeQty = parseFloat(t.v || t.qty || 0);
