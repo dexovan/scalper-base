@@ -7,40 +7,83 @@
 // CONFIGURATION
 // ============================================================
 
-const SAFETY_CONFIG = {
-  // Profit requirements
-  minProfitPercent: 0.12,  // idealno
-  minFeesCovered: 0.06,    // realno Bybit fees
-
-  // Market conditions
-  maxHeat: -25000,
+//normalan model
+/* const SAFETY_CONFIG = {
+  minProfitPercent: 0.15,
+  minFeesCovered: 0.08,
+  maxHeat: -10000,
   maxVolatility: 2.5,
-  minLiquidity: 5000,
-
-  // Anti-scam protection
+  minLiquidity: 50000,
   antiPump: {
     enabled: true,
     maxPriceChange5m: 15,
     maxPriceChange15m: 30
   },
-
   antiRug: {
     enabled: true,
     minListingAge: 30,
     minVolume24h: 500000
   },
-
   antiLowLiquidity: {
     enabled: true,
-    minBidDepth: 2500,
-    minAskDepth: 2500
+    minBidDepth: 25000,
+    minAskDepth: 25000
   },
-
-  // Position management
   maxOnePerSymbol: true,
   maxTotalPositions: 3,
   autoCloseTimeout: 45000
+}; */
+
+
+// model 2
+/* const SAFETY_CONFIG = {
+  minProfitPercent: 0.10,
+  minFeesCovered: 0.05,
+  maxHeat: -20000,
+  maxVolatility: 3.0,
+  minLiquidity: 2000,
+  antiPump: {
+    enabled: true,
+    maxPriceChange5m: 20,
+    maxPriceChange15m: 35
+  },
+  antiRug: {
+    enabled: false
+  },
+  antiLowLiquidity: {
+    enabled: true,
+    minBidDepth: 1500,
+    minAskDepth: 1500
+  },
+  maxOnePerSymbol: true,
+  maxTotalPositions: 3,
+  autoCloseTimeout: 45000
+}; */
+
+//model 3 agresivan
+
+const SAFETY_CONFIG = {
+  minProfitPercent: 0.08,
+  minFeesCovered: 0.04,
+  maxHeat: -30000,
+  maxVolatility: 4.0,
+  minLiquidity: 1000,
+  antiPump: {
+    enabled: false
+  },
+  antiRug: {
+    enabled: false
+  },
+  antiLowLiquidity: {
+    enabled: true,
+    minBidDepth: 800,
+    minAskDepth: 800
+  },
+  maxOnePerSymbol: true,
+  maxTotalPositions: 4,
+  autoCloseTimeout: 40000
 };
+
 
 // ============================================================
 // CHECK: Minimum Profit Requirement
