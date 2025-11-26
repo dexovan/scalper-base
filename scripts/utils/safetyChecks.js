@@ -36,10 +36,10 @@ const SAFETY_CONFIG = {
 // ============================================================
 
 const FEE_CONFIG = {
-  // Po defaultu računamo najgori slučaj (taker in, taker out)
+  // Po defaultu računamo maker-first (FAZA 4B sa limit entry)
   takerFeeRate: 0.0006,   // 0.06% = 0.0006
   makerFeeRate: -0.0002,  // -0.02% (popust) → često ~ -0.00025, ali ovo je ok
-  mode: "TAKER_TAKER"     // "TAKER_TAKER" ili "MAKER_FIRST"
+  mode: "MAKER_FIRST"     // "TAKER_TAKER" ili "MAKER_FIRST"
 };
 
 //normalan model

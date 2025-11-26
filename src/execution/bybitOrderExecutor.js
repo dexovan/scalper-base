@@ -1,6 +1,7 @@
 // ============================================================
 // BYBIT ORDER EXECUTOR
 // Executes trades on Bybit with TP/SL (OCO orders)
+// Maker-first entry with intelligent fallback to market
 // ============================================================
 
 import crypto from 'crypto';
@@ -50,26 +51,49 @@ const manualEnv = loadEnvFile();
 
 const EXECUTION_CONFIG = {
   enabled: true,  // 🔥 LIVE TRADING MODE
+
   apiKey: process.env.BYBIT_API_KEY || manualEnv.BYBIT_API_KEY || '',
   apiSecret: process.env.BYBIT_API_SECRET || manualEnv.BYBIT_API_SECRET || '',
   baseUrl: 'https://api.bybit.com',  // Mainnet
   // baseUrl: 'https://api-testnet.bybit.com',  // Testnet
 
-  // Risk management
-  maxPositions: 5,           // Max 5 concurrent positions (scalping strategy)
-  minBalance: 20,            // Min USDT balance to trade (lowered for testing)
-  defaultLeverage: 3,        // 3x leverage (safer than 5x, less liquidation risk)
-  defaultMargin: 18,         // $18 per trade (~$54 notional, lower risk per trade)
+  // Risk management (FAZA 3)
+  maxPositions: 5,          // Max 5 concurrent positions
+  minBalance: 20,           // Min USDT balance to trade
+  defaultLeverage: 3,       // 3x leverage (FAZA 3)
+  defaultMargin: 18,        // $18 per trade (~$54 notional @ 3x)
 
   // Order settings
-  orderType: 'Market',       // Market orders for instant fill
-  timeInForce: 'GTC',        // Good Till Cancel
+  orderType: 'Market',      // Default order type for market path
+  timeInForce: 'GTC',       // Good Till Cancel for market orders
   reduceOnly: false,
-  closeOnTrigger: false
+  closeOnTrigger: false,
+
+  // Entry mode (FAZA 4B)
+  entryMode: 'MAKER_FIRST', // "MAKER_FIRST" | "MARKET_ONLY"
+
+  // Maker-first behaviour (FAZA 4B)
+  makerFirst: {
+    fallbackDelayMs: 12000,        // cilj: 12–15s prozor za maker fill
+    maxWaitMs: 15000,              // hard limit čekanja
+    pollIntervalMs: 3000,          // koliko često proveravamo status
+
+    maxPriceDriftPercent: 0.10,    // ako cena pobegne > 0.10% od limita → skip
+    maxSpreadPercent: 0.15,        // ako spread > 0.15% → skip
+    minMomentumPercent: 55         // ako momentum < 55% (ako postoji) → skip
+  }
 };
 
 // Active positions tracker
 const activePositions = new Map(); // symbol -> {orderId, side, size, entry, tp, sl}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // ============================================================
 // BYBIT API SIGNATURE
@@ -132,7 +156,7 @@ async function bybitRequest(endpoint, method = 'GET', params = {}) {
 }
 
 // ============================================================
-// SET LEVERAGE (Must be called before opening position)
+// SET LEVERAGE
 // ============================================================
 
 async function setLeverage(symbol, leverage) {
@@ -167,27 +191,97 @@ async function placeMarketOrder(symbol, side, qty) {
     category: 'linear',
     symbol,
     side,  // 'Buy' or 'Sell'
-    orderType: EXECUTION_CONFIG.orderType,
+    orderType: 'Market',
     qty: qty.toString(),
     timeInForce: EXECUTION_CONFIG.timeInForce,
     reduceOnly: EXECUTION_CONFIG.reduceOnly,
     closeOnTrigger: EXECUTION_CONFIG.closeOnTrigger
   };
 
-  console.log(`📤 [BYBIT] Placing ${side} market order: ${symbol} qty=${qty}`);
+  console.log(`📤 [BYBIT] Placing ${side} MARKET order: ${symbol} qty=${qty}`);
 
   const response = await bybitRequest('/v5/order/create', 'POST', params);
 
   if (response.retCode !== 0) {
-    throw new Error(`Bybit order failed: ${response.retMsg}`);
+    throw new Error(`Bybit MARKET order failed: ${response.retMsg}`);
   }
 
-  console.log(`✅ [BYBIT] Order placed: ${response.result.orderId}`);
+  console.log(`✅ [BYBIT] Market order placed: ${response.result.orderId}`);
   return response.result;
 }
 
 // ============================================================
-// SET TP/SL (Trading Stop)
+// PLACE LIMIT ORDER (POST-ONLY MAKER)
+// ============================================================
+
+async function placeLimitOrder(symbol, side, qty, price, postOnly = true) {
+  const params = {
+    category: 'linear',
+    symbol,
+    side,             // 'Buy' or 'Sell'
+    orderType: 'Limit',
+    qty: qty.toString(),
+    price: price.toString(),
+    timeInForce: postOnly ? 'PostOnly' : 'GTC',
+    reduceOnly: EXECUTION_CONFIG.reduceOnly,
+    closeOnTrigger: EXECUTION_CONFIG.closeOnTrigger
+  };
+
+  console.log(`📤 [BYBIT] Placing ${side} LIMIT order (postOnly=${postOnly}): ${symbol} qty=${qty} @ ${price}`);
+
+  const response = await bybitRequest('/v5/order/create', 'POST', params);
+
+  if (response.retCode !== 0) {
+    throw new Error(`Bybit LIMIT order failed: ${response.retMsg}`);
+  }
+
+  console.log(`✅ [BYBIT] Limit order placed: ${response.result.orderId}`);
+  return response.result;
+}
+
+// ============================================================
+// ORDER STATUS & CANCEL HELPERS
+// ============================================================
+
+async function getOrderStatus(symbol, orderId) {
+  const response = await bybitRequest('/v5/order/realtime', 'GET', {
+    category: 'linear',
+    symbol,
+    orderId
+  });
+
+  if (response.retCode !== 0) {
+    throw new Error(`Order status failed: ${response.retMsg}`);
+  }
+
+  const order = response.result?.list?.[0];
+  if (!order) {
+    throw new Error(`Order not found in realtime data: ${orderId}`);
+  }
+
+  return order; // contains orderStatus, avgPrice, etc.
+}
+
+async function cancelOrder(symbol, orderId) {
+  console.log(`🧾 [BYBIT] Canceling order ${orderId} on ${symbol}...`);
+
+  const response = await bybitRequest('/v5/order/cancel', 'POST', {
+    category: 'linear',
+    symbol,
+    orderId
+  });
+
+  if (response.retCode !== 0) {
+    console.warn(`⚠️  [BYBIT] Cancel order failed: ${response.retMsg}`);
+    return null;
+  }
+
+  console.log(`✅ [BYBIT] Order canceled: ${orderId}`);
+  return response.result;
+}
+
+// ============================================================
+// SET TP/SL (Trading Stop) with RETRY LOGIC
 // ============================================================
 
 async function setTakeProfitStopLoss(symbol, side, positionIdx, takeProfit, stopLoss, maxRetries = 3) {
@@ -376,23 +470,17 @@ async function getInstrumentInfo(symbol) {
 }
 
 // ============================================================
-// ROUND PRICE TO TICK SIZE
+// ROUND HELPERS
 // ============================================================
 
 function roundToTickSize(price, tickSize) {
   const rounded = Math.round(price / tickSize) * tickSize;
-  // Format with correct decimals to match tickSize
   const decimals = tickSize.toString().split('.')[1]?.length || 0;
   return parseFloat(rounded.toFixed(decimals));
 }
 
-// ============================================================
-// ROUND QTY TO QTY STEP
-// ============================================================
-
 function roundToQtyStep(qty, qtyStep) {
   const rounded = Math.floor(qty / qtyStep) * qtyStep;
-  // Format with correct decimals to match qtyStep
   const decimals = qtyStep.toString().split('.')[1]?.length || 0;
   return parseFloat(rounded.toFixed(decimals));
 }
@@ -403,66 +491,444 @@ function roundToQtyStep(qty, qtyStep) {
 
 async function getWalletBalance() {
   try {
-    // DEBUG: Verify credentials before API call
-    console.log(`🔍 [BALANCE] Checking credentials before API call...`);
-    console.log(`   API Key: ${EXECUTION_CONFIG.apiKey ? `${EXECUTION_CONFIG.apiKey.substring(0, 10)}...` : '❌ EMPTY'}`);
-    console.log(`   API Secret: ${EXECUTION_CONFIG.apiSecret ? `${EXECUTION_CONFIG.apiSecret.length} chars` : '❌ EMPTY'}`);
-
-    if (!EXECUTION_CONFIG.apiKey || !EXECUTION_CONFIG.apiSecret) {
-      throw new Error('Bybit API credentials not configured');
-    }
-
-    // Try UNIFIED account first
     let response = await bybitRequest('/v5/account/wallet-balance', 'GET', {
       accountType: 'UNIFIED'
     });
 
-    console.log('📊 [BYBIT] wallet-balance UNIFIED raw response:', JSON.stringify(response, null, 2));
-
     if (response.retCode !== 0) {
-      console.warn(`⚠️  [BYBIT] UNIFIED balance error: ${response.retMsg} (code: ${response.retCode})`);
-      console.warn(`⚠️  [BYBIT] Trying CONTRACT account type...`);
-
-      // Fallback to CONTRACT account
+      console.warn(`⚠️  [BYBIT] UNIFIED account failed, trying CONTRACT...`);
       response = await bybitRequest('/v5/account/wallet-balance', 'GET', {
         accountType: 'CONTRACT'
       });
-
-      console.log('📊 [BYBIT] wallet-balance CONTRACT raw response:', JSON.stringify(response, null, 2));
-
-      if (response.retCode !== 0) {
-        throw new Error(`Both UNIFIED and CONTRACT balance failed: ${response.retMsg} (code: ${response.retCode})`);
-      }
     }
 
-    // Extract USDT balance from all accounts in list
-    const list = response.result?.list || [];
-    let balance = 0;
-
-    for (const acc of list) {
-      const usdtCoin = acc.coin?.find(c => c.coin === 'USDT');
-      if (usdtCoin) {
-        const walletBal = parseFloat(usdtCoin.walletBalance || 0);
-        balance += walletBal;
-        console.log(`   → Found USDT: $${walletBal.toFixed(2)} in account`);
-      }
+    if (response.retCode !== 0) {
+      console.error(`❌ [BYBIT] Balance API error: ${response.retMsg} (code: ${response.retCode})`);
+      throw new Error(`Balance check failed: ${response.retMsg}`);
     }
 
-    console.log(`✅ [BYBIT] Total USDT balance: $${balance.toFixed(2)}`);
+    const usdtCoin = response.result.list[0]?.coin?.find(c => c.coin === 'USDT');
+    const balance = parseFloat(usdtCoin?.walletBalance || 0);
+
+    console.log(`✅ [BYBIT] Balance retrieved: $${balance.toFixed(2)} USDT`);
     return balance;
   } catch (error) {
     console.error(`❌ [BYBIT] Balance check error:`, error.message);
-    console.error(`❌ [BYBIT] This might be an API credentials or permission issue`);
+    console.error(`❌ [BYBIT] This might be an API credentials or network issue`);
     return 0;
   }
-}// ============================================================
+}
+
+// ============================================================
+// LIVE MARKET SNAPSHOT (from local ENGINE-API)
+// ============================================================
+
+async function getLiveMarketState(symbol) {
+  try {
+    const url = `http://localhost:8090/api/live-market/${symbol}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.ok) {
+      throw new Error(data.error || 'live-market returned not ok');
+    }
+
+    return data.live; // { price, bid, ask, spreadPercent, imbalance, orderFlowNet60s, ... }
+  } catch (error) {
+    console.warn(`⚠️  [LIVE-MARKET] Failed to fetch live state for ${symbol}: ${error.message}`);
+    return null;
+  }
+}
+
+// ============================================================
+// MAKER-FIRST WAIT LOGIC
+// ============================================================
+
+async function waitForMakerFill({ symbol, orderId, limitPrice, config }) {
+  const start = Date.now();
+  const maxWait = config.maxWaitMs || 15000;
+  const pollInterval = config.pollIntervalMs || 3000;
+
+  console.log(`⏱️  [MAKER-FIRST] Waiting up to ${(maxWait / 1000).toFixed(1)}s for maker fill (${symbol}, orderId=${orderId})`);
+
+  let lastLive = null;
+
+  while (true) {
+    const elapsed = Date.now() - start;
+
+    // 1) Check order status
+    try {
+      const order = await getOrderStatus(symbol, orderId);
+      const status = order.orderStatus;
+
+      // Filled or partially filled → prihvatamo kao uspešan entry
+      if (status === 'Filled' || status === 'PartiallyFilled') {
+        console.log(`✅ [MAKER-FIRST] Order ${orderId} status: ${status} (filled)`);
+        return { filled: true, order, lastLive };
+      }
+    } catch (err) {
+      console.warn(`⚠️  [MAKER-FIRST] Error checking order status: ${err.message}`);
+    }
+
+    if (elapsed >= maxWait) {
+      console.log(`⏰ [MAKER-FIRST] Timeout waiting for fill (${(elapsed / 1000).toFixed(1)}s)`);
+      break;
+    }
+
+    // 2) Update last live snapshot (za kasniju odluku fallback vs skip)
+    lastLive = await getLiveMarketState(symbol);
+
+    await sleep(pollInterval);
+  }
+
+  return { filled: false, order: null, lastLive };
+}
+
+// ============================================================
+// MARKET-ONLY EXECUTION PATH (fallback / legacy)
+// ============================================================
+
+async function executeTradeMarketOnly(ctx) {
+  const { symbol, direction, entry, tp, sl, qty, positionValue, instrumentInfo, confidence, leverage } = ctx;
+
+  try {
+    const side = direction === 'LONG' ? 'Buy' : 'Sell';
+
+    console.log(`\n🎯 [EXECUTOR/MARKET] Executing trade: ${symbol} ${direction}`);
+    console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl} | Confidence: ${confidence}%`);
+    console.log(`   Qty: ${qty} contracts (~$${positionValue.toFixed(2)} notional)`);
+
+    // Set leverage
+    try {
+      await setLeverage(symbol, leverage);
+    } catch (error) {
+      console.error(`❌ [EXECUTOR] Cannot proceed without setting leverage!`);
+      return {
+        success: false,
+        error: `Leverage setup failed: ${error.message}`
+      };
+    }
+
+    const orderResult = await placeMarketOrder(symbol, side, qty);
+
+    // Track position
+    activePositions.set(symbol, {
+      orderId: orderResult.orderId,
+      side,
+      qty,
+      entry,
+      tp,
+      sl,
+      timestamp: Date.now(),
+      entryMode: 'MARKET_ONLY'
+    });
+
+    console.log(`📊 [EXECUTOR] Active positions: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions}`);
+
+    // Integrate with positionTracker
+    positionTracker.onNewPositionOpened({
+      symbol,
+      side: direction,
+      entryPrice: entry,
+      qty,
+      leverage,
+      stopLossPrice: sl,
+      takeProfit1Price: tp
+    });
+
+    // Set TP/SL with retry logic
+    const tpSlResult = await setTakeProfitStopLoss(symbol, side, 0, tp, sl);
+
+    if (!tpSlResult) {
+      console.error(`🚨 [EXECUTOR] CRITICAL: TP/SL failed after retries!`);
+      console.error(`   FORCE CLOSING POSITION to prevent unprotected risk!`);
+
+      // Close position immediately
+      try {
+        const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
+        await placeMarketOrder(symbol, closeSide, qty);
+        activePositions.delete(symbol);
+        console.log(`🔴 [EXECUTOR] Position force-closed due to TP/SL failure`);
+      } catch (closeError) {
+        console.error(`❌ [EXECUTOR] FAILED TO CLOSE POSITION:`, closeError.message);
+        console.error(`   ⚠️  MANUAL INTERVENTION REQUIRED FOR ${symbol}!`);
+      }
+
+      return {
+        success: false,
+        error: 'TP/SL setup failed - position was closed for safety'
+      };
+    }
+
+    console.log(`✅ [EXECUTOR/MARKET] Trade executed successfully!`);
+    console.log(`   Order ID: ${orderResult.orderId}`);
+    console.log(`   Position: ${qty} contracts @ ${entry}`);
+
+    return {
+      success: true,
+      orderId: orderResult.orderId,
+      symbol,
+      side,
+      qty,
+      entry,
+      tp,
+      sl,
+      mode: 'MARKET_ONLY'
+    };
+  } catch (error) {
+    console.error(`❌ [EXECUTOR/MARKET] Trade failed:`, error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ============================================================
+// MAKER-FIRST EXECUTION PATH (FAZA 4B)
+// ============================================================
+
+async function executeTradeMakerFirst(ctx) {
+  const { symbol, direction, entry, tp, sl, qty, positionValue, instrumentInfo, confidence, leverage } = ctx;
+  const cfg = EXECUTION_CONFIG.makerFirst;
+  const side = direction === 'LONG' ? 'Buy' : 'Sell';
+
+  try {
+    console.log(`\n🎯 [EXECUTOR/MAKER-FIRST] Executing trade: ${symbol} ${direction}`);
+    console.log(`   Entry LIMIT: ${entry} | TP: ${tp} | SL: ${sl} | Confidence: ${confidence}%`);
+    console.log(`   Qty: ${qty} contracts (~$${positionValue.toFixed(2)} notional)`);
+    console.log(`   Mode: MAKER-FIRST with intelligent fallback`);
+
+    // Set leverage first
+    try {
+      await setLeverage(symbol, leverage);
+    } catch (error) {
+      console.error(`❌ [EXECUTOR] Cannot proceed without setting leverage!`);
+      return {
+        success: false,
+        error: `Leverage setup failed: ${error.message}`
+      };
+    }
+
+    // 1) Post-only limit order na ENTRY (ideal zona)
+    const limitOrder = await placeLimitOrder(symbol, side, qty, entry, true);
+    const limitOrderId = limitOrder.orderId;
+
+    // 2) Čekaj fill (max 15s), prikupljaj poslednji live snapshot
+    const waitResult = await waitForMakerFill({
+      symbol,
+      orderId: limitOrderId,
+      limitPrice: entry,
+      config: cfg
+    });
+
+    // 2a) Ako je filled → TP/SL i kraj
+    if (waitResult.filled) {
+      const order = waitResult.order;
+      const avgPrice = parseFloat(order.avgPrice || entry);
+
+      activePositions.set(symbol, {
+        orderId: limitOrderId,
+        side,
+        qty,
+        entry: avgPrice,
+        tp,
+        sl,
+        timestamp: Date.now(),
+        entryMode: 'MAKER_FILLED'
+      });
+
+      console.log(`📊 [EXECUTOR] Active positions: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions}`);
+
+      // Integrate with positionTracker
+      positionTracker.onNewPositionOpened({
+        symbol,
+        side: direction,
+        entryPrice: avgPrice,
+        qty,
+        leverage,
+        stopLossPrice: sl,
+        takeProfit1Price: tp
+      });
+
+      // Set TP/SL with retry logic
+      const tpSlResult = await setTakeProfitStopLoss(symbol, side, 0, tp, sl);
+
+      if (!tpSlResult) {
+        console.error(`🚨 [EXECUTOR] CRITICAL: TP/SL failed after retries!`);
+        console.error(`   FORCE CLOSING POSITION to prevent unprotected risk!`);
+
+        try {
+          const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
+          await placeMarketOrder(symbol, closeSide, qty);
+          activePositions.delete(symbol);
+          console.log(`🔴 [EXECUTOR] Position force-closed due to TP/SL failure`);
+        } catch (closeError) {
+          console.error(`❌ [EXECUTOR] FAILED TO CLOSE POSITION:`, closeError.message);
+          console.error(`   ⚠️  MANUAL INTERVENTION REQUIRED FOR ${symbol}!`);
+        }
+
+        return {
+          success: false,
+          error: 'TP/SL setup failed - position was closed for safety'
+        };
+      }
+
+      console.log(`✅ [EXECUTOR/MAKER-FIRST] Maker order filled @ ${avgPrice}`);
+      return {
+        success: true,
+        orderId: limitOrderId,
+        symbol,
+        side,
+        qty,
+        entry: avgPrice,
+        tp,
+        sl,
+        mode: 'MAKER_FILLED'
+      };
+    }
+
+    // 3) Nije filled → odlučujemo: SKIP ili MARKET fallback
+    let live = waitResult.lastLive || (await getLiveMarketState(symbol));
+
+    // Uvek pokušaj cancel limita pre daljih akcija
+    try {
+      await cancelOrder(symbol, limitOrderId);
+    } catch (e) {
+      console.warn(`⚠️  [EXECUTOR/MAKER-FIRST] Cancel after wait failed: ${e.message}`);
+    }
+
+    if (!live) {
+      console.warn(`⚠️  [EXECUTOR/MAKER-FIRST] No live data → SKIP (no safe fallback)`);
+      return {
+        success: false,
+        error: 'Maker order not filled and no live data for safe fallback'
+      };
+    }
+
+    const refPrice = live.price || live.mid || live.last || entry;
+    const driftPercent = Math.abs(refPrice - entry) / entry * 100;
+    const spreadPercent = live.spreadPercent ? parseFloat(live.spreadPercent) : null;
+    const momentumPercent = typeof live.momentumPercent === 'number'
+      ? live.momentumPercent
+      : null; // ako nema – ne blokira, samo log
+
+    console.log(`📊 [EXECUTOR/MAKER-FIRST] Post-wait conditions:`);
+    console.log(`   RefPrice: ${refPrice}`);
+    console.log(`   Drift: ${driftPercent.toFixed(4)}% (limit ${cfg.maxPriceDriftPercent}%)`);
+    if (spreadPercent !== null) {
+      console.log(`   Spread: ${spreadPercent.toFixed(4)}% (limit ${cfg.maxSpreadPercent}%)`);
+    } else {
+      console.log(`   Spread: N/A`);
+    }
+    if (momentumPercent !== null) {
+      console.log(`   Momentum: ${momentumPercent.toFixed(2)}% (min ${cfg.minMomentumPercent}%)`);
+    } else {
+      console.log(`   Momentum: N/A (not provided in live data)`);
+    }
+
+    const driftBad = driftPercent > cfg.maxPriceDriftPercent;
+    const spreadBad = spreadPercent !== null && spreadPercent > cfg.maxSpreadPercent;
+    const momentumBad = momentumPercent !== null && momentumPercent < cfg.minMomentumPercent;
+
+    const unsafe = driftBad || spreadBad || momentumBad;
+
+    // 3a) Ako su uslovi loši → SKIP (ne juri pump, ne ulazi u loš spread/momentum)
+    if (unsafe) {
+      console.log(`⛔ [EXECUTOR/MAKER-FIRST] Conditions unsafe → SKIP trade`);
+      return {
+        success: false,
+        error: 'Maker order not filled - conditions unsafe for fallback',
+        diagnostics: {
+          driftPercent,
+          spreadPercent,
+          momentumPercent
+        }
+      };
+    }
+
+    // 3b) Uslovi su dobri → MARKET FALLBACK (Mode 2 koji si hteo)
+    console.log(`🟣 [EXECUTOR/MAKER-FIRST] Conditions OK → MARKET FALLBACK`);
+    const marketOrder = await placeMarketOrder(symbol, side, qty);
+    const marketOrderId = marketOrder.orderId;
+
+    activePositions.set(symbol, {
+      orderId: marketOrderId,
+      side,
+      qty,
+      entry,
+      tp,
+      sl,
+      timestamp: Date.now(),
+      entryMode: 'MAKER_FALLBACK'
+    });
+
+    console.log(`📊 [EXECUTOR] Active positions: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions}`);
+
+    // Integrate with positionTracker
+    positionTracker.onNewPositionOpened({
+      symbol,
+      side: direction,
+      entryPrice: entry,
+      qty,
+      leverage,
+      stopLossPrice: sl,
+      takeProfit1Price: tp
+    });
+
+    // Set TP/SL with retry logic
+    const tpSlResult = await setTakeProfitStopLoss(symbol, side, 0, tp, sl);
+
+    if (!tpSlResult) {
+      console.error(`🚨 [EXECUTOR] CRITICAL: TP/SL failed after retries!`);
+      console.error(`   FORCE CLOSING POSITION to prevent unprotected risk!`);
+
+      try {
+        const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
+        await placeMarketOrder(symbol, closeSide, qty);
+        activePositions.delete(symbol);
+        console.log(`🔴 [EXECUTOR] Position force-closed due to TP/SL failure`);
+      } catch (closeError) {
+        console.error(`❌ [EXECUTOR] FAILED TO CLOSE POSITION:`, closeError.message);
+        console.error(`   ⚠️  MANUAL INTERVENTION REQUIRED FOR ${symbol}!`);
+      }
+
+      return {
+        success: false,
+        error: 'TP/SL setup failed - position was closed for safety'
+      };
+    }
+
+    console.log(`✅ [EXECUTOR/MAKER-FIRST] Fallback market order executed: ${marketOrderId}`);
+    return {
+      success: true,
+      orderId: marketOrderId,
+      symbol,
+      side,
+      qty,
+      entry,
+      tp,
+      sl,
+      mode: 'MAKER_FALLBACK',
+      fromOrderId: limitOrderId
+    };
+  } catch (error) {
+    console.error(`❌ [EXECUTOR/MAKER-FIRST] Trade failed:`, error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ============================================================
 // EXECUTE TRADE (Main Entry Point)
 // ============================================================
 
 export async function executeTrade(signal) {
-  const { symbol, direction, entry, tp, sl, confidence, bidDepth, askDepth } = signal;
+  const { symbol, direction, entry, tp, sl, confidence = 0, bidDepth, askDepth } = signal;
 
-  console.log(`\n🎯 [EXECUTOR] Executing trade: ${symbol} ${direction}`);
+  console.log(`\n🎯 [EXECUTOR] Incoming trade request: ${symbol} ${direction}`);
   console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl} | Confidence: ${confidence}%`);
 
   // DEBUG: Check if API credentials are loaded
@@ -535,7 +1001,7 @@ export async function executeTrade(signal) {
 
   const marginUsdt = EXECUTION_CONFIG.defaultMargin;
   const leverage = EXECUTION_CONFIG.defaultLeverage;
-  const positionValue = marginUsdt * leverage; // $25 × 5 = $125
+  const positionValue = marginUsdt * leverage;
 
   // Calculate qty and round to qtyStep
   const qtyRaw = positionValue / entry;
@@ -554,94 +1020,53 @@ export async function executeTrade(signal) {
   console.log(`💰 [EXECUTOR] Position size: ${qty} contracts ($${positionValue} notional)`);
   console.log(`🎯 [EXECUTOR] TP: ${tpRounded} | SL: ${slRounded} (rounded to tickSize)`);
 
-  // ===== SET LEVERAGE BEFORE ORDER =====
+  const ctx = {
+    symbol,
+    direction,
+    entry,
+    tp: tpRounded,
+    sl: slRounded,
+    qty,
+    positionValue,
+    instrumentInfo,
+    confidence,
+    leverage
+  };
 
-  try {
-    await setLeverage(symbol, leverage);
-  } catch (error) {
-    console.error(`❌ [EXECUTOR] Cannot proceed without setting leverage!`);
-    return {
-      success: false,
-      error: `Leverage setup failed: ${error.message}`
-    };
+  // ===== ROUTING PO ENTRY MODELU =====
+
+  if (EXECUTION_CONFIG.entryMode === 'MAKER_FIRST') {
+    return await executeTradeMakerFirst(ctx);
   }
 
-  // ===== PLACE MARKET ORDER =====
+  return await executeTradeMarketOnly(ctx);
+}
+
+// ============================================================
+// CLOSE POSITION (Manual close)
+// ============================================================
+
+export async function closePosition(symbol) {
+  const position = activePositions.get(symbol);
+  if (!position) {
+    return { success: false, error: 'Position not found' };
+  }
+
+  console.log(`🔴 [EXECUTOR] Closing position: ${symbol}`);
 
   try {
-    const side = direction === 'LONG' ? 'Buy' : 'Sell';
-    console.log(`📊 [EXECUTOR] Direction: ${direction} → Bybit side: ${side}`);
+    const closeSide = position.side === 'Buy' ? 'Sell' : 'Buy';
+    const orderResult = await placeMarketOrder(symbol, closeSide, position.qty);
 
-    const orderResult = await placeMarketOrder(symbol, side, qty);    // Track position
-    activePositions.set(symbol, {
-      orderId: orderResult.orderId,
-      side,
-      qty,
-      entry,
-      tp: tpRounded,
-      sl: slRounded,
-      timestamp: Date.now()
-    });
+    activePositions.delete(symbol);
 
-    // Set TP/SL (use rounded values) - CRITICAL: Must succeed or close position!
-    console.log(`🎯 [EXECUTOR] Setting TP/SL: TP=${tpRounded} (${direction === 'LONG' ? 'above' : 'below'} entry), SL=${slRounded} (${direction === 'LONG' ? 'below' : 'above'} entry)`);
-    const tpSlResult = await setTakeProfitStopLoss(symbol, side, 0, tpRounded, slRounded);
-
-    if (!tpSlResult) {
-      console.error(`🚨 [EXECUTOR] CRITICAL: TP/SL failed after retries!`);
-      console.error(`   FORCE CLOSING POSITION to prevent unprotected risk!`);
-
-      // Close position immediately
-      try {
-        const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
-        await placeMarketOrder(symbol, closeSide, qty);
-        activePositions.delete(symbol);
-        console.log(`🔴 [EXECUTOR] Position force-closed due to TP/SL failure`);
-      } catch (closeError) {
-        console.error(`❌ [EXECUTOR] FAILED TO CLOSE POSITION:`, closeError.message);
-        console.error(`   ⚠️  MANUAL INTERVENTION REQUIRED FOR ${symbol}!`);
-      }
-
-      return {
-        success: false,
-        error: 'TP/SL setup failed - position was closed for safety'
-      };
-    }
-
-    console.log(`✅ [EXECUTOR] Trade executed successfully!`);
-    console.log(`   Order ID: ${orderResult.orderId}`);
-    console.log(`   Position: ${qty} contracts @ ${entry}`);
-    console.log(`   Expected: ${direction === 'LONG' ? `Price rises to ${tpRounded}` : `Price falls to ${tpRounded}`}`);
-    console.log(`📊 [EXECUTOR] Active positions: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions}`);
-
-    // Notify positionTracker for dashboard
-    positionTracker.onNewPositionOpened({
-      symbol,
-      side: direction,  // "LONG" or "SHORT"
-      entryPrice: entry,
-      qty,
-      leverage: EXECUTION_CONFIG.defaultLeverage,
-      stopLossPrice: slRounded,
-      takeProfit1Price: tpRounded,
-      takeProfit2Price: null
-    });
-
-    // Trigger immediate sync to update position status
-    setTimeout(() => syncPositionsWithBybit(), 2000);
-
+    console.log(`✅ [EXECUTOR] Position closed: ${symbol}`);
     return {
       success: true,
-      orderId: orderResult.orderId,
-      symbol,
-      side,
-      qty,
-      entry,
-      tp,
-      sl
+      orderId: orderResult.orderId
     };
-
   } catch (error) {
-    console.error(`❌ [EXECUTOR] Trade failed:`, error.message);
+    console.error(`❌ [EXECUTOR] Close failed:`, error.message);
     return {
       success: false,
       error: error.message
@@ -661,54 +1086,18 @@ export function getActivePositions() {
 }
 
 // ============================================================
-// CLOSE POSITION (Manual close)
-// ============================================================
-
-export async function closePosition(symbol) {
-  const position = activePositions.get(symbol);
-  if (!position) {
-    return { success: false, error: 'Position not found' };
-  }
-
-  console.log(`🔴 [EXECUTOR] Closing position: ${symbol}`);
-
-  try {
-    // Reverse side to close
-    const closeSide = position.side === 'Buy' ? 'Sell' : 'Buy';
-    const orderResult = await placeMarketOrder(symbol, closeSide, position.qty);
-
-    activePositions.delete(symbol);
-
-    console.log(`✅ [EXECUTOR] Position closed: ${symbol}`);
-    return {
-      success: true,
-      orderId: orderResult.orderId
-    };
-
-  } catch (error) {
-    console.error(`❌ [EXECUTOR] Close failed:`, error.message);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}
-
-// ============================================================
-// SYNC POSITIONS WITH BYBIT (Check actual open positions)
+// SYNC POSITIONS WITH BYBIT
 // ============================================================
 
 async function syncPositionsWithBybit() {
   try {
-    console.log(`🔄 [SYNC] Checking Bybit positions...`);
-
     const response = await bybitRequest('/v5/position/list', 'GET', {
       category: 'linear',
       settleCoin: 'USDT'
     });
 
     if (response.retCode !== 0) {
-      console.error(`⚠️  [SYNC] Failed to fetch positions: ${response.retMsg}`);
+      console.error(`❌ [SYNC] Failed to fetch positions: ${response.retMsg}`);
       return;
     }
 
@@ -719,24 +1108,19 @@ async function syncPositionsWithBybit() {
         .map(p => p.symbol)
     );
 
-    console.log(`📊 [SYNC] Local tracker: ${activePositions.size} positions [${Array.from(activePositions.keys()).join(', ') || 'none'}]`);
-    console.log(`📊 [SYNC] Bybit API: ${openSymbols.size} positions [${Array.from(openSymbols).join(', ') || 'none'}]`);
-
-    // Remove closed positions from local tracker
     let removed = 0;
-    for (const [symbol, pos] of activePositions.entries()) {
+    for (const [symbol] of activePositions.entries()) {
       if (!openSymbols.has(symbol)) {
-        console.log(`🧹 [SYNC] Position closed on Bybit: ${symbol} - removing from tracker`);
+        console.log(`🔄 [SYNC] Removing closed position from tracker: ${symbol}`);
+        activePositions.delete(symbol);
 
-        // Notify positionTracker that position closed
+        // Notify positionTracker
         positionTracker.onPositionClosed({
           symbol,
-          side: pos.side === 'Buy' ? 'LONG' : 'SHORT',
-          closedAt: new Date().toISOString(),
-          reason: 'TP/SL triggered or manually closed'
+          side: 'UNKNOWN',
+          closedAt: new Date().toISOString()
         });
 
-        activePositions.delete(symbol);
         removed++;
       }
     }
@@ -746,42 +1130,25 @@ async function syncPositionsWithBybit() {
     } else {
       console.log(`✅ [SYNC] All positions in sync: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions} slots used`);
     }
-
   } catch (error) {
-    console.error(`❌ [SYNC] Position sync error:`, error.message);
+    console.error(`❌ [SYNC] Error syncing positions:`, error.message);
   }
 }
 
-// ============================================================
-// CLEANUP OLD POSITIONS (if TP/SL hit but not tracked)
-// ============================================================
-
-export function cleanupStalePositions() {
-  const now = Date.now();
-  const maxAge = 600000; // 10 minutes (reduced from 1 hour)
-
-  for (const [symbol, pos] of activePositions.entries()) {
-    if (now - pos.timestamp > maxAge) {
-      console.log(`🧹 [EXECUTOR] Removing stale position: ${symbol} (${Math.floor((now - pos.timestamp) / 60000)}min old)`);
-      activePositions.delete(symbol);
-    }
-  }
-}
-
-// Sync with Bybit every 30 seconds
+// Sync positions every 30 seconds
 setInterval(syncPositionsWithBybit, 30000);
 
-// Cleanup stale positions every 2 minutes
-setInterval(cleanupStalePositions, 120000);
-
-// Initial sync on module load
+// Run initial sync on module load
 console.log('🔄 [EXECUTOR] Running initial position sync...');
 syncPositionsWithBybit();
+
+// ============================================================
+// EXPORTS
+// ============================================================
 
 export default {
   executeTrade,
   getActivePositions,
   closePosition,
-  syncPositionsWithBybit,  // Export for manual triggering
   config: EXECUTION_CONFIG
 };
