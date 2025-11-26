@@ -381,12 +381,12 @@ async function scanSymbol(symbol) {
 
       // Calculate TP/SL (raw values first)
       const tpRaw = direction === 'LONG'
-        ? ask * 1.0022  // +0.22% for LONG
-        : bid * 0.9978; // -0.22% for SHORT (price goes down)
+        ? ask * 1.0040  // +0.40% for LONG (covers fees + profit)
+        : bid * 0.9960; // -0.40% for SHORT (price goes down)
 
       const slRaw = direction === 'LONG'
-        ? bid * 0.9985  // -0.15% stop loss for LONG
-        : ask * 1.0015; // +0.15% stop loss for SHORT
+        ? bid * 0.9980  // -0.20% stop loss for LONG (outside noise)
+        : ask * 1.0020; // +0.20% stop loss for SHORT
 
       // Format with correct precision
       const tp = formatPrice(tpRaw);
@@ -886,12 +886,12 @@ async function scanAllSymbols() {
 
       // Calculate TP/SL from IDEAL entry (raw first, then format)
       const tpRaw = direction === 'LONG'
-        ? formattedEntryZone.ideal * 1.0022
-        : formattedEntryZone.ideal * 0.9978;
+        ? formattedEntryZone.ideal * 1.0040  // +0.40% (covers fees + profit)
+        : formattedEntryZone.ideal * 0.9960; // -0.40%
 
       const slRaw = direction === 'LONG'
-        ? formattedEntryZone.ideal * 0.9985
-        : formattedEntryZone.ideal * 1.0015;
+        ? formattedEntryZone.ideal * 0.9980  // -0.20% (outside market noise)
+        : formattedEntryZone.ideal * 1.0020; // +0.20%
 
       const tp = formatPrice(tpRaw);
       const sl = formatPrice(slRaw);
