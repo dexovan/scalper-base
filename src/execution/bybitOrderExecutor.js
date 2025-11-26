@@ -132,6 +132,32 @@ async function bybitRequest(endpoint, method = 'GET', params = {}) {
 }
 
 // ============================================================
+// SET LEVERAGE (Must be called before opening position)
+// ============================================================
+
+async function setLeverage(symbol, leverage) {
+  const params = {
+    category: 'linear',
+    symbol,
+    buyLeverage: leverage.toString(),
+    sellLeverage: leverage.toString()
+  };
+
+  console.log(`⚙️  [BYBIT] Setting leverage: ${symbol} → ${leverage}x`);
+
+  const response = await bybitRequest('/v5/position/set-leverage', 'POST', params);
+
+  if (response.retCode !== 0) {
+    console.warn(`⚠️  [BYBIT] Leverage set failed: ${response.retMsg} (code: ${response.retCode})`);
+    console.warn(`   Continuing with current leverage setting...`);
+    return null;
+  }
+
+  console.log(`✅ [BYBIT] Leverage set to ${leverage}x`);
+  return response.result;
+}
+
+// ============================================================
 // PLACE MARKET ORDER
 // ============================================================
 
@@ -380,6 +406,10 @@ export async function executeTrade(signal) {
 
   console.log(`💰 [EXECUTOR] Position size: ${qty} contracts ($${positionValue} notional)`);
   console.log(`🎯 [EXECUTOR] TP: ${tpRounded} | SL: ${slRounded} (rounded to tickSize)`);
+
+  // ===== SET LEVERAGE BEFORE ORDER =====
+
+  await setLeverage(symbol, leverage);
 
   // ===== PLACE MARKET ORDER =====
 
