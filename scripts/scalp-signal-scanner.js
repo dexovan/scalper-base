@@ -1216,8 +1216,16 @@ async function scanAllSymbols() {
       // Calculate dynamic entry zone (NOT fixed point)
       const entryZone = calculateEntryZone(direction, bid, ask, entryPrice);
 
-      // Format entry zone with correct precision
-      const formattedEntryZone = formatEntryZone(entryZone);
+      // Get tickSize from cache (no API call!)
+      const meta = instrumentMeta.get(symbol);
+      const tickSize = meta?.tickSize || 0.0001; // fallback if not in cache
+
+      // Format entry zone with Bybit tickSize precision
+      const formattedEntryZone = {
+        min: parseFloat(formatPriceByTick(entryZone.min, tickSize)),
+        ideal: parseFloat(formatPriceByTick(entryZone.ideal, tickSize)),
+        max: parseFloat(formatPriceByTick(entryZone.max, tickSize))
+      };
 
       // Calculate TP/SL from IDEAL entry (raw first, then format)
       const tpRaw = direction === 'LONG'
@@ -1227,10 +1235,6 @@ async function scanAllSymbols() {
       const slRaw = direction === 'LONG'
         ? formattedEntryZone.ideal * 0.9970  // -0.30% (wider, avoid noise)
         : formattedEntryZone.ideal * 1.0030; // +0.30%
-
-      // Get tickSize from cache (no API call!)
-      const meta = instrumentMeta.get(symbol);
-      const tickSize = meta?.tickSize || 0.0001; // fallback if not in cache
 
       const tp = parseFloat(formatPriceByTick(tpRaw, tickSize));
       const sl = parseFloat(formatPriceByTick(slRaw, tickSize));
