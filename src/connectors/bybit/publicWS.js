@@ -101,6 +101,11 @@ export class BybitPublicWS {
         }
 
         if (msg.topic) {
+          // DEBUG: Log first 20 messages to see what topics arrive
+          if (this._messageCount <= 20) {
+            console.log(`📨 [publicWS MSG ${this._messageCount}] Topic: ${msg.topic}`);
+          }
+
           // 🚀 FEED TRADE DATA TO AGGREGATOR (before passing to onEvent)
           if (msg.topic && msg.topic.startsWith("publicTrade.") && msg.data) {
             const symbol = msg.topic.replace("publicTrade.", "");
