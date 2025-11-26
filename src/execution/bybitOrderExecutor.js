@@ -786,18 +786,55 @@ async function executeTradeMakerFirst(ctx) {
     return { success: false, reason: `Momentum ${(currentMomentum * 100).toFixed(1)}% below ${config.minMomentumPercent}%` };
   }
 
-  // ALL CONDITIONS GOOD → Market fallback
-  console.log(`✅ [MAKER-FALLBACK] Conditions safe, executing market order...`);
+  // =========================================================
+  // MAKER → FALLBACK MARKET ENTRY (with TP/SL recalculation)
+  // =========================================================
+  console.log(`✅ [MAKER-FALLBACK] Conditions safe, executing MARKET fallback...`);
 
   const marketResult = await placeMarketOrder(symbol, side, qty, ctx.tickSize);
-  await setTakeProfitStopLoss(symbol, side, tp, sl, ctx.tickSize);
 
+  // Get actual fill price from API result or fallback to last bid/ask
+  const fillPrice =
+    Number(marketResult.avgPrice) ||
+    (direction === 'LONG' ? marketState.ask : marketState.bid);
+
+  console.log(`🎯 [FALLBACK] Real fill price: ${fillPrice}`);
+
+  // ==========================================
+  // RECALCULATE TP/SL from new fill price
+  // Using same R/R model as scanner (0.35% TP, 0.30% SL)
+  // ==========================================
+  const tpDistance = 0.0035;  // 0.35%
+  const slDistance = 0.0030;  // 0.30%
+
+  let newTP, newSL;
+
+  if (direction === 'LONG') {
+    newTP = fillPrice * (1 + tpDistance);
+    newSL = fillPrice * (1 - slDistance);
+  } else {
+    newTP = fillPrice * (1 - tpDistance);
+    newSL = fillPrice * (1 + slDistance);
+  }
+
+  // TickSize formatting
+  newTP = Number(formatPriceByTick(newTP, ctx.tickSize));
+  newSL = Number(formatPriceByTick(newSL, ctx.tickSize));
+
+  console.log(`📊 [FALLBACK-TP/SL] Recalculated targets:`);
+  console.log(`   TP = ${newTP}`);
+  console.log(`   SL = ${newSL}`);
+
+  // Apply TP/SL after market fill
+  await setTakeProfitStopLoss(symbol, side, newTP, newSL, ctx.tickSize);
+
+  // Update position tracker
   updatePosition(symbol, {
     symbol,
     side: direction,
-    entry: currentPrice,
-    tp,
-    sl,
+    entry: fillPrice,
+    tp: newTP,
+    sl: newSL,
     qty,
     positionSize,
     leverage,
@@ -812,9 +849,9 @@ async function executeTradeMakerFirst(ctx) {
     success: true,
     mode: 'MAKER_FALLBACK',
     orderId: marketResult.orderId,
-    entry: currentPrice,
-    tp,
-    sl
+    entry: fillPrice,
+    tp: newTP,
+    sl: newSL
   };
 }
 
