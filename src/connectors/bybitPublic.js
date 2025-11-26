@@ -428,6 +428,7 @@ async function connectWS(symbolsOverride = null) {
  * Možeš proslediti custom listu simbola ako želiš.
  */
 export async function initPublicConnection(options = {}) {
+  console.log("\n🚀🚀🚀 [BYBIT-WS] INIT PUBLIC CONNECTION CALLED 🚀🚀🚀");
   console.log("🔍 [DEBUG] initPublicConnection called, ws exists:", !!ws, "connected:", wsStatus.connected);
 
   if (ws && wsStatus.connected && !options.forceRestart) {
