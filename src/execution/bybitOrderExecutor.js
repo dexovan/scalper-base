@@ -210,6 +210,15 @@ function roundToQtyStep(qty, qtyStep) {
 
 async function getWalletBalance() {
   try {
+    // DEBUG: Verify credentials before API call
+    console.log(`🔍 [BALANCE] Checking credentials before API call...`);
+    console.log(`   API Key: ${EXECUTION_CONFIG.apiKey ? `${EXECUTION_CONFIG.apiKey.substring(0, 10)}...` : '❌ EMPTY'}`);
+    console.log(`   API Secret: ${EXECUTION_CONFIG.apiSecret ? `${EXECUTION_CONFIG.apiSecret.length} chars` : '❌ EMPTY'}`);
+
+    if (!EXECUTION_CONFIG.apiKey || !EXECUTION_CONFIG.apiSecret) {
+      throw new Error('Bybit API credentials not configured');
+    }
+
     // Try UNIFIED account first
     let response = await bybitRequest('/v5/account/wallet-balance', 'GET', {
       accountType: 'UNIFIED'
@@ -262,6 +271,11 @@ export async function executeTrade(signal) {
 
   console.log(`\n🎯 [EXECUTOR] Executing trade: ${symbol} ${direction}`);
   console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl} | Confidence: ${confidence}%`);
+
+  // DEBUG: Check if API credentials are loaded
+  console.log(`🔑 [DEBUG] API Key loaded: ${EXECUTION_CONFIG.apiKey ? `YES (${EXECUTION_CONFIG.apiKey.substring(0, 8)}...)` : 'NO - EMPTY!'}`);
+  console.log(`🔑 [DEBUG] API Secret loaded: ${EXECUTION_CONFIG.apiSecret ? `YES (${EXECUTION_CONFIG.apiSecret.length} chars)` : 'NO - EMPTY!'}`);
+  console.log(`🔑 [DEBUG] Execution enabled: ${EXECUTION_CONFIG.enabled}`);
 
   // ===== DRY-RUN MODE =====
   if (!EXECUTION_CONFIG.enabled) {
