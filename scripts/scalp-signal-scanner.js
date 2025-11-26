@@ -988,7 +988,7 @@ async function fastTrackLoop() {
         if (shouldEnter) {
           signalState.readyForEntry = true;
           signalState.entryReadyTime = now;
-          console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${formatPrice(currentPrice)} (${entryReason})`);
+          console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${formatPriceByTick(currentPrice, signalState.tickSize || 0.0001)} (${entryReason})`);
           console.log(`   Range Position: ${rangePosition.toFixed(1)}% | Imbalance: ${liveData.imbalance?.toFixed(2)} | Spread: ${liveData.spreadPercent}%`);
 
           // === AUTO-EXECUTION TRIGGER ===
@@ -1216,8 +1216,20 @@ async function scanAllSymbols() {
         ? formattedEntryZone.ideal * 0.9970  // -0.30% (wider, avoid noise)
         : formattedEntryZone.ideal * 1.0030; // +0.30%
 
-      const tp = formatPrice(tpRaw);
-      const sl = formatPrice(slRaw);
+      // Fetch tickSize for Bybit-compliant formatting
+      let tickSize = 0.0001; // fallback
+      try {
+        const instruments = await fetchInstrumentsUSDTPerp();
+        if (instruments.success) {
+          const meta = instruments.symbols.find(x => x.symbol === symbol);
+          if (meta) tickSize = meta.tickSize;
+        }
+      } catch (err) {
+        // Use fallback tickSize
+      }
+
+      const tp = parseFloat(formatPriceByTick(tpRaw, tickSize));
+      const sl = parseFloat(formatPriceByTick(slRaw, tickSize));
 
       // Calculate expected profit (from ideal entry)
       const positionSize = 54; // $18 * 3x
@@ -1253,6 +1265,7 @@ async function scanAllSymbols() {
         sl,
         confidence: evaluation.confidence,
         initialMomentum,  // Store momentum for executor
+        tickSize,          // Store tickSize for FastTrack precision
         firstSeen: Date.now(),
         lastChecked: Date.now(),
         adjustmentCount: 0,
