@@ -215,13 +215,18 @@ async function getWalletBalance() {
     });
 
     if (response.retCode !== 0) {
+      console.error(`❌ [BYBIT] Balance API error: ${response.retMsg} (code: ${response.retCode})`);
       throw new Error(`Balance check failed: ${response.retMsg}`);
     }
 
-    const usdtBalance = response.result.list[0]?.coin.find(c => c.coin === 'USDT');
-    return parseFloat(usdtBalance?.walletBalance || 0);
+    const usdtCoin = response.result.list[0]?.coin?.find(c => c.coin === 'USDT');
+    const balance = parseFloat(usdtCoin?.walletBalance || 0);
+
+    console.log(`✅ [BYBIT] Balance retrieved: $${balance.toFixed(2)} USDT`);
+    return balance;
   } catch (error) {
     console.error(`❌ [BYBIT] Balance check error:`, error.message);
+    console.error(`❌ [BYBIT] This might be an API credentials or network issue`);
     return 0;
   }
 }
@@ -263,6 +268,8 @@ export async function executeTrade(signal) {
 
   // Check balance
   const balance = await getWalletBalance();
+  console.log(`💰 [EXECUTOR] Wallet balance: $${balance.toFixed(2)} USDT (min required: $${EXECUTION_CONFIG.minBalance})`);
+
   if (balance < EXECUTION_CONFIG.minBalance) {
     console.log(`⚠️  [EXECUTOR] Insufficient balance: ${balance} < ${EXECUTION_CONFIG.minBalance}`);
     return { success: false, error: 'Insufficient balance' };
