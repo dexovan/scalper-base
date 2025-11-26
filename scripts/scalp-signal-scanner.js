@@ -68,9 +68,9 @@ const CONFIG = {
   dataDir: path.join(__dirname, '../data/live'),
   engineApiUrl: 'http://localhost:8090',
 
-  // Scan interval - MICRO SCALPING NEEDS FAST UPDATES!
-  scanInterval: 1000, // 1 second (0.22% TP needs real-time scanning)
-  // Candles update every 60s, but we scan LIVE market data every 1s
+  // Scan interval - Balance between responsiveness and resource usage
+  scanInterval: 10000, // 10 seconds (gives time for WS to stabilize between scans)
+  // Candles update every 60s, scanning every 10s is reasonable
 
   // Historical filters (from candles)
   minVolatility: 0.15,       // 0.15% minimum range (reduced from 0.3%)
@@ -422,16 +422,23 @@ async function scanAllSymbols() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbols: hotSymbols })
         });
-        const result = await response.json();
 
-        if (result.ok) {
-          console.log(`🔥 Stage 2 complete: Hotlist updated with ${hotSymbols.length} symbols`);
-          if (result.result.changed) {
-            console.log(`   Added: ${result.result.added.length}, Removed: ${result.result.removed.length}`);
+        if (!response.ok) {
+          console.log(`⚠️  Stage 2: Engine API not ready yet (${response.status}), skipping hotlist update`);
+        } else {
+          const result = await response.json();
+
+          if (result.ok) {
+            console.log(`🔥 Stage 2 complete: Hotlist updated with ${hotSymbols.length} symbols`);
+            if (result.result.changed) {
+              console.log(`   Added: ${result.result.added.length}, Removed: ${result.result.removed.length}`);
+            }
+          } else {
+            console.log(`⚠️  Stage 2: Hotlist update failed -`, result.error || 'Unknown error');
           }
         }
       } catch (error) {
-        console.error(`❌ Stage 2 error: Failed to update hotlist:`, error.message);
+        console.log(`⚠️  Stage 2: Cannot reach Engine API (${error.message}), skipping hotlist update`);
       }
 
       // Wait 500ms for trade WS to connect and receive first messages
@@ -566,9 +573,9 @@ async function main() {
   console.log(`  Max Spread:        ${CONFIG.maxSpread}%`);
   console.log('='.repeat(60) + '\n');
 
-  // Wait 5 seconds for Engine to be ready
-  console.log('⏳ Waiting 5s for Engine to initialize...\n');
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  // Wait 15 seconds for Engine to be fully ready (WS connection + initial data)
+  console.log('⏳ Waiting 15s for Engine to fully initialize (WS connection + data)...\n');
+  await new Promise(resolve => setTimeout(resolve, 15000));
 
   // Run first scan
   await scanAllSymbols();
