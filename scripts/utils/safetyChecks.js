@@ -173,9 +173,52 @@ export function checkFeeCoverage(tpPercent, ctx = {}) {
 // CHECK: Minimum Profit Requirement
 // ============================================================
 
-export function checkMinProfit(tp, sl, entry) {
-  const tpPercent = Math.abs((tp - entry) / entry * 100);
-  const slPercent = Math.abs((sl - entry) / entry * 100);
+export function checkMinProfit(tp, sl, entry, direction) {
+  // Calculate signed percentages (keep direction)
+  const tpDiff = ((tp - entry) / entry * 100);
+  const slDiff = ((sl - entry) / entry * 100);
+
+  // For LONG: TP should be positive (above entry), SL negative (below entry)
+  // For SHORT: TP should be negative (below entry), SL positive (above entry)
+  const tpPercent = Math.abs(tpDiff);
+  const slPercent = Math.abs(slDiff);
+
+  // Validate direction consistency
+  if (direction === 'LONG') {
+    if (tpDiff <= 0) {
+      return {
+        passed: false,
+        reason: `LONG TP must be above entry (TP: ${tp} <= Entry: ${entry})`,
+        tpPercent: 0,
+        slPercent: 0
+      };
+    }
+    if (slDiff >= 0) {
+      return {
+        passed: false,
+        reason: `LONG SL must be below entry (SL: ${sl} >= Entry: ${entry})`,
+        tpPercent: 0,
+        slPercent: 0
+      };
+    }
+  } else if (direction === 'SHORT') {
+    if (tpDiff >= 0) {
+      return {
+        passed: false,
+        reason: `SHORT TP must be below entry (TP: ${tp} >= Entry: ${entry})`,
+        tpPercent: 0,
+        slPercent: 0
+      };
+    }
+    if (slDiff <= 0) {
+      return {
+        passed: false,
+        reason: `SHORT SL must be above entry (SL: ${sl} <= Entry: ${entry})`,
+        tpPercent: 0,
+        slPercent: 0
+      };
+    }
+  }
 
   // TP must be at least minProfitPercent
   if (tpPercent < SAFETY_CONFIG.minProfitPercent) {
@@ -402,7 +445,7 @@ export function checkPositionLimits(symbol, activePositions) {
 export function runAllSafetyChecks(signal, liveData, activePositions, ctx = {}) {
   const { leverage = 3, feeMode = "MAKER_FIRST" } = ctx;
 
-  const tpCheck = checkMinProfit(signal.tp, signal.sl, signal.entry);
+  const tpCheck = checkMinProfit(signal.tp, signal.sl, signal.entry, signal.direction);
   const tpPercent = tpCheck.tpPercent;
 
   const feeCheck = checkFeeCoverage(tpPercent, { leverage, feeMode });
