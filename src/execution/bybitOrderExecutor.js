@@ -294,6 +294,23 @@ async function cancelOrder(symbol, orderId) {
  */
 async function setLeverage(symbol, leverage) {
   try {
+    // First check if leverage is already set to avoid "leverage not modified" error
+    const posInfo = await bybitClient.getPositionInfo({
+      category: 'linear',
+      symbol
+    });
+
+    if (posInfo?.retCode === 0 && posInfo.result?.list?.length > 0) {
+      const position = posInfo.result.list[0];
+      const currentLeverage = parseInt(position.leverage || '0');
+
+      if (currentLeverage === leverage) {
+        console.log(`✅ [LEVERAGE] ${symbol} already at ${leverage}x, skipping`);
+        return true;
+      }
+    }
+
+    // Leverage needs to be changed
     const response = await bybitClient.setLeverage({
       category: 'linear',
       symbol,
@@ -302,12 +319,22 @@ async function setLeverage(symbol, leverage) {
     });
 
     if (response?.retCode !== 0) {
+      // If error is "leverage not modified", treat as non-fatal
+      if (response?.retMsg?.includes('leverage not modified')) {
+        console.log(`✅ [LEVERAGE] ${symbol} already at ${leverage}x (confirmed by API)`);
+        return true;
+      }
       throw new Error(`Set leverage failed: ${response?.retMsg || 'Unknown error'}`);
     }
 
     console.log(`✅ [LEVERAGE] ${symbol} set to ${leverage}x`);
     return true;
   } catch (err) {
+    // If error is "leverage not modified", treat as non-fatal
+    if (err.message?.includes('leverage not modified')) {
+      console.log(`✅ [LEVERAGE] ${symbol} already at target leverage (error caught)`);
+      return true;
+    }
     console.error(`❌ [LEVERAGE] Failed for ${symbol}: ${err.message}`);
     throw err; // Phase 1: throw to prevent trading with wrong leverage
   }
