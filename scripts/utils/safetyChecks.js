@@ -9,35 +9,37 @@
 
 const SAFETY_CONFIG = {
   // Profit requirements
-  minProfitPercent: 0.15,        // Min 0.15% TP (covers fees + slippage + profit)
-  minFeesCovered: 0.08,          // Min 0.08% to cover spread + fees
+  minProfitPercent: 0.12,  // idealno
+  minFeesCovered: 0.06,    // realno Bybit fees
 
   // Market conditions
-  maxHeat: -10000,               // Skip if orderFlowNet < -$10k (heavy selling)
-  maxVolatility: 2.5,            // Skip if volatility > 2.5%
-  minLiquidity: 5000,            // Min $5k orderbook depth (both sides) - realistic for altcoins
+  maxHeat: -25000,
+  maxVolatility: 2.5,
+  minLiquidity: 5000,
 
   // Anti-scam protection
   antiPump: {
     enabled: true,
-    maxPriceChange5m: 15,        // Skip if +15% in 5 min
-    maxPriceChange15m: 30        // Skip if +30% in 15 min
+    maxPriceChange5m: 15,
+    maxPriceChange15m: 30
   },
 
   antiRug: {
     enabled: true,
-    minListingAge: 30,           // Skip if listing < 30 days old
-    minVolume24h: 500000         // Skip if 24h volume < $500k
+    minListingAge: 30,
+    minVolume24h: 500000
   },
 
   antiLowLiquidity: {
     enabled: true,
-    minBidDepth: 2500,           // Min $2.5k bid side
-    minAskDepth: 2500            // Min $2.5k ask side
-  },  // Position management
-  maxOnePerSymbol: true,         // Only 1 position per symbol
-  maxTotalPositions: 3,          // Max 3 total positions
-  autoCloseTimeout: 45000        // Auto-close if not filled in 45s
+    minBidDepth: 2500,
+    minAskDepth: 2500
+  },
+
+  // Position management
+  maxOnePerSymbol: true,
+  maxTotalPositions: 3,
+  autoCloseTimeout: 45000
 };
 
 // ============================================================
