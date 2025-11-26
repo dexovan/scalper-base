@@ -63,23 +63,23 @@ const FAST_TRACK_CONFIG = {
   maxExecutionAttempts: 3   // Max 3 execution attempts per signal
 };
 
-function updateSignalPersistence(symbol, direction) {
+function updateSignalPersistence(symbol, direction, score) {
   const now = Date.now();
   const existing = signalHistory.get(symbol);
 
   if (!existing) {
-    // First time seeing this signal
-    signalHistory.set(symbol, { direction, count: 1, firstSeen: now, lastSeen: now });
+    // First time seeing this signal - store initial score
+    signalHistory.set(symbol, { direction, count: 1, firstSeen: now, lastSeen: now, initialScore: score });
     return 1;
   }
 
   // Check if direction changed
   if (PERSISTENCE_CONFIG.resetOnDirectionChange && existing.direction !== direction) {
-    signalHistory.set(symbol, { direction, count: 1, firstSeen: now, lastSeen: now });
+    signalHistory.set(symbol, { direction, count: 1, firstSeen: now, lastSeen: now, initialScore: score });
     return 1;
   }
 
-  // Same direction, increment count
+  // Same direction, increment count (keep initial score for consistency)
   existing.count++;
   existing.lastSeen = now;
   return existing.count;
@@ -113,11 +113,12 @@ function getRequiredCycles(score) {
   return 3;  // Normal: 90s
 }
 
-function isSignalPersistent(symbol, score) {
+function isSignalPersistent(symbol) {
   const data = signalHistory.get(symbol);
   if (!data) return false;
 
-  const required = getRequiredCycles(score);
+  // Use initial score (from first detection) for consistency
+  const required = getRequiredCycles(data.initialScore || 0);
   return data.count >= required;
 }
 
@@ -884,11 +885,11 @@ async function scanAllSymbols() {
     for (const candidate of candidates) {
       const { symbol, direction, candle, liveData } = candidate;
 
-      // Update persistence tracker
-      const cycleCount = updateSignalPersistence(symbol, direction);
+      // Update persistence tracker with score
+      const cycleCount = updateSignalPersistence(symbol, direction, candidate.score);
 
       // Check persistence requirement (score-based)
-      if (!isSignalPersistent(symbol, candidate.score)) {
+      if (!isSignalPersistent(symbol)) {
         continue;
       }
 
