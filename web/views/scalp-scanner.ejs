@@ -219,10 +219,31 @@ function formatTime(timestamp) {
   return date.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-// Format number with 2 decimals
+// Get Bybit-style precision based on price magnitude
+function getPrecisionForPrice(price) {
+  if (!price || price === 0) return 2;
+  const absPrice = Math.abs(price);
+
+  if (absPrice >= 1000) return 2;      // BTC/ETH
+  if (absPrice >= 100) return 2;
+  if (absPrice >= 10) return 3;        // $10-99
+  if (absPrice >= 1) return 4;         // $1-9
+  if (absPrice >= 0.1) return 4;       // $0.1-0.99
+  if (absPrice >= 0.01) return 5;      // $0.01-0.099
+  if (absPrice >= 0.001) return 5;
+  if (absPrice >= 0.0001) return 6;
+  if (absPrice >= 0.00001) return 7;
+  if (absPrice >= 0.000001) return 8;
+  return 10;                           // Meme coins
+}
+
+// Format number with adaptive decimals (Bybit-style)
 function fmt(num) {
   if (num == null || num === 'N/A') return 'N/A';
-  return typeof num === 'number' ? num.toFixed(2) : num;
+  if (typeof num !== 'number') return num;
+
+  const precision = getPrecisionForPrice(num);
+  return Number(num.toFixed(precision));
 }
 
 // Render signal card
