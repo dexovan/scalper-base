@@ -2392,7 +2392,10 @@ export function startMonitorApiServer(port = 8090) {
       }
 
       // ===== DUPLICATE PREVENTION =====
+      console.log(`🔍 [API/EXECUTE] Checking for existing positions...`);
       const activePositions = getActivePositions();
+      console.log(`📊 [API/EXECUTE] Active positions count: ${activePositions.length}`);
+
       const existingPosition = activePositions.find(p => p.symbol === symbol);
 
       if (existingPosition) {
@@ -2405,6 +2408,7 @@ export function startMonitorApiServer(port = 8090) {
       }
 
       // ===== EXECUTE TRADE =====
+      console.log(`🚀 [API/EXECUTE] Calling executeTrade for ${symbol}...`);
       const signal = {
         symbol,
         direction,
