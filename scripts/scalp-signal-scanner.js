@@ -7,6 +7,15 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fetch from 'node-fetch';
+import {
+  calculateEntryZone,
+  isPriceInEntryZone,
+  getDistanceToEntryZone,
+  adjustEntryZoneTowardMarket,
+  shouldInvalidateSignal,
+  getEntryZoneDisplay,
+  CONFIG as ENTRY_ZONE_CONFIG
+} from './utils/entryZoneOptimizer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +26,9 @@ const __dirname = path.dirname(__filename);
 // ============================================================
 
 const signalHistory = new Map(); // symbol -> { direction, count, firstSeen }
+
+// Signal State Tracker (for entry zone monitoring)
+const signalStates = new Map(); // symbol -> { entryZone, direction, firstSeen, lastChecked, adjustmentCount, priceHistory }
 
 const PERSISTENCE_CONFIG = {
   minCycles: 2,           // Default: 2 cycles (60s for normal signals)
@@ -64,9 +76,21 @@ function updateSignalPersistence(symbol, direction) {
 
 function cleanupOldSignals() {
   const now = Date.now();
+
+  // Cleanup persistence history
   for (const [symbol, data] of signalHistory.entries()) {
     if (now - data.lastSeen > PERSISTENCE_CONFIG.maxAge) {
       signalHistory.delete(symbol);
+    }
+  }
+
+  // Cleanup signal states (entry zones)
+  for (const [symbol, state] of signalStates.entries()) {
+    const age = now - state.firstSeen;
+
+    // Remove if older than 2 minutes or if signal no longer in persistence tracker
+    if (age > 120000 || !signalHistory.has(symbol)) {
+      signalStates.delete(symbol);
     }
   }
 }
@@ -395,24 +419,79 @@ async function updateFastTrack(topCandidates) {
 async function fastTrackLoop() {
   if (!FAST_TRACK_CONFIG.enabled || fastTrackSymbols.length === 0) return;
 
+  const now = Date.now();
+
   for (const ft of fastTrackSymbols) {
     try {
       // Quick check: only live data (no file I/O)
       const liveData = await fetchLiveMarketData(ft.symbol);
       if (!liveData) continue;
 
-      ft.lastCheck = Date.now();
+      ft.lastCheck = now;
 
-      // Check if conditions deteriorated (early exit signal)
-      const spread = liveData.spread ?? 999;
-      const orderFlow = liveData.orderFlowNet60s || 0;
+      // Check if this symbol has an active signal with entry zone
+      const signalState = signalStates.get(ft.symbol);
+      if (!signalState) continue;
 
-      // Sample: log fast track checks (0.1% sampling to avoid spam)
-      if (Math.random() < 0.001) {
-        console.log(`⚡ [FAST] ${ft.symbol}: flow=${orderFlow.toFixed(0)}, spread=${spread.toFixed(3)}%`);
+      const elapsed = now - signalState.firstSeen;
+      const currentPrice = liveData.price;
+
+      // Track price movement
+      signalState.priceHistory.push(currentPrice);
+      if (signalState.priceHistory.length > 30) {
+        signalState.priceHistory.shift(); // Keep last 30 prices (1 minute @ 2s interval)
       }
 
-      // TODO: Add advanced triggers here (price near entry, orderFlow reversal, etc.)
+      // Check if price is in entry zone
+      const inZone = isPriceInEntryZone(currentPrice, signalState.entryZone);
+      const distanceInfo = getDistanceToEntryZone(currentPrice, signalState.entryZone);
+
+      // Update signal state
+      signalState.inZone = inZone;
+      signalState.lastChecked = now;
+
+      // === ENTRY ZONE MONITORING LOGIC ===
+
+      // 1. Price IN ZONE → Signal ready for execution
+      if (inZone && !signalState.readyForEntry) {
+        signalState.readyForEntry = true;
+        signalState.entryReadyTime = now;
+        console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${currentPrice.toFixed(6)} IN ZONE ${getEntryZoneDisplay(signalState.entryZone)}`);
+      }
+
+      // 2. Price moved OUT of zone after being ready
+      if (!inZone && signalState.readyForEntry) {
+        console.log(`⚠️  [ENTRY MISSED] ${ft.symbol} - Price moved out of zone (now ${distanceInfo.direction} by ${distanceInfo.distancePercent.toFixed(3)}%)`);
+        signalState.readyForEntry = false;
+      }
+
+      // 3. Check if signal should be invalidated (timeout or price too far)
+      if (shouldInvalidateSignal(currentPrice, signalState.entryZone, elapsed)) {
+        console.log(`❌ [SIGNAL INVALID] ${ft.symbol} - Timeout (${(elapsed/1000).toFixed(0)}s) or price too far (${distanceInfo.distancePercent.toFixed(3)}%)`);
+        signalStates.delete(ft.symbol);
+        signalHistory.delete(ft.symbol);
+        continue;
+      }
+
+      // 4. Adjust entry zone if timeout approaching and price not in zone
+      if (elapsed > ENTRY_ZONE_CONFIG.timeoutMs * 0.7 && !inZone) {
+        const adjustmentCount = signalState.adjustmentCount || 0;
+
+        if (adjustmentCount < ENTRY_ZONE_CONFIG.maxAdjustments) {
+          const adjustedZone = adjustEntryZoneTowardMarket(signalState.entryZone, currentPrice, signalState.direction);
+          signalState.entryZone = adjustedZone;
+          signalState.adjustmentCount = adjustedZone.adjustmentCount;
+
+          console.log(`🔧 [ZONE ADJUST] ${ft.symbol} - Nudging entry zone toward market (adjustment ${adjustmentCount + 1}/${ENTRY_ZONE_CONFIG.maxAdjustments})`);
+          console.log(`   New Zone: ${getEntryZoneDisplay(adjustedZone)}`);
+        }
+      }
+
+      // 5. Sample logging (0.5% chance to avoid spam)
+      if (Math.random() < 0.005) {
+        const status = inZone ? '✅ IN_ZONE' : `⏳ ${distanceInfo.direction} ${distanceInfo.distancePercent.toFixed(3)}%`;
+        console.log(`⚡ [FAST] ${ft.symbol}: ${status} | Age: ${(elapsed/1000).toFixed(0)}s | Flow: $${liveData.orderFlowNet60s?.toFixed(0) || 0}`);
+      }
 
     } catch (error) {
       // Silent fail for fast track (don't spam logs)
@@ -570,7 +649,7 @@ async function scanAllSymbols() {
     }
 
     // ===========================================================
-    // STAGE 3: GENERATE SIGNALS (with orderFlow validation)
+    // STAGE 3: GENERATE SIGNALS (with orderFlow validation + ENTRY ZONES)
     // ===========================================================
     const signals = [];
 
@@ -585,25 +664,6 @@ async function scanAllSymbols() {
         continue;
       }
 
-      // Calculate entry prices
-      const entryPrice = liveData.price || 0;
-      const bid = liveData.bid || entryPrice;
-      const ask = liveData.ask || entryPrice;
-      const entry = direction === 'LONG' ? ask : bid;
-
-      // Calculate TP/SL
-      const tp = direction === 'LONG'
-        ? ask * 1.0022
-        : bid * 0.9978;
-
-      const sl = direction === 'LONG'
-        ? bid * 0.9985
-        : ask * 1.0015;
-
-      // Calculate expected profit
-      const positionSize = 125;
-      const expectedProfit = Math.abs((tp - entry) / entry) * positionSize;
-
       // Re-evaluate with current data (including orderFlow from hotlist)
       const currentLiveData = await fetchLiveMarketData(symbol);
       if (!currentLiveData) continue;
@@ -611,15 +671,66 @@ async function scanAllSymbols() {
       const evaluation = evaluateSignal(candle, currentLiveData);
       if (!evaluation.passed) continue;
 
+      // ===== ENTRY ZONE CALCULATION (DEO) =====
+      const entryPrice = currentLiveData.price || 0;
+      const bid = currentLiveData.bid || entryPrice;
+      const ask = currentLiveData.ask || entryPrice;
+
+      // Calculate dynamic entry zone (NOT fixed point)
+      const entryZone = calculateEntryZone(direction, bid, ask, entryPrice);
+
+      // Calculate TP/SL from IDEAL entry (but allow zone flexibility)
+      const tp = direction === 'LONG'
+        ? entryZone.ideal * 1.0022
+        : entryZone.ideal * 0.9978;
+
+      const sl = direction === 'LONG'
+        ? entryZone.ideal * 0.9985
+        : entryZone.ideal * 1.0015;
+
+      // Calculate expected profit (from ideal entry)
+      const positionSize = 125;
+      const expectedProfit = Math.abs((tp - entryZone.ideal) / entryZone.ideal) * positionSize;
+
+      // Check if price is CURRENTLY in entry zone
+      const priceInZone = isPriceInEntryZone(entryPrice, entryZone);
+      const distanceInfo = getDistanceToEntryZone(entryPrice, entryZone);
+
+      // Initialize signal state tracking
+      signalStates.set(symbol, {
+        entryZone,
+        direction,
+        firstSeen: Date.now(),
+        lastChecked: Date.now(),
+        adjustmentCount: 0,
+        priceHistory: [entryPrice],
+        inZone: priceInZone
+      });
+
       const signal = {
         symbol,
         direction,
         confidence: evaluation.confidence,
         timestamp: new Date().toISOString(),
-        entry,
+
+        // Entry zone (NOT single point)
+        entry: entryZone.ideal,  // Keep for backward compatibility
+        entryZone: {
+          min: entryZone.min,
+          ideal: entryZone.ideal,
+          max: entryZone.max,
+          display: getEntryZoneDisplay(entryZone)
+        },
+        entryStatus: {
+          inZone: priceInZone,
+          distancePercent: distanceInfo.distancePercent,
+          direction: distanceInfo.direction
+        },
+
         tp,
         sl,
         expectedProfit,
+
         candle: {
           volatility: candle.volatility,
           velocity: candle.velocity,
@@ -628,6 +739,8 @@ async function scanAllSymbols() {
         },
         live: {
           price: currentLiveData.price,
+          bid: currentLiveData.bid,
+          ask: currentLiveData.ask,
           imbalance: currentLiveData.imbalance,
           spread: currentLiveData.spread,
           orderFlowNet60s: currentLiveData.orderFlowNet60s
@@ -644,10 +757,12 @@ async function scanAllSymbols() {
     if (signals.length > 0) {
       console.log(`\n🎯 Found ${signals.length} signals:\n`);
       signals.forEach(s => {
-        console.log(`  ${s.symbol} ${s.direction} @ ${s.entry} (confidence: ${s.confidence}%)`);
-        console.log(`    TP: ${s.tp} | SL: ${s.sl}`);
-        console.log(`    Volatility: ${s.candle.volatility}% | Volume Spike: ${s.candle.volumeSpike}x`);
-        console.log(`    Imbalance: ${s.live.imbalance} | OrderFlow: ${s.live.orderFlowNet60s}\n`);
+        const entryStatus = s.entryStatus.inZone ? '✅ IN ZONE' : `⏳ ${s.entryStatus.direction} (${s.entryStatus.distancePercent.toFixed(3)}%)`;
+        console.log(`  ${s.symbol} ${s.direction} | Entry Zone: ${s.entryZone.display}`);
+        console.log(`    Status: ${entryStatus} | Current: ${s.live.price?.toFixed(6) || 'N/A'}`);
+        console.log(`    TP: ${s.tp.toFixed(6)} | SL: ${s.sl.toFixed(6)} | Confidence: ${s.confidence}%`);
+        console.log(`    Volatility: ${s.candle.volatility?.toFixed(2)}% | Volume: ${s.candle.volumeSpike?.toFixed(1)}x`);
+        console.log(`    Imbalance: ${s.live.imbalance?.toFixed(2)} | OrderFlow: $${s.live.orderFlowNet60s?.toFixed(0) || 0}\n`);
       });
 
       // Save signals to file
