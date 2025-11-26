@@ -625,8 +625,9 @@ async function attemptExecution(symbol, signalState, liveData) {
 
   try {
     // Add timeout to prevent hanging on execution API
+    // 30s timeout: execution involves multiple Bybit API calls (leverage, quantity check, order, TP/SL)
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout for execution
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout for execution
 
     const response = await fetch(FAST_TRACK_CONFIG.executionApiUrl, {
       method: 'POST',
@@ -752,7 +753,9 @@ async function fastTrackLoop() {
 
         // === AUTO-EXECUTION TRIGGER ===
         if (FAST_TRACK_CONFIG.autoExecute) {
-          await attemptExecution(ft.symbol, signalState, liveData);
+          // Fetch FRESH data for execution (skip cache to get latest momentum/orderFlow)
+          const freshData = await fetchLiveMarketData(ft.symbol, 3, false); // useCache=false
+          await attemptExecution(ft.symbol, signalState, freshData || liveData);
         }
       }
 
