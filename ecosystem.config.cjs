@@ -12,6 +12,7 @@ module.exports = {
         NODE_ENV: "production",
         PORT: "8080"
       },
+      env_file: ".env",
       log_file: "/home/aiuser/scalper-base/logs/pm2-dashboard.log",
       out_file: "/home/aiuser/scalper-base/logs/pm2-dashboard-out.log",
       error_file: "/home/aiuser/scalper-base/logs/pm2-dashboard-error.log",
@@ -31,6 +32,7 @@ module.exports = {
       env: {
         NODE_ENV: "production"
       },
+      env_file: ".env",
       log_file: "/home/aiuser/scalper-base/logs/pm2-engine.log",
       out_file: "/home/aiuser/scalper-base/logs/pm2-engine-out.log",
       error_file: "/home/aiuser/scalper-base/logs/pm2-engine-error.log",
@@ -50,6 +52,7 @@ module.exports = {
       env: {
         NODE_ENV: "production"
       },
+      env_file: ".env",
       log_file: "/home/aiuser/scalper-base/logs/pm2-candle-collector.log",
       out_file: "/home/aiuser/scalper-base/logs/pm2-candle-collector-out.log",
       error_file: "/home/aiuser/scalper-base/logs/pm2-candle-collector-error.log",
@@ -69,6 +72,7 @@ module.exports = {
       env: {
         NODE_ENV: "production"
       },
+      env_file: ".env",
       log_file: "/home/aiuser/scalper-base/logs/pm2-signal-scanner.log",
       out_file: "/home/aiuser/scalper-base/logs/pm2-signal-scanner-out.log",
       error_file: "/home/aiuser/scalper-base/logs/pm2-signal-scanner-error.log",
