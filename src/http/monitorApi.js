@@ -2466,10 +2466,11 @@ export function startMonitorApiServer(port = 8090) {
           timestamp: new Date().toISOString()
         });
       } else {
-        console.log(`❌ [API/EXECUTE] Trade failed: ${result.error}`);
+        const errorMsg = result.error || result.reason || 'Unknown error';
+        console.log(`❌ [API/EXECUTE] Trade failed: ${errorMsg}`);
         return res.json({
           ok: false,
-          error: result.error,
+          error: errorMsg,
           timestamp: new Date().toISOString()
         });
       }
