@@ -17,6 +17,7 @@ import {
   CONFIG as ENTRY_ZONE_CONFIG
 } from './utils/entryZoneOptimizer.js';
 import { runAllSafetyChecks } from './utils/safetyChecks.js';
+import { formatPrice, formatEntryZone, formatEntryZoneDisplay } from './utils/priceFormatter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -356,14 +357,18 @@ async function scanSymbol(symbol) {
       // Calculate entry
       const entry = direction === 'LONG' ? ask : bid;
 
-      // Calculate TP/SL with proper precision (use more decimals, let Dashboard format)
-      const tp = direction === 'LONG'
+      // Calculate TP/SL (raw values first)
+      const tpRaw = direction === 'LONG'
         ? ask * 1.0022  // +0.22% for LONG
         : bid * 0.9978; // -0.22% for SHORT (price goes down)
 
-      const sl = direction === 'LONG'
+      const slRaw = direction === 'LONG'
         ? bid * 0.9985  // -0.15% stop loss for LONG
         : ask * 1.0015; // +0.15% stop loss for SHORT
+
+      // Format with correct precision
+      const tp = formatPrice(tpRaw);
+      const sl = formatPrice(slRaw);
 
       // Calculate expected profit (assuming $25 margin at 5x leverage = $125 position)
       const positionSize = 125; // $25 * 5x
@@ -626,7 +631,7 @@ async function fastTrackLoop() {
       if (inZone && !signalState.readyForEntry) {
         signalState.readyForEntry = true;
         signalState.entryReadyTime = now;
-        console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${currentPrice.toFixed(6)} IN ZONE ${getEntryZoneDisplay(signalState.entryZone)}`);
+        console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${formatPrice(currentPrice)} IN ZONE ${formatEntryZoneDisplay(signalState.entryZone)}`);
 
         // === AUTO-EXECUTION TRIGGER ===
         if (FAST_TRACK_CONFIG.autoExecute) {
@@ -854,26 +859,32 @@ async function scanAllSymbols() {
       // Calculate dynamic entry zone (NOT fixed point)
       const entryZone = calculateEntryZone(direction, bid, ask, entryPrice);
 
-      // Calculate TP/SL from IDEAL entry (but allow zone flexibility)
-      const tp = direction === 'LONG'
-        ? entryZone.ideal * 1.0022
-        : entryZone.ideal * 0.9978;
+      // Format entry zone with correct precision
+      const formattedEntryZone = formatEntryZone(entryZone);
 
-      const sl = direction === 'LONG'
-        ? entryZone.ideal * 0.9985
-        : entryZone.ideal * 1.0015;
+      // Calculate TP/SL from IDEAL entry (raw first, then format)
+      const tpRaw = direction === 'LONG'
+        ? formattedEntryZone.ideal * 1.0022
+        : formattedEntryZone.ideal * 0.9978;
+
+      const slRaw = direction === 'LONG'
+        ? formattedEntryZone.ideal * 0.9985
+        : formattedEntryZone.ideal * 1.0015;
+
+      const tp = formatPrice(tpRaw);
+      const sl = formatPrice(slRaw);
 
       // Calculate expected profit (from ideal entry)
       const positionSize = 125;
-      const expectedProfit = Math.abs((tp - entryZone.ideal) / entryZone.ideal) * positionSize;
+      const expectedProfit = Math.abs((tp - formattedEntryZone.ideal) / formattedEntryZone.ideal) * positionSize;
 
       // Check if price is CURRENTLY in entry zone
-      const priceInZone = isPriceInEntryZone(entryPrice, entryZone);
-      const distanceInfo = getDistanceToEntryZone(entryPrice, entryZone);
+      const priceInZone = isPriceInEntryZone(entryPrice, formattedEntryZone);
+      const distanceInfo = getDistanceToEntryZone(entryPrice, formattedEntryZone);
 
       // Initialize signal state tracking
       signalStates.set(symbol, {
-        entryZone,
+        entryZone: formattedEntryZone,
         direction,
         tp,
         sl,
@@ -893,12 +904,12 @@ async function scanAllSymbols() {
         timestamp: new Date().toISOString(),
 
         // Entry zone (NOT single point)
-        entry: entryZone.ideal,  // Keep for backward compatibility
+        entry: formattedEntryZone.ideal,  // Keep for backward compatibility
         entryZone: {
-          min: entryZone.min,
-          ideal: entryZone.ideal,
-          max: entryZone.max,
-          display: getEntryZoneDisplay(entryZone)
+          min: formattedEntryZone.min,
+          ideal: formattedEntryZone.ideal,
+          max: formattedEntryZone.max,
+          display: formatEntryZoneDisplay(formattedEntryZone)
         },
         entryStatus: {
           inZone: priceInZone,
@@ -937,9 +948,10 @@ async function scanAllSymbols() {
       console.log(`\n🎯 Found ${signals.length} signals:\n`);
       signals.forEach(s => {
         const entryStatus = s.entryStatus.inZone ? '✅ IN ZONE' : `⏳ ${s.entryStatus.direction} (${s.entryStatus.distancePercent.toFixed(3)}%)`;
+        const currentPrice = formatPrice(s.live.price);
         console.log(`  ${s.symbol} ${s.direction} | Entry Zone: ${s.entryZone.display}`);
-        console.log(`    Status: ${entryStatus} | Current: ${s.live.price?.toFixed(6) || 'N/A'}`);
-        console.log(`    TP: ${s.tp.toFixed(6)} | SL: ${s.sl.toFixed(6)} | Confidence: ${s.confidence}%`);
+        console.log(`    Status: ${entryStatus} | Current: ${currentPrice}`);
+        console.log(`    TP: ${formatPrice(s.tp)} | SL: ${formatPrice(s.sl)} | Confidence: ${s.confidence}%`);
         console.log(`    Volatility: ${s.candle.volatility?.toFixed(2)}% | Volume: ${s.candle.volumeSpike?.toFixed(1)}x`);
         console.log(`    Imbalance: ${s.live.imbalance?.toFixed(2)} | OrderFlow: $${s.live.orderFlowNet60s?.toFixed(0) || 0}\n`);
       });
