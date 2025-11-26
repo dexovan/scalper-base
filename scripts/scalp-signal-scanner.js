@@ -537,6 +537,7 @@ async function attemptExecution(symbol, signalState, liveData) {
     tp: signalState.tp,
     sl: signalState.sl,
     confidence: signalState.confidence || 0,
+    initialMomentum: signalState.initialMomentum || 0,  // Include momentum for executor
     entryZone: signalState.entryZone
   };
 
@@ -914,6 +915,11 @@ async function scanAllSymbols() {
       const priceInZone = isPriceInEntryZone(entryPrice, formattedEntryZone);
       const distanceInfo = getDistanceToEntryZone(entryPrice, formattedEntryZone);
 
+      // Extract initial momentum for executor
+      const bidImbalance = currentLiveData.orderbook?.bidImbalance || 0;
+      const askImbalance = currentLiveData.orderbook?.askImbalance || 0;
+      const initialMomentum = direction === 'LONG' ? bidImbalance : askImbalance;
+
       // Initialize signal state tracking
       signalStates.set(symbol, {
         entryZone: formattedEntryZone,
@@ -921,6 +927,7 @@ async function scanAllSymbols() {
         tp,
         sl,
         confidence: evaluation.confidence,
+        initialMomentum,  // Store momentum for executor
         firstSeen: Date.now(),
         lastChecked: Date.now(),
         adjustmentCount: 0,
