@@ -1053,6 +1053,43 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // GET /api/monitor/symbols - List of symbols for candle-collector
+  // Returns universe symbols (compatible with old API)
+  // ============================================================
+  app.get("/api/monitor/symbols", async (req, res) => {
+    try {
+      const { getUniverseSnapshot } = await import("../market/universe_v2.js");
+      const universe = await getUniverseSnapshot();
+
+      if (!universe || !universe.symbols) {
+        return res.json({
+          ok: true,
+          symbols: [],
+          count: 0,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Convert universe map to array of symbols
+      const symbols = Object.keys(universe.symbols);
+
+      return res.json({
+        ok: true,
+        symbols,
+        count: symbols.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(`❌ [API] Error fetching monitor symbols:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // GET /api/tracked-symbols - List of symbols with orderbook data
   // ============================================================
   app.get("/api/tracked-symbols", (req, res) => {
