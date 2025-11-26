@@ -743,4 +743,43 @@ export async function executeTrade(signal) {
   }
 }
 
-export default { executeTrade, setPositionTracker };
+// =====================================================
+// 14) GET ACTIVE POSITIONS (for monitorApi)
+// =====================================================
+export async function getActivePositions() {
+  try {
+    const response = await bybitClient.getPositionInfo({
+      category: 'linear',
+      settleCoin: 'USDT'
+    });
+
+    if (response?.retCode !== 0) {
+      throw new Error(`Get positions failed: ${response?.retMsg || 'Unknown error'}`);
+    }
+
+    const positions = response.result?.list || [];
+
+    // Filter only positions with size > 0
+    const activePositions = positions
+      .filter(pos => parseFloat(pos.size) > 0)
+      .map(pos => ({
+        symbol: pos.symbol,
+        side: pos.side,
+        size: parseFloat(pos.size),
+        entryPrice: parseFloat(pos.avgPrice),
+        markPrice: parseFloat(pos.markPrice),
+        leverage: parseFloat(pos.leverage),
+        unrealisedPnl: parseFloat(pos.unrealisedPnl),
+        takeProfit: parseFloat(pos.takeProfit) || null,
+        stopLoss: parseFloat(pos.stopLoss) || null,
+        createdTime: pos.createdTime
+      }));
+
+    return activePositions;
+  } catch (err) {
+    console.error(`❌ [GET-POSITIONS] Failed: ${err.message}`);
+    return [];
+  }
+}
+
+export default { executeTrade, setPositionTracker, getActivePositions };
