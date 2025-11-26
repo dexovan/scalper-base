@@ -17,7 +17,8 @@ import {
   CONFIG as ENTRY_ZONE_CONFIG
 } from './utils/entryZoneOptimizer.js';
 import { runAllSafetyChecks } from './utils/safetyChecks.js';
-import { formatPrice, formatEntryZone, formatEntryZoneDisplay } from './utils/priceFormatter.js';
+import { formatPrice, formatEntryZone, formatEntryZoneDisplay, formatPriceByTick } from './utils/priceFormatter.js';
+import { fetchInstrumentsUSDTPerp } from '../src/connectors/bybitPublic.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -593,8 +594,25 @@ async function scanSymbol(symbol) {
       const bid = liveData.bid || entryPrice;
       const ask = liveData.ask || entryPrice;
 
+      // =====================================================
+      // FETCH TICKSIZE & FORMAT PRICES (Precision Fix)
+      // =====================================================
+      let tickSize = 0.0001; // fallback
+
+      try {
+        const instruments = await fetchInstrumentsUSDTPerp();
+        if (instruments.success) {
+          const meta = instruments.symbols.find(x => x.symbol === symbol);
+          if (meta) {
+            tickSize = meta.tickSize;
+          }
+        }
+      } catch (err) {
+        // Use fallback tickSize
+      }
+
       // Calculate entry
-      const entry = direction === 'LONG' ? ask : bid;
+      const entryRaw = direction === 'LONG' ? ask : bid;
 
       // Calculate TP/SL (raw values first)
       const tpRaw = direction === 'LONG'
@@ -605,9 +623,10 @@ async function scanSymbol(symbol) {
         ? bid * 0.9970  // -0.30% stop loss for LONG (wider SL, less noise)
         : ask * 1.0030; // +0.30% stop loss for SHORT
 
-      // Format with correct precision
-      const tp = formatPrice(tpRaw);
-      const sl = formatPrice(slRaw);
+      // Format with tickSize precision (Bybit-compliant)
+      const entry = parseFloat(formatPriceByTick(entryRaw, tickSize));
+      const tp = parseFloat(formatPriceByTick(tpRaw, tickSize));
+      const sl = parseFloat(formatPriceByTick(slRaw, tickSize));
 
       // Calculate expected profit (assuming $18 margin at 3x leverage = $54 position)
       const positionSize = 54; // $18 * 3x
