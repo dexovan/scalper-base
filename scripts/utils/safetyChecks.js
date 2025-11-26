@@ -7,26 +7,28 @@
 // CONFIGURATION
 // ============================================================
 
-// model 3 agresivan
+// BALANCED MODE – agresivan ali ne lud ✌️
 const SAFETY_CONFIG = {
-  minProfitPercent: 0.08,   // minimalni "bruto" TP move u %
-  minFeesCovered: 0.04,     // dodatni buffer iznad fee-a (u % na marginu)
-  maxHeat: -30000,
-  maxVolatility: 4.0,
-  minLiquidity: 1000,
+  minProfitPercent: 0.08,      // 0.08% TP minimalno (ostavljamo isto)
+  minFeesCovered: 0.02,        // buffer smanjen 0.04 → 0.02
+  maxHeat: -30000,             // isto – dozvoljavamo jaku prodaju
+  maxVolatility: 4.0,          // i dalje tolerantno
+  minLiquidity: 1000,          // ostavljamo low cap coins
+
   antiPump: {
-    enabled: false
+    enabled: false             // i dalje isključeno
   },
   antiRug: {
-    enabled: false
+    enabled: false             // i dalje isključeno
   },
   antiLowLiquidity: {
     enabled: true,
-    minBidDepth: 800,
+    minBidDepth: 800,          // ostaje (dovoljno loose)
     minAskDepth: 800
   },
+
   maxOnePerSymbol: true,
-  maxTotalPositions: 4,
+  maxTotalPositions: 4,        // 3 → 4 (malo više paralelnih pozicija)
   autoCloseTimeout: 40000
 };
 
@@ -36,10 +38,10 @@ const SAFETY_CONFIG = {
 // ============================================================
 
 const FEE_CONFIG = {
-  // Po defaultu računamo maker-first (FAZA 4B sa limit entry)
-  takerFeeRate: 0.0006,   // 0.06% = 0.0006
-  makerFeeRate: -0.0002,  // -0.02% (popust) → često ~ -0.00025, ali ovo je ok
-  mode: "MAKER_FIRST"     // "TAKER_TAKER" ili "MAKER_FIRST"
+  takerFeeRate: 0.0006,    // 0.06% taker
+  makerFeeRate: -0.0002,   // -0.02% maker
+  mode: "MAKER_FIRST",     // KLJUČNO
+  bufferPercent: 0.02      // 0.02% buffer (smanjeno sa 0.04)
 };
 
 //normalan model
@@ -135,39 +137,35 @@ function estimateEffectiveFeePercentOnMargin(entry, tp, leverage, feeMode = FEE_
 // CHECK: Fee-first – TP mora pokriti fee + buffer
 // ============================================================
 
-export function checkFeeCoverage(signal, leverage = 3, feeMode = FEE_CONFIG.mode) {
-  const { entry, tp } = signal;
+export function checkFeeCoverage(tpPercent, ctx = {}) {
+  const leverage = ctx.leverage || 3;
+  const mode = ctx.feeMode || FEE_CONFIG.mode;
 
-  if (!entry || !tp) {
-    return {
-      passed: false,
-      reason: "Missing entry or TP price for fee check"
-    };
+  let totalFeeRate;
+
+  if (mode === "TAKER_TAKER") {
+    // entry + exit = 0.06% + 0.06%
+    totalFeeRate = 0.0006 + 0.0006;
+  } else if (mode === "MAKER_FIRST") {
+    // entry maker, exit taker = -0.02% + 0.06%
+    totalFeeRate = FEE_CONFIG.makerFeeRate + FEE_CONFIG.takerFeeRate; // 0.0004
+  } else {
+    totalFeeRate = 0.0006 + 0.0006;
   }
 
-  const { tpMovePercent, effectiveFeePercentOnMargin } =
-    estimateEffectiveFeePercentOnMargin(entry, tp, leverage, feeMode);
+  const feePercentOnMargin = totalFeeRate * leverage * 100; // u %
+  const requiredTp = feePercentOnMargin + FEE_CONFIG.bufferPercent;
 
-  // Minimalni poželjni neto profit = fee% + minFeesCovered
-  const minRequiredMove = effectiveFeePercentOnMargin + SAFETY_CONFIG.minFeesCovered;
-
-  if (tpMovePercent < minRequiredMove) {
-    return {
-      passed: false,
-      reason: `TP move (${tpMovePercent.toFixed(3)}%) ne pokriva fee (${effectiveFeePercentOnMargin.toFixed(
-        3
-      )}%) + buffer (${SAFETY_CONFIG.minFeesCovered.toFixed(3)}%)`,
-      tpMovePercent,
-      effectiveFeePercentOnMargin,
-      minRequiredMove
-    };
-  }
+  const passed = tpPercent >= requiredTp;
 
   return {
-    passed: true,
-    tpMovePercent,
-    effectiveFeePercentOnMargin,
-    minRequiredMove
+    passed,
+    reason: passed
+      ? undefined
+      : `TP too small to cover fees (TP=${tpPercent.toFixed(3)}% < required ${requiredTp.toFixed(3)}%)`,
+    tpPercent,
+    requiredTp,
+    feePercentOnMargin
   };
 }
 
@@ -401,15 +399,17 @@ export function checkPositionLimits(symbol, activePositions) {
 // RUN ALL SAFETY CHECKS
 // ============================================================
 
-export function runAllSafetyChecks(signal, liveData, activePositions, opts = {}) {
-  const {
-    leverage = 3,
-    feeMode = FEE_CONFIG.mode
-  } = opts;
+export function runAllSafetyChecks(signal, liveData, activePositions, ctx = {}) {
+  const { leverage = 3, feeMode = "MAKER_FIRST" } = ctx;
+
+  const tpCheck = checkMinProfit(signal.tp, signal.sl, signal.entry);
+  const tpPercent = tpCheck.tpPercent;
+
+  const feeCheck = checkFeeCoverage(tpPercent, { leverage, feeMode });
 
   const checks = {
-    minProfit: checkMinProfit(signal.tp, signal.sl, signal.entry),
-    feeCoverage: checkFeeCoverage(signal, leverage, feeMode),
+    minProfit: tpCheck,
+    feeCoverage: feeCheck,
     marketHeat: checkMarketHeat(liveData.orderFlowNet60s),
     volatility: checkVolatility(liveData.volatility || 0),
     liquidity: checkLiquidity(liveData.bidDepth || 0, liveData.askDepth || 0),

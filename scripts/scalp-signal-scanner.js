@@ -396,6 +396,11 @@ async function scanSymbol(symbol) {
       const positionSize = 54; // $18 * 3x
       const expectedProfit = Math.abs((tp - entry) / entry) * positionSize;
 
+      // Extract momentum for executor (needed for Phase 2 timing checks)
+      const bidImbalance = liveData.orderbook?.bidImbalance || 0;
+      const askImbalance = liveData.orderbook?.askImbalance || 0;
+      const initialMomentum = direction === 'LONG' ? bidImbalance : askImbalance;
+
       const signal = {
         symbol,
         direction,
@@ -407,6 +412,7 @@ async function scanSymbol(symbol) {
         tp,
         sl,
         expectedProfit,
+        initialMomentum,  // Add momentum for executor recheck
 
         // Supporting data
         candle: {
@@ -946,6 +952,11 @@ async function scanAllSymbols() {
         tp,
         sl,
         expectedProfit,
+
+        // Extract momentum for executor (needed for Phase 2 timing checks)
+        initialMomentum: direction === 'LONG'
+          ? (currentLiveData.orderbook?.bidImbalance || 0)
+          : (currentLiveData.orderbook?.askImbalance || 0),
 
         candle: {
           volatility: candle.volatility,
