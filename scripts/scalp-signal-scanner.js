@@ -600,7 +600,7 @@ async function attemptExecution(symbol, signalState, liveData) {
       });
 
     } else {
-      console.log(`❌ [EXECUTE FAILED LINIJA 603 scalp signal scaner] ${symbol} - ${result.error}`);
+      console.log(`❌ [EXECUTE FAILED LINIJA 603 scalp signal scaner] ${symbol} - ${response} - ${result.error}`);
 
       // Increment attempt counter
       signalState.executionAttempts = attempts + 1;
