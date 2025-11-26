@@ -24,6 +24,29 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ============================================================
+// TICKSIZE & QTYSTEP CACHE (LOADED ONCE AT START)
+// ============================================================
+
+let instrumentMeta = new Map();
+
+async function preloadInstrumentsCache() {
+  try {
+    const instruments = await fetchInstrumentsUSDTPerp();
+    if (instruments.success && instruments.symbols) {
+      for (const s of instruments.symbols) {
+        instrumentMeta.set(s.symbol, {
+          tickSize: parseFloat(s.tickSize),
+          qtyStep: parseFloat(s.qtyStep)
+        });
+      }
+      console.log(`🔧 Loaded ${instrumentMeta.size} instruments into tickSize cache`);
+    }
+  } catch (err) {
+    console.error("❌ Failed to preload instrument metadata:", err.message);
+  }
+}
+
+// ============================================================
 // SIGNAL PERSISTENCE TRACKER
 // Tracks how many consecutive cycles a signal has been valid
 // ============================================================
@@ -595,21 +618,10 @@ async function scanSymbol(symbol) {
       const ask = liveData.ask || entryPrice;
 
       // =====================================================
-      // FETCH TICKSIZE & FORMAT PRICES (Precision Fix)
+      // GET TICKSIZE FROM CACHE (Precision Fix)
       // =====================================================
-      let tickSize = 0.0001; // fallback
-
-      try {
-        const instruments = await fetchInstrumentsUSDTPerp();
-        if (instruments.success) {
-          const meta = instruments.symbols.find(x => x.symbol === symbol);
-          if (meta) {
-            tickSize = meta.tickSize;
-          }
-        }
-      } catch (err) {
-        // Use fallback tickSize
-      }
+      const meta = instrumentMeta.get(symbol);
+      const tickSize = meta?.tickSize || 0.0001; // fallback if not in cache
 
       // Calculate entry
       const entryRaw = direction === 'LONG' ? ask : bid;
@@ -1216,17 +1228,9 @@ async function scanAllSymbols() {
         ? formattedEntryZone.ideal * 0.9970  // -0.30% (wider, avoid noise)
         : formattedEntryZone.ideal * 1.0030; // +0.30%
 
-      // Fetch tickSize for Bybit-compliant formatting
-      let tickSize = 0.0001; // fallback
-      try {
-        const instruments = await fetchInstrumentsUSDTPerp();
-        if (instruments.success) {
-          const meta = instruments.symbols.find(x => x.symbol === symbol);
-          if (meta) tickSize = meta.tickSize;
-        }
-      } catch (err) {
-        // Use fallback tickSize
-      }
+      // Get tickSize from cache (no API call!)
+      const meta = instrumentMeta.get(symbol);
+      const tickSize = meta?.tickSize || 0.0001; // fallback if not in cache
 
       const tp = parseFloat(formatPriceByTick(tpRaw, tickSize));
       const sl = parseFloat(formatPriceByTick(slRaw, tickSize));
@@ -1384,6 +1388,11 @@ async function main() {
   console.log(`  Max Spread:        ${CONFIG.maxSpread}%`);
   console.log(`  Order Flow Vol:    min $${FAST_TRACK_CONFIG.minOrderFlowVolume} (60s)`);
   console.log('='.repeat(60) + '\n');
+
+  // Preload tickSize/qtyStep cache (eliminates 200+ API calls per cycle)
+  console.log('🔧 Preloading instrument metadata cache...');
+  await preloadInstrumentsCache();
+  console.log('');
 
   // Wait 15 seconds for Engine to be fully ready (WS connection + initial data)
   console.log('⏳ Waiting 15s for Engine to fully initialize (WS connection + data)...\n');
