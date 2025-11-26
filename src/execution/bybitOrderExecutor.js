@@ -5,6 +5,43 @@
 
 import crypto from 'crypto';
 import fetch from 'node-fetch';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ============================================================
+// MANUAL .ENV LOADER (Backup if PM2 env_file fails)
+// ============================================================
+
+function loadEnvFile() {
+  const envPath = path.join(__dirname, '../../.env');
+  if (!fs.existsSync(envPath)) {
+    console.warn('⚠️  [ENV] .env file not found at:', envPath);
+    return {};
+  }
+
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  const env = {};
+
+  envContent.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key && valueParts.length > 0) {
+        env[key.trim()] = valueParts.join('=').trim();
+      }
+    }
+  });
+
+  console.log(`✅ [ENV] Manually loaded .env file from: ${envPath}`);
+  return env;
+}
+
+// Load .env manually as fallback
+const manualEnv = loadEnvFile();
 
 // ============================================================
 // CONFIGURATION
@@ -12,8 +49,8 @@ import fetch from 'node-fetch';
 
 const EXECUTION_CONFIG = {
   enabled: true,  // 🔥 LIVE TRADING MODE
-  apiKey: process.env.BYBIT_API_KEY || '',
-  apiSecret: process.env.BYBIT_API_SECRET || '',
+  apiKey: process.env.BYBIT_API_KEY || manualEnv.BYBIT_API_KEY || '',
+  apiSecret: process.env.BYBIT_API_SECRET || manualEnv.BYBIT_API_SECRET || '',
   baseUrl: 'https://api.bybit.com',  // Mainnet
   // baseUrl: 'https://api-testnet.bybit.com',  // Testnet
 
