@@ -15,7 +15,7 @@ const SAFETY_CONFIG = {
   // Market conditions
   maxHeat: -10000,               // Skip if orderFlowNet < -$10k (heavy selling)
   maxVolatility: 2.5,            // Skip if volatility > 2.5%
-  minLiquidity: 50000,           // Min $50k orderbook depth (both sides)
+  minLiquidity: 5000,            // Min $5k orderbook depth (both sides) - realistic for altcoins
 
   // Anti-scam protection
   antiPump: {
@@ -32,11 +32,9 @@ const SAFETY_CONFIG = {
 
   antiLowLiquidity: {
     enabled: true,
-    minBidDepth: 25000,          // Min $25k bid side
-    minAskDepth: 25000           // Min $25k ask side
-  },
-
-  // Position management
+    minBidDepth: 2500,           // Min $2.5k bid side
+    minAskDepth: 2500            // Min $2.5k ask side
+  },  // Position management
   maxOnePerSymbol: true,         // Only 1 position per symbol
   maxTotalPositions: 3,          // Max 3 total positions
   autoCloseTimeout: 45000        // Auto-close if not filled in 45s
