@@ -17,7 +17,7 @@ import {
   CONFIG as ENTRY_ZONE_CONFIG
 } from './utils/entryZoneOptimizer.js';
 import { runAllSafetyChecks } from './utils/safetyChecks.js';
-import { formatPrice, formatPriceByTick } from './utils/priceFormatter.js';
+import { formatPriceByTick } from './utils/priceFormatter.js';
 import { fetchInstrumentsUSDTPerp } from '../src/connectors/bybitPublic.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1341,10 +1341,10 @@ async function scanAllSymbols() {
       console.log(`\n🎯 Found ${signals.length} signals:\n`);
       signals.forEach(s => {
         const entryStatus = s.entryStatus.inZone ? '✅ IN ZONE' : `⏳ ${s.entryStatus.direction} (${s.entryStatus.distancePercent.toFixed(3)}%)`;
-        const currentPrice = formatPrice(s.live.price);
+        const currentPrice = s.live.price.toFixed(4);
         console.log(`  ${s.symbol} ${s.direction} | Entry Zone: ${s.entryZone.display}`);
         console.log(`    Status: ${entryStatus} | Current: ${currentPrice}`);
-        console.log(`    TP: ${formatPrice(s.tp)} | SL: ${formatPrice(s.sl)} | Confidence: ${s.confidence}%`);
+        console.log(`    TP: ${s.tp.toFixed(4)} | SL: ${s.sl.toFixed(4)} | Confidence: ${s.confidence}%`);
         console.log(`    Volatility: ${s.candle.volatility?.toFixed(2)}% | Volume: ${s.candle.volumeSpike?.toFixed(1)}x`);
         console.log(`    Imbalance: ${s.live.imbalance?.toFixed(2)} | OrderFlow: $${s.live.orderFlowNet60s?.toFixed(0) || 0}\n`);
       });
