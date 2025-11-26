@@ -5,9 +5,13 @@
 
 import WebSocket from "ws";
 import * as wsMetrics from "../../monitoring/wsMetrics.js";
+import { TradeFlowAggregator } from "../../market/TradeFlowAggregator.js";
 
 // PRAVILAN URL za linear USDT perp public feed
 const WS_URL = "wss://stream.bybit.com/v5/public/linear";
+
+// 🚀 GLOBAL TRADE FLOW AGGREGATOR
+const tradeFlowAggregator = new TradeFlowAggregator({ windowMs: 60_000 });
 
 export class BybitPublicWS {
   constructor() {
@@ -97,6 +101,28 @@ export class BybitPublicWS {
         }
 
         if (msg.topic) {
+          // 🚀 FEED TRADE DATA TO AGGREGATOR (before passing to onEvent)
+          if (msg.topic && msg.topic.startsWith("publicTrade.") && msg.data) {
+            const symbol = msg.topic.replace("publicTrade.", "");
+            const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
+
+            for (const t of trades) {
+              const tradePrice = parseFloat(t.p || t.price || 0);
+              const tradeQty = parseFloat(t.v || t.qty || 0);
+              const tradeSide = t.S || t.side || "UNKNOWN";
+              const tradeTs = parseInt(t.T || t.timestamp || Date.now());
+
+              if (tradePrice > 0 && tradeQty > 0) {
+                tradeFlowAggregator.onTrade({
+                  symbol,
+                  side: tradeSide,
+                  qty: tradePrice * tradeQty, // Volume in USD
+                  ts: tradeTs
+                });
+              }
+            }
+          }
+
           // prosledi event napolje (eventHub / metrics)
           try {
             this.onEvent(msg);
@@ -230,6 +256,9 @@ export class BybitPublicWS {
     console.log("⏹️ [METRICS-WS] Disconnected by request.");
   }
 }
+
+// Export TradeFlowAggregator instance for API access
+export { tradeFlowAggregator };
 
 // default singleton (ako ti nekad zatreba globalno)
 const bybitPublicWS = new BybitPublicWS();
