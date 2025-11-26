@@ -152,8 +152,14 @@ async function startEngine() {
 
     console.log("📡 METRICS: Calling connect() now...");
 
+    // 🚀 Subscribe to ALL Prime symbols for TradeFlowAggregator
+    const primeSymbols = getSymbolsByCategory("Prime");
+    const symbolsToSubscribe = primeSymbols.length > 0 ? primeSymbols : ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"];
+
+    console.log(`📡 [WS] Subscribing to ${symbolsToSubscribe.length} symbols for real-time data...`);
+
     metricsWS.connect({
-        symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
+        symbols: symbolsToSubscribe,
         channels: ["tickers", "publicTrade"],
 
         // MUST HAVE THE RAW MESSAGE
