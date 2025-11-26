@@ -5,13 +5,39 @@
 
 import crypto from 'crypto';
 import fetch from 'node-fetch';
-import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Load environment variables
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const API_KEY = process.env.BYBIT_API_KEY;
-const API_SECRET = process.env.BYBIT_API_SECRET;
+// Load .env file manually
+function loadEnv() {
+  const envPath = path.join(__dirname, '../.env');
+  if (!fs.existsSync(envPath)) {
+    return {};
+  }
+
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  const env = {};
+
+  envContent.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key && valueParts.length > 0) {
+        env[key.trim()] = valueParts.join('=').trim();
+      }
+    }
+  });
+
+  return env;
+}
+
+const env = loadEnv();
+const API_KEY = env.BYBIT_API_KEY || process.env.BYBIT_API_KEY;
+const API_SECRET = env.BYBIT_API_SECRET || process.env.BYBIT_API_SECRET;
 const BASE_URL = 'https://api.bybit.com';
 
 function createSignature(params, apiSecret) {
