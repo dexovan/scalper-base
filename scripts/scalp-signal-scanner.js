@@ -570,6 +570,12 @@ function logExecutionHistory(execution) {
 async function attemptExecution(symbol, signalState, liveData) {
   const now = Date.now();
 
+  // Check if execution already in progress
+  if (signalState.executionInProgress) {
+    console.log(`⏳ [EXECUTE] ${symbol} - Execution already in progress, skipping...`);
+    return;
+  }
+
   // Check execution history
   const history = executionHistory.get(symbol);
 
@@ -635,58 +641,68 @@ async function attemptExecution(symbol, signalState, liveData) {
   console.log(`   Entry Zone: ${formatEntryZoneDisplay(signalState.entryZone)}`);
   console.log(`   Initial Momentum: ${(executionRequest.initialMomentum * 100).toFixed(1)}% (from signalState)`);
 
-  try {
-    // Add timeout to prevent hanging on execution API
-    // 10s timeout: execution should be fast, don't block Stage 1 refresh
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout for execution
+  // Fire-and-forget: Send execution request WITHOUT waiting for response
+  // This prevents execution from blocking Stage 1 refresh
+  fetch(FAST_TRACK_CONFIG.executionApiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(executionRequest)
+  }).then(async response => {
+    try {
+      const result = await response.json();
 
-    const response = await fetch(FAST_TRACK_CONFIG.executionApiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(executionRequest),
-      signal: controller.signal
-    });
+      if (result.ok) {
+        console.log(`✅ [EXECUTED] ${symbol} - Order ID: ${result.orderId || 'DRY-RUN'}`);
+        console.log(`   ${result.dryRun ? '🔒 DRY-RUN MODE' : '💰 LIVE TRADE'}`);
 
-    clearTimeout(timeout);
-    const result = await response.json();
+        // Update execution history
+        executionHistory.set(symbol, {
+          lastExecution: Date.now(),
+          attempts: (history?.attempts || 0) + 1,
+          orderId: result.orderId,
+          dryRun: result.dryRun
+        });
 
-    if (result.ok) {
-      console.log(`✅ [EXECUTED] ${symbol} - Order ID: ${result.orderId || 'DRY-RUN'}`);
-      console.log(`   ${result.dryRun ? '🔒 DRY-RUN MODE' : '💰 LIVE TRADE'}`);
+        // Mark signal as executed
+        signalState.executed = true;
+        signalState.executionTime = Date.now();
 
-      // Update execution history
-      executionHistory.set(symbol, {
-        lastExecution: now,
-        attempts: (history?.attempts || 0) + 1,
-        orderId: result.orderId,
-        dryRun: result.dryRun
-      });
+        // Log to execution history file
+        logExecutionHistory({
+          symbol,
+          direction: signalState.direction,
+          entry: executionRequest.entry,
+          tp: executionRequest.tp,
+          sl: executionRequest.sl,
+          success: true,
+          dryRun: result.dryRun,
+          orderId: result.orderId,
+          timestamp: new Date().toISOString()
+        });
 
-      // Mark signal as executed
-      signalState.executed = true;
-      signalState.executionTime = now;
+      } else {
+        console.log(`❌ [EXECUTE FAILED] ${symbol} - ${result.error}`);
 
-      // Log to execution history file
-      logExecutionHistory({
-        symbol,
-        direction: signalState.direction,
-        entry: executionRequest.entry,
-        tp: executionRequest.tp,
-        sl: executionRequest.sl,
-        success: true,
-        dryRun: result.dryRun,
-        orderId: result.orderId,
-        timestamp: new Date().toISOString()
-      });
+        // Increment attempt counter
+        signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
 
-    } else {
-      console.log(`❌ [EXECUTE FAILED LINIJA 603 scalp signal scaner] ${symbol} - ${response} - ${result.error}`);
+        // Log failed execution
+        logExecutionHistory({
+          symbol,
+          direction: signalState.direction,
+          entry: executionRequest.entry,
+          tp: executionRequest.tp,
+          sl: executionRequest.sl,
+          success: false,
+          error: result.error,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
+      signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
 
-      // Increment attempt counter
-      signalState.executionAttempts = attempts + 1;
-
-      // Log failed execution
+      // Log execution error
       logExecutionHistory({
         symbol,
         direction: signalState.direction,
@@ -694,14 +710,13 @@ async function attemptExecution(symbol, signalState, liveData) {
         tp: executionRequest.tp,
         sl: executionRequest.sl,
         success: false,
-        error: result.error,
+        error: error.message,
         timestamp: new Date().toISOString()
       });
     }
-
-  } catch (error) {
+  }).catch(error => {
     console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
-    signalState.executionAttempts = attempts + 1;
+    signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
 
     // Log execution error
     logExecutionHistory({
@@ -714,7 +729,11 @@ async function attemptExecution(symbol, signalState, liveData) {
       error: error.message,
       timestamp: new Date().toISOString()
     });
-  }
+  });
+
+  // Mark as execution in progress (prevent duplicate attempts)
+  signalState.executionInProgress = true;
+  signalState.executionAttempts = attempts + 1;
 }
 
 // ============================================================
