@@ -27,6 +27,7 @@ import {
   getCurrentFlowSymbols,
   getHotlistStats
 } from "../market/flowHotlistManager.js";
+import LiveDataCache from "../utils/LiveDataCache.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
@@ -74,6 +75,9 @@ function tailLines(filePath, maxLines = 200) {
 let latestTickers = new Map(); // symbol -> ticker data
 let recentTrades = []; // last 100 trades
 const MAX_RECENT_TRADES = 100;
+
+// Live data cache (200ms TTL - prevents API overload)
+const liveDataCache = new LiveDataCache(200);
 
 // ============================================================
 // PUBLIC EXPORTS
@@ -834,6 +838,12 @@ export function startMonitorApiServer(port = 8090) {
       const { symbol } = req.params;
       console.log(`[LIVE-MARKET] Request for ${symbol} - START`);
 
+      // Check cache first (200ms TTL)
+      const cached = liveDataCache.get(symbol);
+      if (cached) {
+        return res.json(cached);
+      }
+
       // 1. Get ticker data (price, bid, ask)
       const ticker = latestTickers.get(symbol);
       console.log(`[LIVE-MARKET] ${symbol} - Ticker:`, ticker ? 'EXISTS' : 'MISSING');
@@ -878,7 +888,7 @@ export function startMonitorApiServer(port = 8090) {
       const orderFlowNet60s = flow.net;
 
       // 6. Return live market state
-      return res.json({
+      const response = {
         ok: true,
         symbol,
         live: {
@@ -889,18 +899,128 @@ export function startMonitorApiServer(port = 8090) {
           spreadPercent: spread.toFixed(4),
           imbalance: parseFloat(imbalance.toFixed(2)),
           orderFlowNet60s: orderFlowNet60s,
+          orderFlowBuyVol60s: flow.buyVol,
+          orderFlowSellVol60s: flow.sellVol,
           volume24h: ticker.volume24h || 0,
           change24h: ticker.change24h || 0,
           lastUpdate: ticker.timestamp || new Date().toISOString()
         },
         timestamp: new Date().toISOString()
-      });
+      };
+
+      // Cache response (200ms TTL)
+      liveDataCache.set(symbol, response);
+
+      return res.json(response);
     } catch (error) {
       console.error(`❌ [API] Error fetching live market for ${req.params.symbol}:`, error.message);
       return res.status(500).json({
         ok: false,
         error: error.message,
         symbol: req.params.symbol,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // POST /api/live-market-batch - Batch live market data (ANTI-OVERLOAD)
+  // Handles 50 symbols in one request instead of 50 separate requests
+  // ============================================================
+  app.post("/api/live-market-batch", async (req, res) => {
+    try {
+      const { symbols } = req.body || {};
+
+      if (!Array.isArray(symbols) || symbols.length === 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing or invalid 'symbols' array",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      const results = {};
+      const errors = [];
+
+      for (const symbol of symbols) {
+        try {
+          // Check cache first
+          const cached = liveDataCache.get(symbol);
+          if (cached) {
+            results[symbol] = cached.live;
+            continue;
+          }
+
+          // Get fresh data
+          const ticker = latestTickers.get(symbol);
+          if (!ticker) {
+            errors.push({ symbol, error: 'No ticker data' });
+            continue;
+          }
+
+          const orderbook = OrderbookManager.getOrderbookSummary(symbol, 50);
+
+          let bid = ticker.bid || ticker.price || 0;
+          let ask = ticker.ask || ticker.price || 0;
+
+          if (orderbook && orderbook.bestBid && orderbook.bestAsk) {
+            bid = orderbook.bestBid;
+            ask = orderbook.bestAsk;
+          }
+
+          const spread = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
+
+          let price = ticker.price;
+          if (!price && bid > 0 && ask > 0) {
+            price = (bid + ask) / 2;
+          }
+
+          const imbalance = orderbook?.imbalance ?? 1.0;
+          const flow = tradeFlowAggregator.getFlow(symbol);
+
+          const liveData = {
+            price: price,
+            bid: bid,
+            ask: ask,
+            spread: parseFloat(spread.toFixed(4)),
+            spreadPercent: spread.toFixed(4),
+            imbalance: parseFloat(imbalance.toFixed(2)),
+            orderFlowNet60s: flow.net,
+            orderFlowBuyVol60s: flow.buyVol,
+            orderFlowSellVol60s: flow.sellVol,
+            volume24h: ticker.volume24h || 0,
+            change24h: ticker.change24h || 0,
+            lastUpdate: ticker.timestamp || new Date().toISOString()
+          };
+
+          // Cache individual result
+          liveDataCache.set(symbol, {
+            ok: true,
+            symbol,
+            live: liveData,
+            timestamp: new Date().toISOString()
+          });
+
+          results[symbol] = liveData;
+
+        } catch (error) {
+          errors.push({ symbol, error: error.message });
+        }
+      }
+
+      return res.json({
+        ok: true,
+        count: Object.keys(results).length,
+        results,
+        errors: errors.length > 0 ? errors : undefined,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error(`❌ [API] Error in batch live-market:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
         timestamp: new Date().toISOString()
       });
     }

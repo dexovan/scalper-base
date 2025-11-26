@@ -158,6 +158,34 @@ async function fetchLiveMarketData(symbol) {
 }
 
 // ============================================================
+// FETCH BATCH LIVE MARKET DATA (ANTI-OVERLOAD)
+// Requests 50 symbols at once instead of 50 separate HTTP calls
+// ============================================================
+
+async function fetchLiveMarketBatch(symbols) {
+  try {
+    const url = `${CONFIG.engineApiUrl}/api/live-market-batch`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols })
+    });
+
+    const data = await response.json();
+
+    if (!data.ok) {
+      console.error(`❌ Batch fetch failed:`, data.error);
+      return {};
+    }
+
+    return data.results || {}; // { BTCUSDT: {...}, ETHUSDT: {...} }
+  } catch (error) {
+    console.error(`❌ Error fetching batch live market:`, error.message);
+    return {};
+  }
+}
+
+// ============================================================
 // CALCULATE CANDIDATE SCORE (for hotlist ranking)
 // ============================================================
 
@@ -437,16 +465,27 @@ async function scanAllSymbols() {
 
     for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
       const batch = symbols.slice(i, i + BATCH_SIZE);
+
+      // === BATCH API CALL (50 symbols at once) ===
+      const liveDataMap = await fetchLiveMarketBatch(batch);
+
+      // Rate-limit: 100ms pause between batches (prevents Engine overload)
+      if (i + BATCH_SIZE < symbols.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       const batchPromises = batch.map(async (symbol) => {
         try {
-          // Load candle and live data
+          // Load candle
           const candleData = loadCandleData(symbol);
           if (!candleData || !candleData.candles || candleData.candles.length === 0) {
             return null;
           }
 
           const latestCandle = candleData.candles[candleData.candles.length - 1];
-          const liveData = await fetchLiveMarketData(symbol);
+
+          // Get live data from batch response
+          const liveData = liveDataMap[symbol];
           if (!liveData) {
             return null;
           }
