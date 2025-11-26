@@ -3,6 +3,8 @@
 // Converts single-point entry into realistic execution zone
 // ============================================================
 
+import { formatPriceByTick } from "./priceFormatter.js";
+
 /**
  * Entry Zone Configuration
  * Balanced mode (0.04%) - optimal for micro-scalping
@@ -30,9 +32,10 @@ const ENTRY_ZONE_CONFIG = {
  * @param {number} bid - Current best bid
  * @param {number} ask - Current best ask
  * @param {number} price - Current market price
+ * @param {number} tickSize - Symbol-specific tick size for Bybit precision
  * @returns {object} Entry zone with min/max/ideal
  */
-export function calculateEntryZone(direction, bid, ask, price) {
+export function calculateEntryZone(direction, bid, ask, price, tickSize) {
   const flex = ENTRY_ZONE_CONFIG.flexibilityPercent / 100;
 
   if (direction === 'LONG') {
@@ -41,13 +44,19 @@ export function calculateEntryZone(direction, bid, ask, price) {
     const min = bid;  // Can enter at bid (better price)
     const max = ask * (1 + flex);  // Allow 0.04% above ask
 
+    // Apply Bybit tickSize precision
+    const idealT = parseFloat(formatPriceByTick(ideal, tickSize));
+    const minT = parseFloat(formatPriceByTick(min, tickSize));
+    const maxT = parseFloat(formatPriceByTick(max, tickSize));
+
     return {
-      ideal,
-      min,
-      max,
-      midpoint: (min + max) / 2,
-      range: max - min,
-      rangePercent: ((max - min) / ideal) * 100
+      ideal: idealT,
+      min: minT,
+      max: maxT,
+      midpoint: (minT + maxT) / 2,
+      range: maxT - minT,
+      rangePercent: ((maxT - minT) / idealT) * 100,
+      tickSize
     };
   } else {
     // SHORT: Enter at bid or slightly below
@@ -55,13 +64,19 @@ export function calculateEntryZone(direction, bid, ask, price) {
     const min = bid * (1 - flex);  // Allow 0.04% below bid
     const max = ask;  // Can enter at ask (better price for short)
 
+    // Apply Bybit tickSize precision
+    const idealT = parseFloat(formatPriceByTick(ideal, tickSize));
+    const minT = parseFloat(formatPriceByTick(min, tickSize));
+    const maxT = parseFloat(formatPriceByTick(max, tickSize));
+
     return {
-      ideal,
-      min,
-      max,
-      midpoint: (min + max) / 2,
-      range: max - min,
-      rangePercent: ((max - min) / ideal) * 100
+      ideal: idealT,
+      min: minT,
+      max: maxT,
+      midpoint: (minT + maxT) / 2,
+      range: maxT - minT,
+      rangePercent: ((maxT - minT) / idealT) * 100,
+      tickSize
     };
   }
 }
@@ -129,11 +144,15 @@ export function adjustEntryZoneTowardMarket(entryZone, currentPrice, direction) 
     const newIdeal = entryZone.ideal * (1 + adjustment);
     const newMax = entryZone.max * (1 + adjustment);
 
+    // Apply Bybit tickSize precision
+    const newIdealT = parseFloat(formatPriceByTick(newIdeal, entryZone.tickSize));
+    const newMaxT = parseFloat(formatPriceByTick(newMax, entryZone.tickSize));
+
     return {
       ...entryZone,
-      ideal: newIdeal,
-      max: newMax,
-      midpoint: (entryZone.min + newMax) / 2,
+      ideal: newIdealT,
+      max: newMaxT,
+      midpoint: (entryZone.min + newMaxT) / 2,
       adjusted: true,
       adjustmentCount: (entryZone.adjustmentCount || 0) + 1
     };
@@ -142,11 +161,15 @@ export function adjustEntryZoneTowardMarket(entryZone, currentPrice, direction) 
     const newIdeal = entryZone.ideal * (1 - adjustment);
     const newMin = entryZone.min * (1 - adjustment);
 
+    // Apply Bybit tickSize precision
+    const newIdealT = parseFloat(formatPriceByTick(newIdeal, entryZone.tickSize));
+    const newMinT = parseFloat(formatPriceByTick(newMin, entryZone.tickSize));
+
     return {
       ...entryZone,
-      ideal: newIdeal,
-      min: newMin,
-      midpoint: (newMin + entryZone.max) / 2,
+      ideal: newIdealT,
+      min: newMinT,
+      midpoint: (newMinT + entryZone.max) / 2,
       adjusted: true,
       adjustmentCount: (entryZone.adjustmentCount || 0) + 1
     };
@@ -161,6 +184,9 @@ export function adjustEntryZoneTowardMarket(entryZone, currentPrice, direction) 
  * @returns {boolean} True if signal should be killed
  */
 export function shouldInvalidateSignal(currentPrice, entryZone, elapsedMs) {
+  // Apply Bybit tickSize precision to current price
+  currentPrice = parseFloat(formatPriceByTick(currentPrice, entryZone.tickSize));
+
   const distanceInfo = getDistanceToEntryZone(currentPrice, entryZone);
 
   // If price moved >0.2% away and timeout reached → kill signal
@@ -187,7 +213,7 @@ export function shouldInvalidateSignal(currentPrice, entryZone, elapsedMs) {
  * @returns {string} Human-readable zone info
  */
 export function getEntryZoneDisplay(entryZone) {
-  return `[${entryZone.min.toFixed(6)} — ${entryZone.ideal.toFixed(6)} — ${entryZone.max.toFixed(6)}] (±${entryZone.rangePercent.toFixed(3)}%)`;
+  return `[${formatPriceByTick(entryZone.min, entryZone.tickSize)} — ${formatPriceByTick(entryZone.ideal, entryZone.tickSize)} — ${formatPriceByTick(entryZone.max, entryZone.tickSize)}] (±${entryZone.rangePercent.toFixed(3)}%)`;
 }
 
 export const CONFIG = ENTRY_ZONE_CONFIG;
