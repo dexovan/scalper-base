@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import CONFIG from "../config/index.js";
 import * as OrderbookManager from "../microstructure/OrderbookManager.js";
+import { TradeFlowAggregator } from "../market/TradeFlowAggregator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,9 @@ if (!fs.existsSync(DATA_DIR)) {
 // In-memory ticker storage
 const latestTickers = new Map();
 const latestTradePrices = new Map(); // Track latest trade prices for fallback
+
+// 🚀 TRADE FLOW AGGREGATOR - Real-time buy/sell volume tracking
+const tradeFlowAggregator = new TradeFlowAggregator({ windowMs: 60_000 });
 
 // Globalni event emitter za public evente (ticker/trade/heartbeat)
 const emitter = new EventEmitter();
@@ -306,6 +310,14 @@ async function connectWS(symbolsOverride = null) {
           tradeId: t.i || t.tradeId || Date.now().toString(),
           ts: parseInt(t.T || t.timestamp || Date.now())
         };
+
+        // 🚀 FEED TO TRADE FLOW AGGREGATOR
+        tradeFlowAggregator.onTrade({
+          symbol,
+          side: tradeEvent.side,
+          qty: tradeEvent.price * tradeEvent.qty, // Volume in USD
+          ts: tradeEvent.ts
+        });
 
         // Send to microstructure system
         OrderbookManager.onTradeEvent(symbol, tradeEvent);
@@ -598,3 +610,9 @@ export function subscribeSymbols(symbols = []) {
     }
   }
 }
+
+// ============================
+// EXPORTS
+// ============================
+
+export { tradeFlowAggregator };

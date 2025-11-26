@@ -21,6 +21,7 @@ import {
 } from "../market/universe_v2.js";
 import * as OrderbookManager from "../microstructure/OrderbookManager.js";
 import FeatureEngine from "../features/featureEngine.js";
+import { tradeFlowAggregator } from "../connectors/bybitPublic.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
@@ -863,8 +864,9 @@ export function startMonitorApiServer(port = 8090) {
       // 4. Get imbalance (default to 1.0 if no orderbook)
       const imbalance = orderbook?.imbalance ?? 1.0;
 
-      // 5. Get order flow from 60s trade aggregation
-      const orderFlowNet60s = OrderbookManager.getOrderFlow60s(symbol);
+      // 5. Get order flow from TradeFlowAggregator (60s rolling window)
+      const flow = tradeFlowAggregator.getFlow(symbol);
+      const orderFlowNet60s = flow.net;
 
       // 6. Return live market state
       return res.json({
