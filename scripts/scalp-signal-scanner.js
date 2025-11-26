@@ -222,10 +222,10 @@ function calculateCandidateScore(candle, liveData) {
   const velocity = Math.abs(candle.velocity ?? 0);
   const priceChange1m = Math.abs(candle.priceChange1m ?? 0);
   const imbalance = Math.abs((liveData.imbalance ?? 1.0) - 1.0); // distance from neutral
-  const spread = liveData.spread ?? 999;
+  const spreadPercent = parseFloat(liveData.spreadPercent) ?? 999;
 
   // Penalty for wide spread (harder to enter/exit)
-  const spreadPenalty = spread > CONFIG.maxSpread ? 0.5 : 1.0;
+  const spreadPenalty = spreadPercent > CONFIG.maxSpread ? 0.5 : 1.0;
 
   // Combine into score (higher = hotter symbol)
   const score = (
@@ -251,7 +251,8 @@ function evaluateSignal(candle, liveData) {
   const priceChange1m = candle.priceChange1m ?? 0;
 
   const imbalance = liveData.imbalance ?? 1.0;
-  const spread = liveData.spread ?? 999; // High default so it fails spread check
+  const spread = liveData.spread ?? 999; // Absolute spread (ask-bid)
+  const spreadPercent = parseFloat(liveData.spreadPercent) ?? 999; // Percent for filter
   const orderFlow = liveData.orderFlowNet60s;
 
   // Order flow volume validation (total volume in 60s)
@@ -274,7 +275,7 @@ function evaluateSignal(candle, liveData) {
 
     // Live checks - Modified imbalance rule for spoof pattern
     imbalance: imbalance >= CONFIG.minImbalance || isSpoofPattern, // Allow high imbalance for falling price (spoof detection)
-    spread: spread <= CONFIG.maxSpread,
+    spread: spreadPercent <= CONFIG.maxSpread,
 
     // Order flow: asymmetric + volume-aware
     // If we don't have enough volume, ignore orderFlow (neutral)
