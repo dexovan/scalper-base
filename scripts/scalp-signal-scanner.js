@@ -512,7 +512,7 @@ async function attemptExecution(symbol, signalState, liveData) {
     [], // activePositions - will be fetched from API
     {
       leverage: 3,           // Must match EXECUTION_CONFIG.defaultLeverage
-      feeMode: "TAKER_TAKER" // Will change to "MAKER_FIRST" when limit entry is implemented
+      feeMode: "MAKER_FIRST" // BALANCED MODE: Maker entry (-0.02%) + Taker exit (0.06%) = 0.04% total
     }
   );
 
