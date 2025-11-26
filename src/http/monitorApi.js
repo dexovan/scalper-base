@@ -2453,7 +2453,8 @@ export function startMonitorApiServer(port = 8090) {
         tp,
         sl,
         confidence: confidence || 0,
-        entryZone
+        entryZone,
+        initialMomentum: initialMomentum || 0
       };
 
       const result = await executeTrade(signal);
