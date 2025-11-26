@@ -28,7 +28,10 @@ const __dirname = path.dirname(__filename);
 const signalHistory = new Map(); // symbol -> { direction, count, firstSeen }
 
 // Signal State Tracker (for entry zone monitoring)
-const signalStates = new Map(); // symbol -> { entryZone, direction, firstSeen, lastChecked, adjustmentCount, priceHistory }
+const signalStates = new Map(); // symbol -> { entryZone, direction, firstSeen, lastChecked, adjustmentCount, priceHistory, executionAttempts }
+
+// Execution tracker (prevent duplicates)
+const executionHistory = new Map(); // symbol -> { lastExecution, attempts }
 
 const PERSISTENCE_CONFIG = {
   minCycles: 2,           // Default: 2 cycles (60s for normal signals)
@@ -49,7 +52,13 @@ const FAST_TRACK_CONFIG = {
   interval: 2000,        // 2s rapid checks for hot candidates
   maxSymbols: 8,         // Monitor top 8 candidates in fast lane
   minScore: 70,          // Only candidates with score > 70 enter fast track
-  minOrderFlowVolume: 5000  // Minimum $5k total volume in 60s to trust orderFlow
+  minOrderFlowVolume: 5000,  // Minimum $5k total volume in 60s to trust orderFlow
+
+  // Auto-execution settings
+  autoExecute: false,    // 🔒 AUTO-EXECUTE disabled by default (set true to enable)
+  executionApiUrl: 'http://localhost:8090/api/execute-trade',
+  duplicateWindow: 300000,  // 5 min cooldown per symbol
+  maxExecutionAttempts: 3   // Max 3 execution attempts per signal
 };
 
 function updateSignalPersistence(symbol, direction) {
@@ -417,6 +426,87 @@ async function updateFastTrack(topCandidates) {
   }
 }
 
+// ============================================================
+// EXECUTION TRIGGER
+// ============================================================
+
+async function attemptExecution(symbol, signalState, liveData) {
+  const now = Date.now();
+
+  // Check execution history
+  const history = executionHistory.get(symbol);
+
+  // Prevent duplicate executions (cooldown window)
+  if (history && (now - history.lastExecution < FAST_TRACK_CONFIG.duplicateWindow)) {
+    const remaining = Math.ceil((FAST_TRACK_CONFIG.duplicateWindow - (now - history.lastExecution)) / 1000);
+    console.log(`⏸️  [EXECUTE] ${symbol} - Cooldown active (${remaining}s remaining)`);
+    return;
+  }
+
+  // Check max attempts per signal
+  const attempts = signalState.executionAttempts || 0;
+  if (attempts >= FAST_TRACK_CONFIG.maxExecutionAttempts) {
+    console.log(`⚠️  [EXECUTE] ${symbol} - Max execution attempts reached (${attempts}/${FAST_TRACK_CONFIG.maxExecutionAttempts})`);
+    return;
+  }
+
+  // Prepare execution request
+  const executionRequest = {
+    symbol,
+    direction: signalState.direction,
+    entry: signalState.entryZone.ideal,
+    tp: signalState.tp,
+    sl: signalState.sl,
+    confidence: signalState.confidence || 0,
+    entryZone: signalState.entryZone
+  };
+
+  console.log(`\n🚀 [EXECUTING] ${symbol} ${signalState.direction} @ ${executionRequest.entry}`);
+  console.log(`   TP: ${executionRequest.tp} | SL: ${executionRequest.sl}`);
+  console.log(`   Entry Zone: ${getEntryZoneDisplay(signalState.entryZone)}`);
+
+  try {
+    const response = await fetch(FAST_TRACK_CONFIG.executionApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(executionRequest)
+    });
+
+    const result = await response.json();
+
+    if (result.ok) {
+      console.log(`✅ [EXECUTED] ${symbol} - Order ID: ${result.orderId || 'DRY-RUN'}`);
+      console.log(`   ${result.dryRun ? '🔒 DRY-RUN MODE' : '💰 LIVE TRADE'}`);
+
+      // Update execution history
+      executionHistory.set(symbol, {
+        lastExecution: now,
+        attempts: (history?.attempts || 0) + 1,
+        orderId: result.orderId,
+        dryRun: result.dryRun
+      });
+
+      // Mark signal as executed
+      signalState.executed = true;
+      signalState.executionTime = now;
+
+    } else {
+      console.log(`❌ [EXECUTE FAILED] ${symbol} - ${result.error}`);
+
+      // Increment attempt counter
+      signalState.executionAttempts = attempts + 1;
+    }
+
+  } catch (error) {
+    console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
+    signalState.executionAttempts = attempts + 1;
+  }
+}
+
+// ============================================================
+// FAST TRACK MONITORING LOOP (2s checks)
+// ============================================================
+
 async function fastTrackLoop() {
   if (!FAST_TRACK_CONFIG.enabled || fastTrackSymbols.length === 0) return;
 
@@ -458,6 +548,11 @@ async function fastTrackLoop() {
         signalState.readyForEntry = true;
         signalState.entryReadyTime = now;
         console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${currentPrice.toFixed(6)} IN ZONE ${getEntryZoneDisplay(signalState.entryZone)}`);
+
+        // === AUTO-EXECUTION TRIGGER ===
+        if (FAST_TRACK_CONFIG.autoExecute) {
+          await attemptExecution(ft.symbol, signalState, liveData);
+        }
       }
 
       // 2. Price moved OUT of zone after being ready
@@ -701,11 +796,15 @@ async function scanAllSymbols() {
       signalStates.set(symbol, {
         entryZone,
         direction,
+        tp,
+        sl,
+        confidence: evaluation.confidence,
         firstSeen: Date.now(),
         lastChecked: Date.now(),
         adjustmentCount: 0,
         priceHistory: [entryPrice],
-        inZone: priceInZone
+        inZone: priceInZone,
+        executionAttempts: 0
       });
 
       const signal = {

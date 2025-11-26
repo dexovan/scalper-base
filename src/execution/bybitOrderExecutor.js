@@ -1,0 +1,338 @@
+// ============================================================
+// BYBIT ORDER EXECUTOR
+// Executes trades on Bybit with TP/SL (OCO orders)
+// ============================================================
+
+import crypto from 'crypto';
+import fetch from 'node-fetch';
+
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
+const EXECUTION_CONFIG = {
+  enabled: false,  // ⚠️ DRY-RUN MODE by default (set true for live trading)
+  apiKey: process.env.BYBIT_API_KEY || '',
+  apiSecret: process.env.BYBIT_API_SECRET || '',
+  baseUrl: 'https://api.bybit.com',  // Mainnet
+  // baseUrl: 'https://api-testnet.bybit.com',  // Testnet
+
+  // Risk management
+  maxPositions: 3,           // Max concurrent positions
+  minBalance: 100,           // Min USDT balance to trade
+  defaultLeverage: 5,        // 5x leverage
+  defaultMargin: 25,         // $25 per trade
+
+  // Order settings
+  orderType: 'Market',       // Market orders for instant fill
+  timeInForce: 'GTC',        // Good Till Cancel
+  reduceOnly: false,
+  closeOnTrigger: false
+};
+
+// Active positions tracker
+const activePositions = new Map(); // symbol -> {orderId, side, size, entry, tp, sl}
+
+// ============================================================
+// BYBIT API SIGNATURE
+// ============================================================
+
+function createSignature(params, apiSecret) {
+  const orderedParams = Object.keys(params)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = params[key];
+      return acc;
+    }, {});
+
+  const queryString = Object.entries(orderedParams)
+    .map(([key, value]) => `${key}=${value}`)
+    .join('&');
+
+  return crypto
+    .createHmac('sha256', apiSecret)
+    .update(queryString)
+    .digest('hex');
+}
+
+// ============================================================
+// BYBIT API REQUEST
+// ============================================================
+
+async function bybitRequest(endpoint, method = 'GET', params = {}) {
+  if (!EXECUTION_CONFIG.apiKey || !EXECUTION_CONFIG.apiSecret) {
+    throw new Error('Bybit API credentials not configured');
+  }
+
+  const timestamp = Date.now();
+  const requestParams = {
+    api_key: EXECUTION_CONFIG.apiKey,
+    timestamp,
+    ...params
+  };
+
+  const signature = createSignature(requestParams, EXECUTION_CONFIG.apiSecret);
+  requestParams.sign = signature;
+
+  const url = `${EXECUTION_CONFIG.baseUrl}${endpoint}`;
+  const options = {
+    method,
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  };
+
+  if (method === 'GET') {
+    const queryString = new URLSearchParams(requestParams).toString();
+    const response = await fetch(`${url}?${queryString}`, options);
+    return await response.json();
+  } else {
+    options.body = JSON.stringify(requestParams);
+    const response = await fetch(url, options);
+    return await response.json();
+  }
+}
+
+// ============================================================
+// PLACE MARKET ORDER
+// ============================================================
+
+async function placeMarketOrder(symbol, side, qty) {
+  const params = {
+    category: 'linear',
+    symbol,
+    side,  // 'Buy' or 'Sell'
+    orderType: EXECUTION_CONFIG.orderType,
+    qty: qty.toString(),
+    timeInForce: EXECUTION_CONFIG.timeInForce,
+    reduceOnly: EXECUTION_CONFIG.reduceOnly,
+    closeOnTrigger: EXECUTION_CONFIG.closeOnTrigger
+  };
+
+  console.log(`📤 [BYBIT] Placing ${side} market order: ${symbol} qty=${qty}`);
+
+  const response = await bybitRequest('/v5/order/create', 'POST', params);
+
+  if (response.retCode !== 0) {
+    throw new Error(`Bybit order failed: ${response.retMsg}`);
+  }
+
+  console.log(`✅ [BYBIT] Order placed: ${response.result.orderId}`);
+  return response.result;
+}
+
+// ============================================================
+// SET TP/SL (Trading Stop)
+// ============================================================
+
+async function setTakeProfitStopLoss(symbol, side, positionIdx, takeProfit, stopLoss) {
+  const params = {
+    category: 'linear',
+    symbol,
+    takeProfit: takeProfit.toString(),
+    stopLoss: stopLoss.toString(),
+    tpTriggerBy: 'LastPrice',
+    slTriggerBy: 'LastPrice',
+    positionIdx: positionIdx || 0  // 0 = one-way mode
+  };
+
+  console.log(`📤 [BYBIT] Setting TP/SL: ${symbol} TP=${takeProfit} SL=${stopLoss}`);
+
+  const response = await bybitRequest('/v5/position/trading-stop', 'POST', params);
+
+  if (response.retCode !== 0) {
+    console.error(`⚠️  [BYBIT] TP/SL failed: ${response.retMsg}`);
+    return null;
+  }
+
+  console.log(`✅ [BYBIT] TP/SL set successfully`);
+  return response.result;
+}
+
+// ============================================================
+// GET WALLET BALANCE
+// ============================================================
+
+async function getWalletBalance() {
+  try {
+    const response = await bybitRequest('/v5/account/wallet-balance', 'GET', {
+      accountType: 'UNIFIED'
+    });
+
+    if (response.retCode !== 0) {
+      throw new Error(`Balance check failed: ${response.retMsg}`);
+    }
+
+    const usdtBalance = response.result.list[0]?.coin.find(c => c.coin === 'USDT');
+    return parseFloat(usdtBalance?.walletBalance || 0);
+  } catch (error) {
+    console.error(`❌ [BYBIT] Balance check error:`, error.message);
+    return 0;
+  }
+}
+
+// ============================================================
+// EXECUTE TRADE (Main Entry Point)
+// ============================================================
+
+export async function executeTrade(signal) {
+  const { symbol, direction, entry, tp, sl, confidence } = signal;
+
+  console.log(`\n🎯 [EXECUTOR] Executing trade: ${symbol} ${direction}`);
+  console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl} | Confidence: ${confidence}%`);
+
+  // ===== DRY-RUN MODE =====
+  if (!EXECUTION_CONFIG.enabled) {
+    console.log(`🔒 [DRY-RUN] Trade would execute but system is in dry-run mode`);
+    console.log(`   To enable: Set EXECUTION_CONFIG.enabled = true`);
+    return {
+      success: true,
+      dryRun: true,
+      message: 'Dry-run mode - no real trade executed'
+    };
+  }
+
+  // ===== SAFETY CHECKS =====
+
+  // Check if already in position
+  if (activePositions.has(symbol)) {
+    console.log(`⚠️  [EXECUTOR] Already in position: ${symbol}`);
+    return { success: false, error: 'Already in position' };
+  }
+
+  // Check max positions
+  if (activePositions.size >= EXECUTION_CONFIG.maxPositions) {
+    console.log(`⚠️  [EXECUTOR] Max positions reached: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions}`);
+    return { success: false, error: 'Max positions limit' };
+  }
+
+  // Check balance
+  const balance = await getWalletBalance();
+  if (balance < EXECUTION_CONFIG.minBalance) {
+    console.log(`⚠️  [EXECUTOR] Insufficient balance: ${balance} < ${EXECUTION_CONFIG.minBalance}`);
+    return { success: false, error: 'Insufficient balance' };
+  }
+
+  // ===== CALCULATE POSITION SIZE =====
+
+  const marginUsdt = EXECUTION_CONFIG.defaultMargin;
+  const leverage = EXECUTION_CONFIG.defaultLeverage;
+  const positionValue = marginUsdt * leverage; // $25 × 5 = $125
+  const qty = (positionValue / entry).toFixed(3); // Round to 3 decimals
+
+  console.log(`💰 [EXECUTOR] Position size: ${qty} contracts ($${positionValue} notional)`);
+
+  // ===== PLACE MARKET ORDER =====
+
+  try {
+    const side = direction === 'LONG' ? 'Buy' : 'Sell';
+    const orderResult = await placeMarketOrder(symbol, side, qty);
+
+    // Track position
+    activePositions.set(symbol, {
+      orderId: orderResult.orderId,
+      side,
+      qty,
+      entry,
+      tp,
+      sl,
+      timestamp: Date.now()
+    });
+
+    // Set TP/SL
+    await setTakeProfitStopLoss(symbol, side, 0, tp, sl);
+
+    console.log(`✅ [EXECUTOR] Trade executed successfully!`);
+    console.log(`   Order ID: ${orderResult.orderId}`);
+    console.log(`   Position: ${qty} contracts @ ${entry}`);
+
+    return {
+      success: true,
+      orderId: orderResult.orderId,
+      symbol,
+      side,
+      qty,
+      entry,
+      tp,
+      sl
+    };
+
+  } catch (error) {
+    console.error(`❌ [EXECUTOR] Trade failed:`, error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ============================================================
+// GET ACTIVE POSITIONS
+// ============================================================
+
+export function getActivePositions() {
+  return Array.from(activePositions.entries()).map(([symbol, pos]) => ({
+    symbol,
+    ...pos
+  }));
+}
+
+// ============================================================
+// CLOSE POSITION (Manual close)
+// ============================================================
+
+export async function closePosition(symbol) {
+  const position = activePositions.get(symbol);
+  if (!position) {
+    return { success: false, error: 'Position not found' };
+  }
+
+  console.log(`🔴 [EXECUTOR] Closing position: ${symbol}`);
+
+  try {
+    // Reverse side to close
+    const closeSide = position.side === 'Buy' ? 'Sell' : 'Buy';
+    const orderResult = await placeMarketOrder(symbol, closeSide, position.qty);
+
+    activePositions.delete(symbol);
+
+    console.log(`✅ [EXECUTOR] Position closed: ${symbol}`);
+    return {
+      success: true,
+      orderId: orderResult.orderId
+    };
+
+  } catch (error) {
+    console.error(`❌ [EXECUTOR] Close failed:`, error.message);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// ============================================================
+// CLEANUP OLD POSITIONS (if TP/SL hit but not tracked)
+// ============================================================
+
+export function cleanupStalePositions() {
+  const now = Date.now();
+  const maxAge = 3600000; // 1 hour
+
+  for (const [symbol, pos] of activePositions.entries()) {
+    if (now - pos.timestamp > maxAge) {
+      console.log(`🧹 [EXECUTOR] Removing stale position: ${symbol}`);
+      activePositions.delete(symbol);
+    }
+  }
+}
+
+// Cleanup every 5 minutes
+setInterval(cleanupStalePositions, 300000);
+
+export default {
+  executeTrade,
+  getActivePositions,
+  closePosition,
+  config: EXECUTION_CONFIG
+};

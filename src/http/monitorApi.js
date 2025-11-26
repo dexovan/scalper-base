@@ -28,6 +28,7 @@ import {
   getHotlistStats
 } from "../market/flowHotlistManager.js";
 import LiveDataCache from "../utils/LiveDataCache.js";
+import { executeTrade, getActivePositions } from "../execution/bybitOrderExecutor.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
@@ -2332,6 +2333,111 @@ export function startMonitorApiServer(port = 8090) {
       });
     } catch (error) {
       console.error("❌ [EXECUTION/PANIC-CLOSE-SYMBOL] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // FAST-TRACK ENTRY EXECUTION
+  // POST /api/execute-trade
+  // ============================================================
+  app.post("/api/execute-trade", async (req, res) => {
+    try {
+      const { symbol, direction, entry, tp, sl, confidence, entryZone } = req.body;
+
+      console.log(`\n🎯 [API/EXECUTE] Trade request: ${symbol} ${direction}`);
+      console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl}`);
+      console.log(`   Entry Zone: [${entryZone.min} — ${entryZone.ideal} — ${entryZone.max}]`);
+
+      // ===== VALIDATION =====
+      if (!symbol || !direction || !entry || !tp || !sl) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing required parameters",
+          required: ["symbol", "direction", "entry", "tp", "sl"]
+        });
+      }
+
+      // Check if direction is valid
+      if (!["LONG", "SHORT"].includes(direction)) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid direction (must be LONG or SHORT)"
+        });
+      }
+
+      // ===== DUPLICATE PREVENTION =====
+      const activePositions = getActivePositions();
+      const existingPosition = activePositions.find(p => p.symbol === symbol);
+
+      if (existingPosition) {
+        console.log(`⚠️  [API/EXECUTE] Duplicate prevented: ${symbol} already in position`);
+        return res.json({
+          ok: false,
+          error: "Already in position",
+          existingPosition
+        });
+      }
+
+      // ===== EXECUTE TRADE =====
+      const signal = {
+        symbol,
+        direction,
+        entry,
+        tp,
+        sl,
+        confidence: confidence || 0,
+        entryZone
+      };
+
+      const result = await executeTrade(signal);
+
+      if (result.success) {
+        console.log(`✅ [API/EXECUTE] Trade executed: ${symbol} ${direction}`);
+        return res.json({
+          ok: true,
+          ...result,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.log(`❌ [API/EXECUTE] Trade failed: ${result.error}`);
+        return res.json({
+          ok: false,
+          error: result.error,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+    } catch (error) {
+      console.error("❌ [API/EXECUTE] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // GET ACTIVE POSITIONS
+  // GET /api/positions
+  // ============================================================
+  app.get("/api/positions", async (req, res) => {
+    try {
+      const positions = getActivePositions();
+
+      res.json({
+        ok: true,
+        positions,
+        count: positions.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [API/POSITIONS] Error:", error);
       res.status(500).json({
         ok: false,
         error: error.message,
