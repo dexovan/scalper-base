@@ -2405,7 +2405,7 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   app.post("/api/execute-trade", async (req, res) => {
     try {
-      const { symbol, direction, entry, tp, sl, confidence, entryZone } = req.body;
+      const { symbol, direction, entry, tp, sl, confidence, entryZone, initialMomentum } = req.body;
 
       console.log(`\n🎯 [API/EXECUTE] Trade request: ${symbol} ${direction}`);
       console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl}`);
