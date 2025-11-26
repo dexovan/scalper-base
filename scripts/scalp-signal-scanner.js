@@ -1298,7 +1298,7 @@ async function scanAllSymbols() {
           min: formattedEntryZone.min,
           ideal: formattedEntryZone.ideal,
           max: formattedEntryZone.max,
-          display: formatEntryZoneDisplay(formattedEntryZone)
+          display: `[${formattedEntryZone.min} — ${formattedEntryZone.ideal} — ${formattedEntryZone.max}]`
         },
         entryStatus: {
           inZone: priceInZone,
