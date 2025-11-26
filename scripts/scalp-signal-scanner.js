@@ -1218,18 +1218,18 @@ async function scanAllSymbols() {
       const bid = currentLiveData.bid || entryPrice;
       const ask = currentLiveData.ask || entryPrice;
 
-      // Calculate dynamic entry zone (NOT fixed point)
-      const entryZone = calculateEntryZone(direction, bid, ask, entryPrice);
-
-      // Get tickSize from cache (no API call!)
+      // Get tickSize from cache BEFORE calculateEntryZone (no API call!)
       const meta = instrumentMeta.get(symbol);
       const tickSize = meta?.tickSize || 0.0001; // fallback if not in cache
 
-      // Format entry zone with Bybit tickSize precision
+      // Calculate dynamic entry zone with tickSize precision
+      const entryZone = calculateEntryZone(direction, bid, ask, entryPrice, tickSize);
+
+      // Entry zone is already tick-rounded by calculateEntryZone, use directly
       const formattedEntryZone = {
-        min: parseFloat(formatPriceByTick(entryZone.min, tickSize)),
-        ideal: parseFloat(formatPriceByTick(entryZone.ideal, tickSize)),
-        max: parseFloat(formatPriceByTick(entryZone.max, tickSize))
+        min: entryZone.min,
+        ideal: entryZone.ideal,
+        max: entryZone.max
       };
 
       // Calculate TP/SL from IDEAL entry (raw first, then format)
