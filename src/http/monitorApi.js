@@ -872,7 +872,9 @@ export function startMonitorApiServer(port = 8090) {
         ask = orderbook.bestAsk;
       }
 
-      const spread = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
+      // Calculate spread - CORRECTED
+      const spreadAbsolute = bid > 0 && ask > 0 ? (ask - bid) : 0;
+      const spreadPercent = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
 
       // Calculate price - use ticker, fallback to orderbook mid-price
       let price = ticker.price;
@@ -895,8 +897,8 @@ export function startMonitorApiServer(port = 8090) {
           price: price,
           bid: bid,
           ask: ask,
-          spread: parseFloat(spread.toFixed(4)),
-          spreadPercent: spread.toFixed(4),
+          spread: parseFloat(spreadPercent.toFixed(4)),
+          spreadPercent: spreadPercent.toFixed(4),
           imbalance: parseFloat(imbalance.toFixed(2)),
           orderFlowNet60s: orderFlowNet60s,
           orderFlowBuyVol60s: flow.buyVol,
@@ -968,7 +970,9 @@ export function startMonitorApiServer(port = 8090) {
             ask = orderbook.bestAsk;
           }
 
-          const spread = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
+          // Calculate spread - CORRECTED
+          const spreadAbsolute = bid > 0 && ask > 0 ? (ask - bid) : 0;
+          const spreadPercent = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
 
           let price = ticker.price;
           if (!price && bid > 0 && ask > 0) {
@@ -982,8 +986,8 @@ export function startMonitorApiServer(port = 8090) {
             price: price,
             bid: bid,
             ask: ask,
-            spread: parseFloat(spread.toFixed(4)),
-            spreadPercent: spread.toFixed(4),
+            spread: parseFloat(spreadPercent.toFixed(4)),
+            spreadPercent: spreadPercent.toFixed(4),
             imbalance: parseFloat(imbalance.toFixed(2)),
             orderFlowNet60s: flow.net,
             orderFlowBuyVol60s: flow.buyVol,
