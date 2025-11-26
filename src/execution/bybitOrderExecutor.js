@@ -422,6 +422,12 @@ async function checkPricePullback(symbol, direction, currentPrice) {
 // 9) PHASE 2: MOMENTUM RECHECK (BALANCED MODE)
 // =====================================================
 async function recheckMomentum(symbol, direction, initialMomentum) {
+  console.log(`\n🔍 [DEBUG/MOMENTUM] recheckMomentum called:`);
+  console.log(`   Symbol: ${symbol}`);
+  console.log(`   Direction: ${direction}`);
+  console.log(`   initialMomentum: ${initialMomentum} (type: ${typeof initialMomentum})`);
+  console.log(`   config.minInitialMomentum: ${EXECUTION_CONFIG.pullbackCheck.minInitialMomentum}`);
+
   if (!EXECUTION_CONFIG.pullbackCheck.enabled) {
     return { passed: true, reason: 'Momentum recheck disabled' };
   }
@@ -429,12 +435,14 @@ async function recheckMomentum(symbol, direction, initialMomentum) {
   const config = EXECUTION_CONFIG.pullbackCheck;
 
   if (initialMomentum < config.minInitialMomentum) {
+    console.log(`   ❌ [DEBUG] FAILED: ${initialMomentum} < ${config.minInitialMomentum}`);
     return {
       passed: false,
       reason: `Initial momentum ${(initialMomentum * 100).toFixed(1)}% < ${(config.minInitialMomentum * 100)}% threshold`,
       momentum: initialMomentum
     };
   }
+  console.log(`   ✅ [DEBUG] PASSED: ${initialMomentum} >= ${config.minInitialMomentum}`);
 
   console.log(`⏳ [TIMING] Waiting ${config.recheckDelayMs}ms to recheck momentum...`);
   await sleep(config.recheckDelayMs);

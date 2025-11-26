@@ -2410,6 +2410,8 @@ export function startMonitorApiServer(port = 8090) {
       console.log(`\n🎯 [API/EXECUTE] Trade request: ${symbol} ${direction}`);
       console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl}`);
       console.log(`   Entry Zone: [${entryZone.min} — ${entryZone.ideal} — ${entryZone.max}]`);
+      console.log(`   📊 [DEBUG] initialMomentum from req.body: ${initialMomentum} (type: ${typeof initialMomentum})`);
+      console.log(`   📊 [DEBUG] req.body: ${JSON.stringify(req.body, null, 2)}`);
 
       // ===== VALIDATION =====
       if (!symbol || !direction || !entry || !tp || !sl) {
@@ -2456,6 +2458,9 @@ export function startMonitorApiServer(port = 8090) {
         entryZone,
         initialMomentum: initialMomentum || 0
       };
+
+      console.log(`   📊 [DEBUG] signal.initialMomentum: ${signal.initialMomentum} (type: ${typeof signal.initialMomentum})`);
+      console.log(`   📊 [DEBUG] Full signal object: ${JSON.stringify(signal, null, 2)}`);
 
       const result = await executeTrade(signal);
 
