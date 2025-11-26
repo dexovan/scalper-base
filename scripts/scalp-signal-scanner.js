@@ -318,29 +318,39 @@ async function scanAllSymbols() {
     let debugSampleCount = 0;
     const maxDebugSamples = 3;
 
-    // Scan all symbols
+    // 🚀 PARALLEL SCANNING - Process symbols in batches for speed
+    const BATCH_SIZE = 50; // Scan 50 symbols in parallel
     const signals = [];
-    for (const symbol of symbols) {
-      const signal = await scanSymbol(symbol);
-      if (signal) {
-        signals.push(signal);
+
+    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+      const batch = symbols.slice(i, i + BATCH_SIZE);
+      const batchPromises = batch.map(symbol => scanSymbol(symbol));
+      const batchResults = await Promise.all(batchPromises);
+
+      // Collect valid signals
+      for (const signal of batchResults) {
+        if (signal) {
+          signals.push(signal);
+        }
       }
 
-      // Debug: Log sample data from first few symbols
-      if (debugSampleCount < maxDebugSamples && signal === null) {
-        const candleData = loadCandleData(symbol);
-        const liveData = await fetchLiveMarketData(symbol);
+      // Debug: Log sample data from first batch only
+      if (i === 0 && debugSampleCount < maxDebugSamples) {
+        for (const symbol of batch.slice(0, maxDebugSamples)) {
+          const candleData = loadCandleData(symbol);
+          const liveData = await fetchLiveMarketData(symbol);
 
-        if (candleData && liveData && candleData.candles.length > 0) {
-          const c = candleData.candles[candleData.candles.length - 1];
-          console.log(`\n📋 Sample: ${symbol}`);
-          console.log(`  Volatility: ${c.volatility != null ? c.volatility.toFixed(2) + '%' : 'N/A'} (need ${CONFIG.minVolatility}%)`);
-          console.log(`  Volume Spike: ${c.volumeSpike != null ? c.volumeSpike.toFixed(2) + 'x' : 'N/A'} (need ${CONFIG.minVolumeSpike}x)`);
-          console.log(`  Velocity: ${Math.abs(c.velocity || 0).toFixed(3)}%/min (need ${CONFIG.minVelocity}%/min)`);
-          console.log(`  Momentum (1m): ${Math.abs(c.priceChange1m || 0).toFixed(2)}% (need ${CONFIG.minPriceChange1m}%)`);
-          console.log(`  Imbalance: ${liveData.imbalance != null ? liveData.imbalance.toFixed(2) : 'N/A'} (need ${CONFIG.minImbalance})`);
-          console.log(`  Spread: ${liveData.spread != null ? liveData.spread.toFixed(3) + '%' : 'N/A'} (need <${CONFIG.maxSpread}%)`);
-          debugSampleCount++;
+          if (candleData && liveData && candleData.candles.length > 0) {
+            const c = candleData.candles[candleData.candles.length - 1];
+            console.log(`\n📋 Sample: ${symbol}`);
+            console.log(`  Volatility: ${c.volatility != null ? c.volatility.toFixed(2) + '%' : 'N/A'} (need ${CONFIG.minVolatility}%)`);
+            console.log(`  Volume Spike: ${c.volumeSpike != null ? c.volumeSpike.toFixed(2) + 'x' : 'N/A'} (need ${CONFIG.minVolumeSpike}x)`);
+            console.log(`  Velocity: ${Math.abs(c.velocity || 0).toFixed(3)}%/min (need ${CONFIG.minVelocity}%/min)`);
+            console.log(`  Momentum (1m): ${Math.abs(c.priceChange1m || 0).toFixed(2)}% (need ${CONFIG.minPriceChange1m}%)`);
+            console.log(`  Imbalance: ${liveData.imbalance != null ? liveData.imbalance.toFixed(2) : 'N/A'} (need ${CONFIG.minImbalance})`);
+            console.log(`  Spread: ${liveData.spread != null ? liveData.spread.toFixed(3) + '%' : 'N/A'} (need <${CONFIG.maxSpread}%)`);
+            debugSampleCount++;
+          }
         }
       }
     }
