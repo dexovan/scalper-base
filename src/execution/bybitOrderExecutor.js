@@ -340,12 +340,15 @@ async function closePosition(symbol, side) {
 // =====================================================
 async function getLiveMarketState(symbol) {
   try {
-    const response = await fetch(`http://localhost:8090/api/market-state/${symbol}`);
+    const response = await fetch(`http://localhost:8090/api/live-market/${symbol}`);
     if (!response.ok) {
       throw new Error(`Engine API returned ${response.status}`);
     }
     const data = await response.json();
-    return data;
+    if (!data.ok || !data.live) {
+      throw new Error('Invalid response from Engine API');
+    }
+    return data.live;  // Return live data object directly
   } catch (err) {
     console.error(`❌ [MARKET-STATE] Failed to fetch for ${symbol}: ${err.message}`);
     return null;
@@ -361,46 +364,58 @@ async function checkPricePullback(symbol, direction, currentPrice) {
   }
 
   const config = EXECUTION_CONFIG.pullbackCheck;
-  const marketState = await getLiveMarketState(symbol);
 
-  if (!marketState || !marketState.candles || marketState.candles.length === 0) {
-    console.warn(`⚠️  [PULLBACK] No candle data for ${symbol}, skipping check`);
-    return { passed: true, reason: 'No candle data' };
+  // Fetch candles from correct endpoint
+  try {
+    const response = await fetch(`http://localhost:8090/api/symbol/${symbol}/candles/1?limit=${config.pullbackWindowMinutes}`);
+    if (!response.ok) {
+      console.warn(`⚠️  [PULLBACK] Failed to fetch candles for ${symbol}`);
+      return { passed: true, reason: 'Failed to fetch candle data' };
+    }
+    const data = await response.json();
+
+    if (!data.ok || !data.candles || data.candles.length === 0) {
+      console.warn(`⚠️  [PULLBACK] No candle data for ${symbol}, skipping check`);
+      return { passed: true, reason: 'No candle data' };
+    }
+
+    const recentCandles = data.candles.slice(-config.pullbackWindowMinutes);
+    const highs = recentCandles.map(c => parseFloat(c.high));
+    const lows = recentCandles.map(c => parseFloat(c.low));
+    const rangeHigh = Math.max(...highs);
+    const rangeLow = Math.min(...lows);
+    const rangeSize = rangeHigh - rangeLow;
+
+    if (rangeSize === 0) {
+      console.warn(`⚠️  [PULLBACK] Range size is 0 for ${symbol}, skipping check`);
+      return { passed: true, reason: 'Zero range size' };
+    }
+
+    const pricePosition = (currentPrice - rangeLow) / rangeSize;
+
+    console.log(`📊 [PULLBACK] ${symbol} price position in ${config.pullbackWindowMinutes}min range: ${(pricePosition * 100).toFixed(1)}%`);
+
+    if (direction === 'LONG' && pricePosition > config.longTopPercentThreshold) {
+      return {
+        passed: false,
+        reason: `LONG rejected: price at ${(pricePosition * 100).toFixed(1)}% (>${config.longTopPercentThreshold * 100}% threshold)`,
+        pricePosition
+      };
+    }
+
+    if (direction === 'SHORT' && pricePosition < config.shortBottomPercentThreshold) {
+      return {
+        passed: false,
+        reason: `SHORT rejected: price at ${(pricePosition * 100).toFixed(1)}% (<${config.shortBottomPercentThreshold * 100}% threshold)`,
+        pricePosition
+      };
+    }
+
+    return { passed: true, pricePosition };
+  } catch (error) {
+    console.warn(`⚠️  [PULLBACK] Error fetching candles for ${symbol}:`, error.message);
+    return { passed: true, reason: 'Error fetching candle data' };
   }
-
-  const recentCandles = marketState.candles.slice(-config.pullbackWindowMinutes);
-  const highs = recentCandles.map(c => parseFloat(c.high));
-  const lows = recentCandles.map(c => parseFloat(c.low));
-  const rangeHigh = Math.max(...highs);
-  const rangeLow = Math.min(...lows);
-  const rangeSize = rangeHigh - rangeLow;
-
-  if (rangeSize === 0) {
-    console.warn(`⚠️  [PULLBACK] Range size is 0 for ${symbol}, skipping check`);
-    return { passed: true, reason: 'Zero range size' };
-  }
-
-  const pricePosition = (currentPrice - rangeLow) / rangeSize;
-
-  console.log(`📊 [PULLBACK] ${symbol} price position in ${config.pullbackWindowMinutes}min range: ${(pricePosition * 100).toFixed(1)}%`);
-
-  if (direction === 'LONG' && pricePosition > config.longTopPercentThreshold) {
-    return {
-      passed: false,
-      reason: `LONG rejected: price at ${(pricePosition * 100).toFixed(1)}% (>${config.longTopPercentThreshold * 100}% threshold)`,
-      pricePosition
-    };
-  }
-
-  if (direction === 'SHORT' && pricePosition < config.shortBottomPercentThreshold) {
-    return {
-      passed: false,
-      reason: `SHORT rejected: price at ${(pricePosition * 100).toFixed(1)}% (<${config.shortBottomPercentThreshold * 100}% threshold)`,
-      pricePosition
-    };
-  }
-
-  return { passed: true, pricePosition };
 }
 
 // =====================================================
@@ -425,13 +440,16 @@ async function recheckMomentum(symbol, direction, initialMomentum) {
   await sleep(config.recheckDelayMs);
 
   const marketState = await getLiveMarketState(symbol);
-  if (!marketState || !marketState.orderbook) {
-    console.warn(`⚠️  [MOMENTUM] No orderbook data for ${symbol} after delay`);
-    return { passed: true, reason: 'No orderbook data after delay' };
+  if (!marketState) {
+    console.warn(`⚠️  [MOMENTUM] No market data for ${symbol} after delay`);
+    return { passed: true, reason: 'No market data after delay' };
   }
 
-  const { bidImbalance, askImbalance } = marketState.orderbook;
-  const currentMomentum = direction === 'LONG' ? bidImbalance : askImbalance;
+  // Extract momentum from imbalance ratio (imbalance > 1.0 = more bids, < 1.0 = more asks)
+  const imbalance = marketState.imbalance || 1.0;
+  const currentMomentum = direction === 'LONG'
+    ? Math.max(0, (imbalance - 1.0))  // LONG: excess bid pressure
+    : Math.max(0, (1.0 - imbalance));  // SHORT: excess ask pressure
 
   console.log(`📊 [MOMENTUM] ${symbol} ${direction} momentum after ${config.recheckDelayMs}ms delay: ${(currentMomentum * 100).toFixed(1)}%`);
 
@@ -633,9 +651,11 @@ async function executeTradeMakerFirst(ctx) {
     return { success: false, reason: `Spread ${(spread * 100).toFixed(2)}% exceeds ${config.maxSpreadPercent}%` };
   }
 
-  // Check momentum
-  const { bidImbalance, askImbalance } = marketState.orderbook || {};
-  const currentMomentum = direction === 'LONG' ? bidImbalance : askImbalance;
+  // Check momentum from imbalance ratio
+  const imbalance = marketState.imbalance || 1.0;
+  const currentMomentum = direction === 'LONG'
+    ? Math.max(0, (imbalance - 1.0))  // LONG: excess bid pressure
+    : Math.max(0, (1.0 - imbalance));  // SHORT: excess ask pressure
 
   console.log(`📊 [FALLBACK-CHECK] Current momentum: ${(currentMomentum * 100).toFixed(1)}%`);
 
