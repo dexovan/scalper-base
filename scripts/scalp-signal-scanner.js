@@ -69,8 +69,7 @@ const CONFIG = {
   engineApiUrl: 'http://localhost:8090',
 
   // Scan interval - Balance between responsiveness and resource usage
-  scanInterval: 10000, // 10 seconds (gives time for WS to stabilize between scans)
-  // Candles update every 60s, scanning every 10s is reasonable
+  scanInterval: 30000, // 30 seconds (candles update every 60s, so 30s is reasonable)
 
   // Historical filters (from candles)
   minVolatility: 0.15,       // 0.15% minimum range (reduced from 0.3%)
