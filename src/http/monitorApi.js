@@ -2430,7 +2430,7 @@ export function startMonitorApiServer(port = 8090) {
 
       // ===== DUPLICATE PREVENTION =====
       console.log(`🔍 [API/EXECUTE] Checking for existing positions...`);
-      const activePositions = getActivePositions();
+      const activePositions = await getActivePositions();
       console.log(`📊 [API/EXECUTE] Active positions count: ${activePositions.length}`);
 
       const existingPosition = activePositions.find(p => p.symbol === symbol);
@@ -2490,7 +2490,7 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   app.get("/api/positions", async (req, res) => {
     try {
-      const positions = getActivePositions();
+      const positions = await getActivePositions();
 
       res.json({
         ok: true,
