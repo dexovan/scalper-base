@@ -886,11 +886,19 @@ export function startMonitorApiServer(port = 8090) {
       // 4. Get imbalance (default to 1.0 if no orderbook)
       const imbalance = orderbook?.imbalance ?? 1.0;
 
-      // 5. Get order flow from TradeFlowAggregator (60s rolling window)
+      // 5. Calculate bid/ask depth in USDT (price * qty for each level)
+      let bidDepth = 0;
+      let askDepth = 0;
+      if (orderbook && orderbook.bids && orderbook.asks) {
+        bidDepth = orderbook.bids.reduce((sum, [price, qty]) => sum + (price * qty), 0);
+        askDepth = orderbook.asks.reduce((sum, [price, qty]) => sum + (price * qty), 0);
+      }
+
+      // 6. Get order flow from TradeFlowAggregator (60s rolling window)
       const flow = tradeFlowAggregator.getFlow(symbol);
       const orderFlowNet60s = flow.net;
 
-      // 6. Return live market state
+      // 7. Return live market state
       const response = {
         ok: true,
         symbol,
@@ -901,6 +909,8 @@ export function startMonitorApiServer(port = 8090) {
           spread: parseFloat(spreadAbsolute.toFixed(6)),
           spreadPercent: spreadPercent.toFixed(4),
           imbalance: parseFloat(imbalance.toFixed(2)),
+          bidDepth: parseFloat(bidDepth.toFixed(2)),
+          askDepth: parseFloat(askDepth.toFixed(2)),
           orderFlowNet60s: orderFlowNet60s,
           orderFlowBuyVol60s: flow.buyVol,
           orderFlowSellVol60s: flow.sellVol,
@@ -981,6 +991,15 @@ export function startMonitorApiServer(port = 8090) {
           }
 
           const imbalance = orderbook?.imbalance ?? 1.0;
+
+          // Calculate bid/ask depth in USDT
+          let bidDepth = 0;
+          let askDepth = 0;
+          if (orderbook && orderbook.bids && orderbook.asks) {
+            bidDepth = orderbook.bids.reduce((sum, [price, qty]) => sum + (price * qty), 0);
+            askDepth = orderbook.asks.reduce((sum, [price, qty]) => sum + (price * qty), 0);
+          }
+
           const flow = tradeFlowAggregator.getFlow(symbol);
 
           const liveData = {
@@ -990,6 +1009,8 @@ export function startMonitorApiServer(port = 8090) {
             spread: parseFloat(spreadAbsolute.toFixed(6)),
             spreadPercent: spreadPercent.toFixed(4),
             imbalance: parseFloat(imbalance.toFixed(2)),
+            bidDepth: parseFloat(bidDepth.toFixed(2)),
+            askDepth: parseFloat(askDepth.toFixed(2)),
             orderFlowNet60s: flow.net,
             orderFlowBuyVol60s: flow.buyVol,
             orderFlowSellVol60s: flow.sellVol,
