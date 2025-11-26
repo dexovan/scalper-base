@@ -19,9 +19,25 @@ const __dirname = path.dirname(__filename);
 const signalHistory = new Map(); // symbol -> { direction, count, firstSeen }
 
 const PERSISTENCE_CONFIG = {
-  minCycles: 3,           // Signal must persist for 3 cycles (3 seconds at 1s interval)
-  maxAge: 10000,          // Clear old signals after 10 seconds
-  resetOnDirectionChange: true  // Reset counter if direction flips
+  minCycles: 2,           // Default: 2 cycles (60s for normal signals)
+  maxAge: 120000,         // Clear old signals after 2 minutes
+  resetOnDirectionChange: true,  // Reset counter if direction flips
+
+  // Score-based persistence (for micro-scalping 0.22% TP)
+  scoreThresholds: {
+    instant: 90,   // Score > 90: 1 cycle (30s) - A+ obvious signal
+    fast: 75,      // Score > 75: 2 cycles (60s) - Strong signal
+    normal: 0      // Score <= 75: 3 cycles (90s) - Standard signal
+  }
+};
+
+// Fast Track: Rapid monitoring for top candidates
+const FAST_TRACK_CONFIG = {
+  enabled: true,
+  interval: 2000,        // 2s rapid checks for hot candidates
+  maxSymbols: 8,         // Monitor top 8 candidates in fast lane
+  minScore: 70,          // Only candidates with score > 70 enter fast track
+  minOrderFlowVolume: 5000  // Minimum $5k total volume in 60s to trust orderFlow
 };
 
 function updateSignalPersistence(symbol, direction) {
@@ -55,9 +71,19 @@ function cleanupOldSignals() {
   }
 }
 
-function isSignalPersistent(symbol) {
+function getRequiredCycles(score) {
+  const { scoreThresholds } = PERSISTENCE_CONFIG;
+  if (score >= scoreThresholds.instant) return 1;  // A+ signal: 30s
+  if (score >= scoreThresholds.fast) return 2;     // Strong: 60s
+  return 3;  // Normal: 90s
+}
+
+function isSignalPersistent(symbol, score) {
   const data = signalHistory.get(symbol);
-  return data && data.count >= PERSISTENCE_CONFIG.minCycles;
+  if (!data) return false;
+
+  const required = getRequiredCycles(score);
+  return data.count >= required;
 }
 
 // ============================================================
@@ -176,6 +202,10 @@ function evaluateSignal(candle, liveData) {
   const spread = liveData.spread ?? 999; // High default so it fails spread check
   const orderFlow = liveData.orderFlowNet60s;
 
+  // Order flow volume validation (total volume in 60s)
+  const orderFlowTotalVol = (liveData.orderFlowBuyVol60s || 0) + (liveData.orderFlowSellVol60s || 0);
+  const orderFlowReliable = orderFlowTotalVol >= FAST_TRACK_CONFIG.minOrderFlowVolume;
+
   // ADVANCED PATTERN: Detect potential SHORT with high imbalance
   // When price is falling hard (negative momentum + velocity) AND imbalance > 1.5,
   // it suggests a fake bid wall (spoofing) that's being sold through = STRONG SHORT
@@ -193,7 +223,13 @@ function evaluateSignal(candle, liveData) {
     // Live checks - Modified imbalance rule for spoof pattern
     imbalance: imbalance >= CONFIG.minImbalance || isSpoofPattern, // Allow high imbalance for falling price (spoof detection)
     spread: spread <= CONFIG.maxSpread,
-    orderFlow: orderFlow === null || orderFlow >= CONFIG.minOrderFlow,
+
+    // Order flow: asymmetric + volume-aware
+    // If we don't have enough volume, ignore orderFlow (neutral)
+    // If we have volume: LONG needs positive flow, SHORT needs negative flow
+    orderFlow: !orderFlowReliable || // Not enough volume - pass
+               (velocity > 0 && orderFlow >= 5000) ||  // LONG: need strong buy pressure ($5k+)
+               (velocity < 0 && orderFlow <= -5000),   // SHORT: need strong sell pressure
   };
 
   // Count how many checks passed
@@ -310,6 +346,53 @@ async function scanSymbol(symbol) {
 }
 
 // ============================================================
+// FAST TRACK - Rapid monitoring for top candidates
+// ============================================================
+let fastTrackSymbols = []; // { symbol, score, lastCheck }
+
+async function updateFastTrack(topCandidates) {
+  if (!FAST_TRACK_CONFIG.enabled) return;
+
+  // Select top N candidates with score > threshold
+  fastTrackSymbols = topCandidates
+    .filter(c => c.score >= FAST_TRACK_CONFIG.minScore)
+    .slice(0, FAST_TRACK_CONFIG.maxSymbols)
+    .map(c => ({ symbol: c.symbol, score: c.score, lastCheck: Date.now() }));
+
+  if (fastTrackSymbols.length > 0) {
+    console.log(`⚡ Fast Track: Monitoring ${fastTrackSymbols.length} hot candidates (${fastTrackSymbols.map(f => f.symbol).join(', ')})`);
+  }
+}
+
+async function fastTrackLoop() {
+  if (!FAST_TRACK_CONFIG.enabled || fastTrackSymbols.length === 0) return;
+
+  for (const ft of fastTrackSymbols) {
+    try {
+      // Quick check: only live data (no file I/O)
+      const liveData = await fetchLiveMarketData(ft.symbol);
+      if (!liveData) continue;
+
+      ft.lastCheck = Date.now();
+
+      // Check if conditions deteriorated (early exit signal)
+      const spread = liveData.spread ?? 999;
+      const orderFlow = liveData.orderFlowNet60s || 0;
+
+      // Sample: log fast track checks (0.1% sampling to avoid spam)
+      if (Math.random() < 0.001) {
+        console.log(`⚡ [FAST] ${ft.symbol}: flow=${orderFlow.toFixed(0)}, spread=${spread.toFixed(3)}%`);
+      }
+
+      // TODO: Add advanced triggers here (price near entry, orderFlow reversal, etc.)
+
+    } catch (error) {
+      // Silent fail for fast track (don't spam logs)
+    }
+  }
+}
+
+// ============================================================
 // SCAN ALL SYMBOLS (3-STAGE PROCESS)
 // ============================================================
 // STAGE 1: Collect all candidates with pre-score
@@ -404,11 +487,14 @@ async function scanAllSymbols() {
     console.log(`✅ Stage 1 complete: ${candidates.length} candidates found`);
 
     // ===========================================================
-    // STAGE 2: UPDATE HOT LIST (top 30 get trade WS)
+    // STAGE 2: UPDATE HOT LIST (top 30 get trade WS) + FAST TRACK
     // ===========================================================
     if (candidates.length > 0) {
       // Sort by score (highest first)
       candidates.sort((a, b) => b.score - a.score);
+
+      // Update Fast Track with top candidates (before hot list API call)
+      await updateFastTrack(candidates);
 
       // Take top 30 for hot list
       const FLOW_SYMBOL_LIMIT = 30;
@@ -455,8 +541,8 @@ async function scanAllSymbols() {
       // Update persistence tracker
       const cycleCount = updateSignalPersistence(symbol, direction);
 
-      // Check persistence requirement
-      if (!isSignalPersistent(symbol)) {
+      // Check persistence requirement (score-based)
+      if (!isSignalPersistent(symbol, candidate.score)) {
         continue;
       }
 
@@ -560,8 +646,9 @@ async function main() {
   console.log('='.repeat(60));
   console.log(`Data Dir:         ${CONFIG.dataDir}`);
   console.log(`Engine API:       ${CONFIG.engineApiUrl}`);
-  console.log(`Scan Interval:    ${CONFIG.scanInterval / 1000}s (MICRO SCALPING MODE)`);
-  console.log(`Persistence:      ${PERSISTENCE_CONFIG.minCycles} cycles (${PERSISTENCE_CONFIG.minCycles}s minimum)`);
+  console.log(`Scan Interval:    ${CONFIG.scanInterval / 1000}s`);
+  console.log(`Fast Track:       ${FAST_TRACK_CONFIG.enabled ? `${FAST_TRACK_CONFIG.interval / 1000}s (top ${FAST_TRACK_CONFIG.maxSymbols})` : 'DISABLED'}`);
+  console.log(`Persistence:      Score-based (1-3 cycles = 30-90s)`);
   console.log('='.repeat(60));
   console.log('\nFilters:');
   console.log(`  Min Volatility:    ${CONFIG.minVolatility}%`);
@@ -570,6 +657,7 @@ async function main() {
   console.log(`  Min Momentum:      ${CONFIG.minPriceChange1m}%`);
   console.log(`  Min Imbalance:     ${CONFIG.minImbalance}`);
   console.log(`  Max Spread:        ${CONFIG.maxSpread}%`);
+  console.log(`  Order Flow Vol:    min $${FAST_TRACK_CONFIG.minOrderFlowVolume} (60s)`);
   console.log('='.repeat(60) + '\n');
 
   // Wait 15 seconds for Engine to be fully ready (WS connection + initial data)
@@ -579,10 +667,18 @@ async function main() {
   // Run first scan
   await scanAllSymbols();
 
-  // Then run periodic scans
+  // Start periodic full scans (30s)
   setInterval(async () => {
     await scanAllSymbols();
   }, CONFIG.scanInterval);
+
+  // Start Fast Track loop (2s rapid monitoring for top candidates)
+  if (FAST_TRACK_CONFIG.enabled) {
+    setInterval(async () => {
+      await fastTrackLoop();
+    }, FAST_TRACK_CONFIG.interval);
+    console.log('⚡ Fast Track loop started (2s interval for hot candidates)\n');
+  }
 
   // Keep process alive
   process.on('SIGINT', () => {
