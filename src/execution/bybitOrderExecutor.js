@@ -9,7 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import RestClient from 'bybit-api';
+import { RestClientV5 } from 'bybit-api';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,7 +37,7 @@ if (fs.existsSync(envPath)) {
 // =====================================================
 // 2) BYBIT CLIENT INIT
 // =====================================================
-const bybitClient = new RestClient({
+const bybitClient = new RestClientV5({
   key: process.env.BYBIT_API_KEY,
   secret: process.env.BYBIT_API_SECRET,
   testnet: false
