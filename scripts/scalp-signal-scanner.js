@@ -1000,7 +1000,11 @@ async function fastTrackLoop() {
         if (shouldEnter) {
           signalState.readyForEntry = true;
           signalState.entryReadyTime = now;
-          console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${formatPriceByTick(currentPrice, signalState.tickSize || 0.0001)} (${entryReason})`);
+
+          // Parse tickSize to avoid floating point artifacts with ultra-small values
+          const ts = signalState.tickSize ? parseFloat(signalState.tickSize) : 0.0001;
+
+          console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${formatPriceByTick(currentPrice, ts)} (${entryReason})`);
           console.log(`   Range Position: ${rangePosition.toFixed(1)}% | Imbalance: ${liveData.imbalance?.toFixed(2)} | Spread: ${liveData.spreadPercent}%`);
 
           // === AUTO-EXECUTION TRIGGER ===
