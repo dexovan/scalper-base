@@ -758,7 +758,7 @@ async function executeTradeMakerFirst(ctx) {
     ? marketState.ask
     : marketState.bid;
 
-  const priceDrift = Math.abs((currentPrice - entry) / entry);
+  const priceDrift = Math.abs((currentPrice - ctx.entry) / ctx.entry);
 
   console.log(`📊 [FALLBACK-CHECK] Price drift: ${(priceDrift * 100).toFixed(2)}%`);
 
