@@ -159,7 +159,7 @@ class LiveDataManager {
     this.data = new Map(); // symbol -> live data
     this.lastBatchFetch = 0;
     this.trackedSymbols = [];
-    this.REFRESH_INTERVAL = 2000; // 2s - synchronized with Fast Track
+    this.REFRESH_INTERVAL = 30000; // 30s - synchronized with Stage 1 scan interval
   }
 
   // Update tracked symbols list
@@ -726,13 +726,8 @@ async function fastTrackLoop() {
 
   const now = Date.now();
 
-  // Check data age - only refresh if Stage 1 hasn't refreshed recently
-  const dataAge = liveDataManager.getAge();
-  if (dataAge > 3000) {  // 3s tolerance - Stage 1 runs every 30s
-    console.log(`⚠️  [FAST] Data stale (${(dataAge/1000).toFixed(1)}s old), refreshing...`);
-    await liveDataManager.refreshIfNeeded();
-  }
-  // Otherwise use existing data from Stage 1 (no API call!)
+  // Use data from Stage 1 (refreshed every 30s) - NO REFRESH in FastTrack!
+  // FastTrack monitors using existing data, Stage 1 is the single source of truth
 
   for (const ft of fastTrackSymbols) {
     try {
