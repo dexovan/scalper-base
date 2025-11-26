@@ -437,7 +437,7 @@ async function closePosition(symbol, side) {
 }
 
 // =====================================================
-// 7) GET LIVE MARKET STATE (from engine API)
+// 7) GET LIVE MARKET STATE (from engine API) - SAFE VERSION v4
 // =====================================================
 async function getLiveMarketState(symbol) {
   try {
@@ -449,7 +449,18 @@ async function getLiveMarketState(symbol) {
     if (!data.ok || !data.live) {
       throw new Error('Invalid response from Engine API');
     }
-    return data.live;  // Return live data object directly
+
+    const live = data.live;
+
+    // Normalize + protect against null/undefined
+    return {
+      price:      Number(live.price) || null,
+      bid:        Number(live.bid) || Number(live.price) || null,
+      ask:        Number(live.ask) || Number(live.price) || null,
+      spread:     Number(live.spreadPercent) || 0,
+      imbalance:  Number(live.imbalance) || 1.0,
+      orderFlow:  Number(live.orderFlowNet60s) || 0
+    };
   } catch (err) {
     console.error(`❌ [MARKET-STATE] Failed to fetch for ${symbol}: ${err.message}`);
     return null;
@@ -741,8 +752,8 @@ async function executeTradeMakerFirst(ctx) {
 
   // Check price drift
   const currentPrice = direction === 'LONG'
-    ? parseFloat(marketState.ticker?.ask || entry)
-    : parseFloat(marketState.ticker?.bid || entry);
+    ? marketState.ask
+    : marketState.bid;
 
   const priceDrift = Math.abs((currentPrice - entry) / entry);
 
@@ -754,7 +765,7 @@ async function executeTradeMakerFirst(ctx) {
   }
 
   // Check spread
-  const spread = marketState.ticker?.spread || 0;
+  const spread = marketState.spread || 0;
   console.log(`📊 [FALLBACK-CHECK] Spread: ${(spread * 100).toFixed(2)}%`);
 
   if (spread > config.maxSpreadPercent / 100) {
