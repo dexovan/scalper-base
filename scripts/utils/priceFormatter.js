@@ -34,12 +34,14 @@ export function getPrecisionForPrice(price) {
 
 /**
  * Formats price with correct Bybit-style precision
+ * Returns number with exact precision (no floating point artifacts)
  */
 export function formatPrice(price) {
   if (price === null || price === undefined) return 'N/A';
 
   const precision = getPrecisionForPrice(price);
-  return parseFloat(price.toFixed(precision));
+  // Use Number() to avoid parseFloat floating point artifacts
+  return Number(price.toFixed(precision));
 }
 
 /**

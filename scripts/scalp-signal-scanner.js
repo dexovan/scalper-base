@@ -508,9 +508,9 @@ async function attemptExecution(symbol, signalState, liveData) {
     entryZone: signalState.entryZone
   };
 
-  console.log(`\n🚀 [EXECUTING] ${symbol} ${signalState.direction} @ ${executionRequest.entry}`);
-  console.log(`   TP: ${executionRequest.tp} | SL: ${executionRequest.sl}`);
-  console.log(`   Entry Zone: ${getEntryZoneDisplay(signalState.entryZone)}`);
+  console.log(`\n🚀 [EXECUTING] ${symbol} ${signalState.direction} @ ${formatPrice(executionRequest.entry)}`);
+  console.log(`   TP: ${formatPrice(executionRequest.tp)} | SL: ${formatPrice(executionRequest.sl)}`);
+  console.log(`   Entry Zone: ${formatEntryZoneDisplay(signalState.entryZone)}`);
 
   try {
     const response = await fetch(FAST_TRACK_CONFIG.executionApiUrl, {
