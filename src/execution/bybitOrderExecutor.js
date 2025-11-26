@@ -114,6 +114,58 @@ function sleep(ms) {
 }
 
 // =====================================================
+// 5B) HELPER: Get valid quantity for symbol
+// =====================================================
+async function getValidQuantity(symbol, usdValue, price) {
+  try {
+    // Get symbol info from Bybit
+    const response = await bybitClient.getInstrumentsInfo({
+      category: 'linear',
+      symbol
+    });
+
+    if (response?.retCode !== 0 || !response.result?.list?.[0]) {
+      console.warn(`⚠️  [QTY] Cannot get symbol info for ${symbol}, using default precision`);
+      const rawQty = usdValue / price;
+      return parseFloat(rawQty.toFixed(3));
+    }
+
+    const symbolInfo = response.result.list[0];
+    const lotSizeFilter = symbolInfo.lotSizeFilter || {};
+    const minOrderQty = parseFloat(lotSizeFilter.minOrderQty || '0.001');
+    const maxOrderQty = parseFloat(lotSizeFilter.maxOrderQty || '10000');
+    const qtyStep = parseFloat(lotSizeFilter.qtyStep || '0.001');
+
+    // Calculate raw quantity
+    let qty = usdValue / price;
+
+    // Round down to qtyStep precision
+    const precision = qtyStep.toString().split('.')[1]?.length || 0;
+    qty = Math.floor(qty / qtyStep) * qtyStep;
+    qty = parseFloat(qty.toFixed(precision));
+
+    // Clamp to min/max
+    if (qty < minOrderQty) {
+      console.warn(`⚠️  [QTY] ${symbol}: Calculated qty ${qty} < min ${minOrderQty}, using min`);
+      qty = minOrderQty;
+    }
+    if (qty > maxOrderQty) {
+      console.warn(`⚠️  [QTY] ${symbol}: Calculated qty ${qty} > max ${maxOrderQty}, using max`);
+      qty = maxOrderQty;
+    }
+
+    console.log(`✅ [QTY] ${symbol}: $${usdValue} @ $${price} = ${qty} (min: ${minOrderQty}, step: ${qtyStep})`);
+    return qty;
+
+  } catch (err) {
+    console.error(`❌ [QTY] Error getting valid quantity for ${symbol}:`, err.message);
+    // Fallback to simple calculation
+    const rawQty = usdValue / price;
+    return parseFloat(rawQty.toFixed(3));
+  }
+}
+
+// =====================================================
 // 6) BYBIT API WRAPPERS
 // =====================================================
 
@@ -525,8 +577,8 @@ async function executeTradeMarketOnly(ctx) {
   // Phase 1: Set leverage (throws on failure)
   await setLeverage(symbol, leverage);
 
-  // Calculate quantity
-  const qty = (positionSize / entry).toFixed(3);
+  // Calculate valid quantity respecting Bybit symbol constraints
+  const qty = await getValidQuantity(symbol, positionSize, entry);
   const side = direction === 'LONG' ? 'Buy' : 'Sell';
 
   // Place market order
@@ -576,8 +628,8 @@ async function executeTradeMakerFirst(ctx) {
   // Phase 1: Set leverage (throws on failure)
   await setLeverage(symbol, leverage);
 
-  // Calculate quantity
-  const qty = (positionSize / entry).toFixed(3);
+  // Calculate valid quantity respecting Bybit symbol constraints
+  const qty = await getValidQuantity(symbol, positionSize, entry);
   const side = direction === 'LONG' ? 'Buy' : 'Sell';
 
   // STEP 1: Place post-only limit order at entry price
