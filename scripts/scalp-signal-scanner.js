@@ -63,6 +63,35 @@ const FAST_TRACK_CONFIG = {
   maxExecutionAttempts: 3   // Max 3 execution attempts per signal
 };
 
+// Smart Entry Timing: Optimal entry detection (Hybrid approach)
+const SMART_ENTRY_CONFIG = {
+  // Hard filters - ABORT signal immediately
+  hardFilters: {
+    LONG: {
+      maxRangePosition: 85,    // Skip if price > 85% of range (too high, top catching)
+      minRangePosition: 10     // Skip if price < 10% of range (falling knife)
+    },
+    SHORT: {
+      maxRangePosition: 90,    // Skip if price > 90% of range (knife catching top)
+      minRangePosition: 15     // Skip if price < 15% of range (too low for short)
+    }
+  },
+
+  // Sweet spot detection (optimal entry zone within entry zone)
+  sweetSpot: {
+    pullbackBestDown: 0.05,    // LONG: 0.05% below ideal = best entry
+    pullbackBestUp: 0.03,      // LONG: 0.03% above ideal = acceptable
+    maxExtraPullback: 0.20     // Max 0.20% below ideal (deeper = knife)
+  },
+
+  // Momentum requirements for entry
+  momentum: {
+    minImbalanceLong: 1.3,     // LONG needs imbalance > 1.3
+    maxImbalanceShort: 0.77,   // SHORT needs imbalance < 0.77 (1/1.3)
+    maxSpread: 0.15            // Max 0.15% spread to execute
+  }
+};
+
 function updateSignalPersistence(symbol, direction, score) {
   const now = Date.now();
   const existing = signalHistory.get(symbol);
@@ -120,6 +149,107 @@ function isSignalPersistent(symbol) {
   // Use initial score (from first detection) for consistency
   const required = getRequiredCycles(data.initialScore || 0);
   return data.count >= required;
+}
+
+// ============================================================
+// SMART ENTRY TIMING - HELPER FUNCTIONS
+// ============================================================
+
+/**
+ * Calculate price position in recent range (0-100%)
+ * Uses priceHistory to determine high/low of recent movement
+ */
+function calculateRangePosition(currentPrice, priceHistory) {
+  if (!priceHistory || priceHistory.length < 5) {
+    return 50; // Default to middle if not enough data
+  }
+
+  const high = Math.max(...priceHistory);
+  const low = Math.min(...priceHistory);
+  const range = high - low;
+
+  if (range === 0) return 50; // No movement
+
+  const position = ((currentPrice - low) / range) * 100;
+  return Math.max(0, Math.min(100, position)); // Clamp 0-100
+}
+
+/**
+ * Check hard filters - returns { passed: bool, reason: string }
+ * LONG: Skip if too high (>85%) or too low (<10%) in range
+ * SHORT: Skip if too low (<15%) or too high (>90%) in range
+ */
+function checkHardFilters(direction, rangePosition) {
+  const filters = SMART_ENTRY_CONFIG.hardFilters[direction];
+  if (!filters) return { passed: true };
+
+  if (direction === 'LONG') {
+    if (rangePosition > filters.maxRangePosition) {
+      return { passed: false, reason: `price_too_high_${rangePosition.toFixed(0)}%_of_range` };
+    }
+    if (rangePosition < filters.minRangePosition) {
+      return { passed: false, reason: `falling_knife_${rangePosition.toFixed(0)}%_of_range` };
+    }
+  } else if (direction === 'SHORT') {
+    if (rangePosition < filters.minRangePosition) {
+      return { passed: false, reason: `price_too_low_${rangePosition.toFixed(0)}%_of_range` };
+    }
+    if (rangePosition > filters.maxRangePosition) {
+      return { passed: false, reason: `top_catching_${rangePosition.toFixed(0)}%_of_range` };
+    }
+  }
+
+  return { passed: true };
+}
+
+/**
+ * Check if price is in sweet spot for optimal entry
+ * LONG: Sweet spot is slightly below ideal (pullback zone)
+ * SHORT: Sweet spot is slightly above ideal (bounce zone)
+ */
+function isInSweetSpot(currentPrice, idealEntry, direction) {
+  const { pullbackBestDown, pullbackBestUp } = SMART_ENTRY_CONFIG.sweetSpot;
+
+  if (direction === 'LONG') {
+    // LONG sweet spot: ideal - 0.05% to ideal + 0.03%
+    const goodMin = idealEntry * (1 - pullbackBestDown / 100);
+    const goodMax = idealEntry * (1 + pullbackBestUp / 100);
+    return currentPrice >= goodMin && currentPrice <= goodMax;
+  } else if (direction === 'SHORT') {
+    // SHORT sweet spot: ideal - 0.03% to ideal + 0.05% (inverted)
+    const goodMin = idealEntry * (1 - pullbackBestUp / 100);
+    const goodMax = idealEntry * (1 + pullbackBestDown / 100);
+    return currentPrice >= goodMin && currentPrice <= goodMax;
+  }
+
+  return false;
+}
+
+/**
+ * Check if momentum is sufficient for entry
+ */
+function checkMomentum(liveData, direction) {
+  const { minImbalanceLong, maxImbalanceShort, maxSpread } = SMART_ENTRY_CONFIG.momentum;
+  const imbalance = liveData.imbalance || 1.0;
+  const spreadPercent = parseFloat(liveData.spreadPercent) || 0;
+
+  // Spread check (common for both)
+  if (spreadPercent > maxSpread) {
+    return { passed: false, reason: `spread_too_wide_${spreadPercent.toFixed(3)}%` };
+  }
+
+  // Direction-specific imbalance check
+  if (direction === 'LONG') {
+    if (imbalance < minImbalanceLong) {
+      return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}` };
+    }
+  } else if (direction === 'SHORT') {
+    if (imbalance > maxImbalanceShort) {
+      return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}` };
+    }
+  }
+
+  return { passed: true };
 }
 
 // ============================================================
@@ -781,19 +911,73 @@ async function fastTrackLoop() {
       signalState.inZone = inZone;
       signalState.lastChecked = now;
 
-      // === ENTRY ZONE MONITORING LOGIC ===
+      // === SMART ENTRY TIMING LOGIC (HYBRID APPROACH) ===
 
-      // 1. Price IN ZONE → Signal ready for execution
+      // 1. Calculate range position (0-100% of recent price range)
+      const rangePosition = calculateRangePosition(currentPrice, signalState.priceHistory);
+
+      // 2. HARD FILTERS - Check falling knife / top catching (ABORT IMMEDIATELY)
+      const hardFilterResult = checkHardFilters(signalState.direction, rangePosition);
+      if (!hardFilterResult.passed) {
+        console.log(`❌ [HARD FILTER] ${ft.symbol} - ${hardFilterResult.reason} - SIGNAL ABORTED`);
+        signalStates.delete(ft.symbol);
+        signalHistory.delete(ft.symbol);
+        continue;
+      }
+
+      // 3. Price IN ZONE → Check for optimal entry timing
       if (inZone && !signalState.readyForEntry) {
-        signalState.readyForEntry = true;
-        signalState.entryReadyTime = now;
-        console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${formatPrice(currentPrice)} IN ZONE ${formatEntryZoneDisplay(signalState.entryZone)}`);
+        const idealEntry = signalState.entryZone.ideal;
+        const minEntry = signalState.entryZone.min;
+        const maxEntry = signalState.entryZone.max;
 
-        // === AUTO-EXECUTION TRIGGER ===
-        if (FAST_TRACK_CONFIG.autoExecute) {
-          // Fetch FRESH data for execution (force single fetch)
-          const freshData = await liveDataManager.fetchFreshSingle(ft.symbol);
-          await attemptExecution(ft.symbol, signalState, freshData || liveData);
+        let shouldEnter = false;
+        let entryReason = '';
+
+        // 3a. Check if in sweet spot (optimal pullback zone)
+        const inSweetSpot = isInSweetSpot(currentPrice, idealEntry, signalState.direction);
+
+        if (inSweetSpot) {
+          // Perfect entry - in sweet spot zone
+          shouldEnter = true;
+          entryReason = 'in_sweet_spot_pullback';
+        } else if (signalState.direction === 'LONG') {
+          // LONG fallback: Allow entry at lower boundary
+          if (currentPrice <= minEntry * 1.0005) {
+            shouldEnter = true;
+            entryReason = 'at_lower_boundary';
+          }
+        } else if (signalState.direction === 'SHORT') {
+          // SHORT fallback: Allow entry at upper boundary
+          if (currentPrice >= maxEntry * 0.9995) {
+            shouldEnter = true;
+            entryReason = 'at_upper_boundary';
+          }
+        }
+
+        // 3b. If position looks good, validate momentum
+        if (shouldEnter) {
+          const momentumCheck = checkMomentum(liveData, signalState.direction);
+
+          if (!momentumCheck.passed) {
+            console.log(`⚠️  [MOMENTUM] ${ft.symbol} - ${momentumCheck.reason} - waiting for better momentum`);
+            shouldEnter = false;
+          }
+        }
+
+        // 3c. Execute if all checks passed
+        if (shouldEnter) {
+          signalState.readyForEntry = true;
+          signalState.entryReadyTime = now;
+          console.log(`🎯 [ENTRY READY] ${ft.symbol} ${signalState.direction} - Price ${formatPrice(currentPrice)} (${entryReason})`);
+          console.log(`   Range Position: ${rangePosition.toFixed(1)}% | Imbalance: ${liveData.imbalance?.toFixed(2)} | Spread: ${liveData.spreadPercent}%`);
+
+          // === AUTO-EXECUTION TRIGGER ===
+          if (FAST_TRACK_CONFIG.autoExecute) {
+            // Fetch FRESH data for execution (force single fetch)
+            const freshData = await liveDataManager.fetchFreshSingle(ft.symbol);
+            await attemptExecution(ft.symbol, signalState, freshData || liveData);
+          }
         }
       }
 
@@ -1027,9 +1211,18 @@ async function scanAllSymbols() {
       // Extract initial momentum for executor
       // imbalance > 1.0 = more bids (bullish), < 1.0 = more asks (bearish)
       const imbalance = currentLiveData.imbalance || 1.0;
-      const initialMomentum = direction === 'LONG'
-        ? Math.max(0, (imbalance - 1.0))  // LONG: excess bid pressure (imbalance > 1.0)
-        : Math.max(0, (1.0 - imbalance));  // SHORT: excess ask pressure (imbalance < 1.0)
+
+      let initialMomentum = 0;
+      if (direction === 'LONG') {
+        // LONG: needs strong bid pressure (imbalance > 1.0)
+        initialMomentum = Math.max(0, (imbalance - 1.0));
+      } else if (direction === 'SHORT') {
+        // SHORT: needs strong ask pressure (imbalance < 1.0)
+        // If imbalance is 0.5, momentum = 0.5 (50% excess asks)
+        // If imbalance is 0.77, momentum = 0.23 (23% excess asks)
+        // If imbalance is > 1.0, momentum = 0 (bullish market - bad for SHORT)
+        initialMomentum = imbalance < 1.0 ? Math.max(0, (1.0 - imbalance)) : 0;
+      }
 
       console.log(`📊 [MOMENTUM] ${symbol} ${direction}: imbalance=${imbalance.toFixed(3)}, momentum=${(initialMomentum * 100).toFixed(1)}%`);
 
