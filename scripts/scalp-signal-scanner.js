@@ -12,6 +12,55 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ============================================================
+// SIGNAL PERSISTENCE TRACKER
+// Tracks how many consecutive cycles a signal has been valid
+// ============================================================
+
+const signalHistory = new Map(); // symbol -> { direction, count, firstSeen }
+
+const PERSISTENCE_CONFIG = {
+  minCycles: 3,           // Signal must persist for 3 cycles (3 seconds at 1s interval)
+  maxAge: 10000,          // Clear old signals after 10 seconds
+  resetOnDirectionChange: true  // Reset counter if direction flips
+};
+
+function updateSignalPersistence(symbol, direction) {
+  const now = Date.now();
+  const existing = signalHistory.get(symbol);
+
+  if (!existing) {
+    // First time seeing this signal
+    signalHistory.set(symbol, { direction, count: 1, firstSeen: now, lastSeen: now });
+    return 1;
+  }
+
+  // Check if direction changed
+  if (PERSISTENCE_CONFIG.resetOnDirectionChange && existing.direction !== direction) {
+    signalHistory.set(symbol, { direction, count: 1, firstSeen: now, lastSeen: now });
+    return 1;
+  }
+
+  // Same direction, increment count
+  existing.count++;
+  existing.lastSeen = now;
+  return existing.count;
+}
+
+function cleanupOldSignals() {
+  const now = Date.now();
+  for (const [symbol, data] of signalHistory.entries()) {
+    if (now - data.lastSeen > PERSISTENCE_CONFIG.maxAge) {
+      signalHistory.delete(symbol);
+    }
+  }
+}
+
+function isSignalPersistent(symbol) {
+  const data = signalHistory.get(symbol);
+  return data && data.count >= PERSISTENCE_CONFIG.minCycles;
+}
+
+// ============================================================
 // CONFIGURATION
 // ============================================================
 
@@ -19,8 +68,9 @@ const CONFIG = {
   dataDir: path.join(__dirname, '../data/live'),
   engineApiUrl: 'http://localhost:8090',
 
-  // Scan interval
-  scanInterval: 60000, // 60 seconds (match candle update frequency)
+  // Scan interval - MICRO SCALPING NEEDS FAST UPDATES!
+  scanInterval: 1000, // 1 second (0.22% TP needs real-time scanning)
+  // Candles update every 60s, but we scan LIVE market data every 1s
 
   // Historical filters (from candles)
   minVolatility: 0.15,       // 0.15% minimum range (reduced from 0.3%)
@@ -153,10 +203,21 @@ async function scanSymbol(symbol) {
     // 3. Evaluate signal
     const evaluation = evaluateSignal(latestCandle, liveData);
 
-    // 4. If signal passes all checks, return it
+    // 4. If signal passes all checks, UPDATE PERSISTENCE
     if (evaluation.passed) {
       // Determine direction based on velocity and imbalance
       const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
+
+      // Update persistence tracker
+      const cycleCount = updateSignalPersistence(symbol, direction);
+
+      // 🚨 PERSISTENCE FILTER: Signal must be stable for N cycles
+      if (!isSignalPersistent(symbol)) {
+        // Signal seen, but not persistent yet (only {cycleCount}/{PERSISTENCE_CONFIG.minCycles} cycles)
+        return null;
+      }
+
+      // ✅ Signal is PERSISTENT (seen for {cycleCount} cycles)
 
       // Use bid/ask if available, otherwise use price with estimated spread
       const entryPrice = liveData.price || 0;
@@ -308,6 +369,9 @@ async function scanAllSymbols() {
       console.log(`⚠️  No signals found in this scan cycle`);
     }
 
+    // Cleanup old signal history entries
+    cleanupOldSignals();
+
     console.log(`✅ Scan complete\n`);
     return signals;
 
@@ -326,7 +390,8 @@ async function main() {
   console.log('='.repeat(60));
   console.log(`Data Dir:         ${CONFIG.dataDir}`);
   console.log(`Engine API:       ${CONFIG.engineApiUrl}`);
-  console.log(`Scan Interval:    ${CONFIG.scanInterval / 1000}s`);
+  console.log(`Scan Interval:    ${CONFIG.scanInterval / 1000}s (MICRO SCALPING MODE)`);
+  console.log(`Persistence:      ${PERSISTENCE_CONFIG.minCycles} cycles (${PERSISTENCE_CONFIG.minCycles}s minimum)`);
   console.log('='.repeat(60));
   console.log('\nFilters:');
   console.log(`  Min Volatility:    ${CONFIG.minVolatility}%`);
