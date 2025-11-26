@@ -58,8 +58,8 @@ const EXECUTION_CONFIG = {
   // Risk management
   maxPositions: 5,           // Max 5 concurrent positions (scalping strategy)
   minBalance: 20,            // Min USDT balance to trade (lowered for testing)
-  defaultLeverage: 5,        // 5x leverage
-  defaultMargin: 25,         // $25 per trade (~$125 notional)
+  defaultLeverage: 3,        // 3x leverage (safer than 5x, less liquidation risk)
+  defaultMargin: 18,         // $18 per trade (~$54 notional, lower risk per trade)
 
   // Order settings
   orderType: 'Market',       // Market orders for instant fill

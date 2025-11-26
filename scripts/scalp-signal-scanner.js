@@ -381,19 +381,19 @@ async function scanSymbol(symbol) {
 
       // Calculate TP/SL (raw values first)
       const tpRaw = direction === 'LONG'
-        ? ask * 1.0040  // +0.40% for LONG (covers fees + profit)
-        : bid * 0.9960; // -0.40% for SHORT (price goes down)
+        ? ask * 1.0035  // +0.35% for LONG (tighter TP, realistic target)
+        : bid * 0.9965; // -0.35% for SHORT (price goes down)
 
       const slRaw = direction === 'LONG'
-        ? bid * 0.9980  // -0.20% stop loss for LONG (outside noise)
-        : ask * 1.0020; // +0.20% stop loss for SHORT
+        ? bid * 0.9970  // -0.30% stop loss for LONG (wider SL, less noise)
+        : ask * 1.0030; // +0.30% stop loss for SHORT
 
       // Format with correct precision
       const tp = formatPrice(tpRaw);
       const sl = formatPrice(slRaw);
 
-      // Calculate expected profit (assuming $25 margin at 5x leverage = $125 position)
-      const positionSize = 125; // $25 * 5x
+      // Calculate expected profit (assuming $18 margin at 3x leverage = $54 position)
+      const positionSize = 54; // $18 * 3x
       const expectedProfit = Math.abs((tp - entry) / entry) * positionSize;
 
       const signal = {
@@ -886,18 +886,18 @@ async function scanAllSymbols() {
 
       // Calculate TP/SL from IDEAL entry (raw first, then format)
       const tpRaw = direction === 'LONG'
-        ? formattedEntryZone.ideal * 1.0040  // +0.40% (covers fees + profit)
-        : formattedEntryZone.ideal * 0.9960; // -0.40%
+        ? formattedEntryZone.ideal * 1.0035  // +0.35% (tighter, realistic)
+        : formattedEntryZone.ideal * 0.9965; // -0.35%
 
       const slRaw = direction === 'LONG'
-        ? formattedEntryZone.ideal * 0.9980  // -0.20% (outside market noise)
-        : formattedEntryZone.ideal * 1.0020; // +0.20%
+        ? formattedEntryZone.ideal * 0.9970  // -0.30% (wider, avoid noise)
+        : formattedEntryZone.ideal * 1.0030; // +0.30%
 
       const tp = formatPrice(tpRaw);
       const sl = formatPrice(slRaw);
 
       // Calculate expected profit (from ideal entry)
-      const positionSize = 125;
+      const positionSize = 54; // $18 * 3x
       const expectedProfit = Math.abs((tp - formattedEntryZone.ideal) / formattedEntryZone.ideal) * positionSize;
 
       // Check if price is CURRENTLY in entry zone
