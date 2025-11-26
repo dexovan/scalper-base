@@ -797,9 +797,10 @@ async function attemptExecution(symbol, signalState, liveData) {
     entryZone: signalState.entryZone
   };
 
-  console.log(`\n🚀 [EXECUTING] ${symbol} ${signalState.direction} @ ${formatPrice(executionRequest.entry)}`);
-  console.log(`   TP: ${formatPrice(executionRequest.tp)} | SL: ${formatPrice(executionRequest.sl)}`);
-  console.log(`   Entry Zone: ${formatEntryZoneDisplay(signalState.entryZone)}`);
+  const ts = signalState.tickSize || 0.0001;
+  console.log(`\n🚀 [EXECUTING] ${symbol} ${signalState.direction} @ ${formatPriceByTick(executionRequest.entry, ts)}`);
+  console.log(`   TP: ${formatPriceByTick(executionRequest.tp, ts)} | SL: ${formatPriceByTick(executionRequest.sl, ts)}`);
+  console.log(`   Entry Zone: [${signalState.entryZone.min} — ${signalState.entryZone.ideal} — ${signalState.entryZone.max}]`);
   console.log(`   Initial Momentum: ${(executionRequest.initialMomentum * 100).toFixed(1)}% (from signalState)`);
 
   // Fire-and-forget: Send execution request WITHOUT waiting for response
