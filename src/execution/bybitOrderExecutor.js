@@ -553,9 +553,14 @@ setInterval(syncPositionsWithBybit, 30000);
 // Cleanup stale positions every 2 minutes
 setInterval(cleanupStalePositions, 120000);
 
+// Initial sync on module load
+console.log('🔄 [EXECUTOR] Running initial position sync...');
+syncPositionsWithBybit();
+
 export default {
   executeTrade,
   getActivePositions,
   closePosition,
+  syncPositionsWithBybit,  // Export for manual triggering
   config: EXECUTION_CONFIG
 };
