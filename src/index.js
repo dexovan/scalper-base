@@ -158,13 +158,13 @@ async function startEngine() {
     // - This avoids Bybit 1006 error from 600+ topic subscriptions
 
     const primeMetadata = await getSymbolsByCategory("Prime");
-    const primeSymbols = primeMetadata.map(m => m.symbol);
+    const primeSymbolsForWS = primeMetadata.map(m => m.symbol);
 
-    console.log(`📡 [WS] Subscribing to TICKERS for ${primeSymbols.length} Prime symbols...`);
+    console.log(`📡 [WS] Subscribing to TICKERS for ${primeSymbolsForWS.length} Prime symbols...`);
     console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
 
     metricsWS.connect({
-        symbols: primeSymbols,
+        symbols: primeSymbolsForWS,
         channels: ["tickers"], // ⚠️ ONLY TICKERS - trade subscriptions managed by hotlist
 
         // MUST HAVE THE RAW MESSAGE
