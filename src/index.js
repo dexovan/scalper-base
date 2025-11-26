@@ -152,15 +152,10 @@ async function startEngine() {
 
     console.log("📡 METRICS: Calling connect() now...");
 
-    // 🚀 Subscribe to ALL Prime symbols for TradeFlowAggregator
-    // TEMP: Limit to 10 symbols to test if batching works
-    const primeMetadata = await getSymbolsByCategory("Prime");
-    const primeSymbolsForWS = primeMetadata.map(m => m.symbol);
-    const symbolsToSubscribe = primeSymbolsForWS.slice(0, 10).length > 0
-        ? primeSymbolsForWS.slice(0, 10)
-        : ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"];
+    // 🚀 TEST: Use hardcoded symbols to avoid Prime category issues
+    const symbolsToSubscribe = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "ADAUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "AVAXUSDT"];
 
-    console.log(`📡 [WS] Subscribing to ${symbolsToSubscribe.length} symbols for real-time data (TEST MODE - limited to 10)...`);    metricsWS.connect({
+    console.log(`📡 [WS] Subscribing to ${symbolsToSubscribe.length} HARDCODED symbols for testing...`);    metricsWS.connect({
         symbols: symbolsToSubscribe,
         channels: ["tickers", "publicTrade"],
 
