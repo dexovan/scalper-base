@@ -163,11 +163,20 @@ function loadCandleData(symbol) {
     }
 
     const content = fs.readFileSync(filePath, 'utf8');
+
+    // Check if file is empty or corrupted
+    if (!content || content.trim() === '') {
+      console.warn(`⚠️  [DATA] Empty file for ${symbol}, skipping...`);
+      return null;
+    }
+
     const data = JSON.parse(content);
 
     return data;
   } catch (error) {
     console.error(`❌ Error loading candles for ${symbol}:`, error.message);
+    console.error(`   File: ${path.join(CONFIG.dataDir, `${symbol}_live.json`)}`);
+    console.error(`   This file may be corrupted or incomplete`);
     return null;
   }
 }
@@ -180,7 +189,20 @@ async function fetchLiveMarketData(symbol) {
   try {
     const url = `${CONFIG.engineApiUrl}/api/live-market/${symbol}`;
     const response = await fetch(url);
-    const data = await response.json();
+
+    // Check if response is valid
+    if (!response.ok) {
+      console.warn(`⚠️  [API] HTTP ${response.status} for ${symbol}`);
+      return null;
+    }
+
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      console.warn(`⚠️  [API] Empty response for ${symbol}`);
+      return null;
+    }
+
+    const data = JSON.parse(text);
 
     if (!data.ok) {
       return null;
