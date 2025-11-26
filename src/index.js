@@ -179,6 +179,12 @@ async function startEngine() {
                     });
                 } else if (channelType === "publicTrade" && msg.data) {
                     const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
+
+                    // DEBUG: Sample 1% of trade events to verify emission
+                    if (Math.random() < 0.01) {
+                        console.log(`🔥 [TRADE EMIT] ${symbol}: ${trades.length} trades emitted to publicEmitter`);
+                    }
+
                     for (const trade of trades) {
                         publicEmitter.emit("event", {
                             type: "trade",
