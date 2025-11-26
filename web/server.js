@@ -10,6 +10,7 @@ import fs from "fs";
 import expressLayouts from "express-ejs-layouts";
 import SQLiteStoreFactory from "connect-sqlite3";
 import { fileURLToPath } from "url";
+import { Server as SocketIOServer } from "socket.io";
 
 import Module from "module"; // PM2 fix
 
@@ -86,6 +87,14 @@ app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+// Prevent browser caching Dashboard API data
+app.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Pragma", "no-cache");
+  next();
+});
+
 app.set("trust proxy", false);
 
 // ---------------------------------------
@@ -519,7 +528,7 @@ app.use(
     timeout: 30000,
     proxyTimeout: 30000,
     pathRewrite: {
-      "^/monitor/api": ""
+      "^/monitor/api": "/api/monitor"
     }
   })
 );
@@ -771,6 +780,29 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log("📁 Sessions dir:", sessionsDir);
   console.log("📁 Views dir:", path.join(__dirname, "views"));
 });
+
+// ===========================================================
+// WEBSOCKET SERVER – sends live engine logs to dashboard
+// ===========================================================
+const io = new SocketIOServer(server, {
+  cors: { origin: "*" }
+});
+
+io.on("connection", (socket) => {
+  console.log("🔌 Dashboard connected (WS)");
+
+  // Engine status broadcasts (these come from monitor API)
+  socket.emit("engine-status", "up");
+});
+
+// This is called by monitor backend via file watcher or API
+export function pushEngineLog(line) {
+  io.emit("engine-log", line);
+}
+
+export function pushEngineStatus(status) {
+  io.emit("engine-status", status);
+}
 
 // ---------------------------------------
 // GRACEFUL SHUTDOWN
