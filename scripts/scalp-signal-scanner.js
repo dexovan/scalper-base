@@ -55,7 +55,7 @@ const FAST_TRACK_CONFIG = {
   minOrderFlowVolume: 5000,  // Minimum $5k total volume in 60s to trust orderFlow
 
   // Auto-execution settings
-  autoExecute: false,    // 🔒 AUTO-EXECUTE disabled by default (set true to enable)
+  autoExecute: true,     // 🚀 AUTO-EXECUTE enabled (DRY-RUN MODE - no real trades)
   executionApiUrl: 'http://localhost:8090/api/execute-trade',
   duplicateWindow: 300000,  // 5 min cooldown per symbol
   maxExecutionAttempts: 3   // Max 3 execution attempts per signal
