@@ -152,12 +152,20 @@ async function startEngine() {
 
     console.log("📡 METRICS: Calling connect() now...");
 
-    // 🚀 TEST: Use hardcoded symbols to avoid Prime category issues
-    const symbolsToSubscribe = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "ADAUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "AVAXUSDT"];
+    // 🚀 HOT LIST ARCHITECTURE:
+    // - Subscribe TICKERS for ALL Prime symbols (cheap, always needed)
+    // - Scanner will dynamically subscribe publicTrade.* for top 20-30 candidates
+    // - This avoids Bybit 1006 error from 600+ topic subscriptions
 
-    console.log(`📡 [WS] Subscribing to ${symbolsToSubscribe.length} HARDCODED symbols for testing...`);    metricsWS.connect({
-        symbols: symbolsToSubscribe,
-        channels: ["tickers", "publicTrade"],
+    const primeMetadata = await getSymbolsByCategory("Prime");
+    const primeSymbols = primeMetadata.map(m => m.symbol);
+
+    console.log(`📡 [WS] Subscribing to TICKERS for ${primeSymbols.length} Prime symbols...`);
+    console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
+
+    metricsWS.connect({
+        symbols: primeSymbols,
+        channels: ["tickers"], // ⚠️ ONLY TICKERS - trade subscriptions managed by hotlist
 
         // MUST HAVE THE RAW MESSAGE
         onEvent: (msg) => {

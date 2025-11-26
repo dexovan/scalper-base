@@ -19,6 +19,7 @@ export class BybitPublicWS {
     this.url = WS_URL;
 
     this.subscriptions = [];      // npr. ["tickers.BTCUSDT", "publicTrade.BTCUSDT"]
+    this.tradeTopics = new Set(); // samo publicTrade.* topics (managed by flowHotlistManager)
     this.onEvent = null;          // callback za engine/metrics
 
     this.reconnectAttempts = 0;
@@ -288,6 +289,62 @@ export class BybitPublicWS {
     wsMetrics.wsMarkDisconnected();
     this.connected = false;
     console.log("⏹️ [METRICS-WS] Disconnected by request.");
+  }
+
+  /**
+   * 🚀 DYNAMIC TRADE SUBSCRIPTION
+   * Add/remove publicTrade.* topics without reconnecting entire WS
+   * Used by flowHotlistManager to subscribe only top 20-30 symbols
+   *
+   * @param {Object} options
+   * @param {string[]} options.add - Symbols to add (e.g., ["BTCUSDT", "ETHUSDT"])
+   * @param {string[]} options.remove - Symbols to remove
+   */
+  updateTradeSubscriptions({ add = [], remove = [] } = {}) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn("⚠️ [METRICS-WS] Cannot update trade subs, WS not open");
+      return;
+    }
+
+    const BATCH_SIZE = 10;
+
+    // 1) UNSUBSCRIBE removed symbols
+    const toUnsub = remove
+      .map(s => `publicTrade.${s}`)
+      .filter(topic => this.tradeTopics.has(topic));
+
+    if (toUnsub.length) {
+      for (let i = 0; i < toUnsub.length; i += BATCH_SIZE) {
+        const batch = toUnsub.slice(i, i + BATCH_SIZE);
+        try {
+          this.ws.send(JSON.stringify({ op: "unsubscribe", args: batch }));
+          console.log(`📡 [METRICS-WS] 🔴 Unsub trade batch (${batch.length}):`, batch.join(", "));
+        } catch (err) {
+          console.error("❌ [METRICS-WS] Unsub error:", err.message);
+        }
+      }
+      toUnsub.forEach(t => this.tradeTopics.delete(t));
+    }
+
+    // 2) SUBSCRIBE new symbols
+    const toSub = add
+      .map(s => `publicTrade.${s}`)
+      .filter(topic => !this.tradeTopics.has(topic));
+
+    if (toSub.length) {
+      for (let i = 0; i < toSub.length; i += BATCH_SIZE) {
+        const batch = toSub.slice(i, i + BATCH_SIZE);
+        try {
+          this.ws.send(JSON.stringify({ op: "subscribe", args: batch }));
+          console.log(`📡 [METRICS-WS] 🟢 Sub trade batch (${batch.length}):`, batch.join(", "));
+        } catch (err) {
+          console.error("❌ [METRICS-WS] Sub error:", err.message);
+        }
+      }
+      toSub.forEach(t => this.tradeTopics.add(t));
+    }
+
+    console.log(`🔥 [METRICS-WS] Trade topics updated: ${this.tradeTopics.size} active`);
   }
 }
 

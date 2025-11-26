@@ -22,6 +22,11 @@ import {
 import * as OrderbookManager from "../microstructure/OrderbookManager.js";
 import FeatureEngine from "../features/featureEngine.js";
 import { tradeFlowAggregator } from "../connectors/bybit/publicWS.js";
+import {
+  updateFlowSymbols,
+  getCurrentFlowSymbols,
+  getHotlistStats
+} from "../market/flowHotlistManager.js";
 
 // PM2 LOG FILE PATHS
 const __filename = fileURLToPath(import.meta.url);
@@ -917,6 +922,64 @@ export function startMonitorApiServer(port = 8090) {
       });
     } catch (error) {
       console.error(`❌ [API] Error fetching tracked symbols:`, error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // POST /api/flow/hotlist - Update hot symbols for trade WS
+  // Used by Scanner to dynamically subscribe top 20-30 candidates
+  // ============================================================
+  app.post("/api/flow/hotlist", async (req, res) => {
+    try {
+      const { symbols } = req.body || {};
+
+      if (!Array.isArray(symbols) || symbols.length === 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing or invalid 'symbols' array (must be non-empty array of symbol names)",
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Update flow subscriptions (adds/removes publicTrade.* topics)
+      const result = updateFlowSymbols(symbols);
+
+      return res.json({
+        ok: true,
+        result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [FLOW/HOTLIST] Error updating hotlist:", error.message);
+      return res.status(500).json({
+        ok: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
+  // GET /api/flow/hotlist - Get current hot symbols
+  // ============================================================
+  app.get("/api/flow/hotlist", (req, res) => {
+    try {
+      const symbols = getCurrentFlowSymbols();
+      const stats = getHotlistStats();
+
+      return res.json({
+        ok: true,
+        symbols,
+        stats,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("❌ [FLOW/HOTLIST] Error fetching hotlist:", error.message);
       return res.status(500).json({
         ok: false,
         error: error.message,

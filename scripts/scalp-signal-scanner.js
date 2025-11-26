@@ -133,6 +133,36 @@ async function fetchLiveMarketData(symbol) {
 }
 
 // ============================================================
+// CALCULATE CANDIDATE SCORE (for hotlist ranking)
+// ============================================================
+
+function calculateCandidateScore(candle, liveData) {
+  // Calculate aggressive score based on volatility, volume, and velocity
+  // Higher score = more likely to produce strong signal
+
+  const volatility = candle.volatility ?? 0;
+  const volumeSpike = candle.volumeSpike ?? 0;
+  const velocity = Math.abs(candle.velocity ?? 0);
+  const priceChange1m = Math.abs(candle.priceChange1m ?? 0);
+  const imbalance = Math.abs((liveData.imbalance ?? 1.0) - 1.0); // distance from neutral
+  const spread = liveData.spread ?? 999;
+
+  // Penalty for wide spread (harder to enter/exit)
+  const spreadPenalty = spread > CONFIG.maxSpread ? 0.5 : 1.0;
+
+  // Combine into score (higher = hotter symbol)
+  const score = (
+    volatility * 10 +           // Volatility is king for scalping
+    volumeSpike * 5 +           // Volume spike indicates action
+    velocity * 20 +             // Fast price movement
+    priceChange1m * 15 +        // Recent momentum
+    imbalance * 3               // Orderbook imbalance
+  ) * spreadPenalty;
+
+  return score;
+}
+
+// ============================================================
 // EVALUATE SIGNAL CONFIDENCE
 // ============================================================
 
@@ -281,11 +311,14 @@ async function scanSymbol(symbol) {
 }
 
 // ============================================================
-// SCAN ALL SYMBOLS
+// SCAN ALL SYMBOLS (3-STAGE PROCESS)
 // ============================================================
+// STAGE 1: Collect all candidates with pre-score
+// STAGE 2: Update hot list (top 30 get trade WS)
+// STAGE 3: Generate signals (only for hot symbols with orderFlow)
 
 async function scanAllSymbols() {
-  console.log(`\n🔍 [${new Date().toISOString()}] Starting signal scan...`);
+  console.log(`\n🔍 [${new Date().toISOString()}] Starting 3-stage signal scan...`);
 
   try {
     // Get tracked symbols from Engine (only symbols with orderbook data)
@@ -296,14 +329,14 @@ async function scanAllSymbols() {
 
       if (data.ok && data.symbols) {
         symbols = data.symbols;
-        console.log(`📊 Scanning ${symbols.length} tracked symbols (with orderbook data)...`);
+        console.log(`📊 Stage 1: Scanning ${symbols.length} tracked symbols...`);
       } else {
         console.log(`⚠️  Could not fetch tracked symbols, falling back to file scan`);
         // Fallback to file scan
         const files = fs.readdirSync(CONFIG.dataDir);
         const symbolFiles = files.filter(f => f.endsWith('_live.json'));
         symbols = symbolFiles.map(f => f.replace('_live.json', ''));
-        console.log(`📊 Scanning ${symbols.length} symbols from files...`);
+        console.log(`📊 Stage 1: Scanning ${symbols.length} symbols from files...`);
       }
     } catch (error) {
       console.error(`❌ Error fetching tracked symbols:`, error.message);
@@ -311,49 +344,170 @@ async function scanAllSymbols() {
       const files = fs.readdirSync(CONFIG.dataDir);
       const symbolFiles = files.filter(f => f.endsWith('_live.json'));
       symbols = symbolFiles.map(f => f.replace('_live.json', ''));
-      console.log(`📊 Scanning ${symbols.length} symbols from files (fallback)...`);
+      console.log(`📊 Stage 1: Scanning ${symbols.length} symbols from files (fallback)...`);
     }
 
-    // Debug: Sample a few symbols to see actual values
-    let debugSampleCount = 0;
-    const maxDebugSamples = 3;
-
-    // 🚀 PARALLEL SCANNING - Process symbols in batches for speed
-    const BATCH_SIZE = 50; // Scan 50 symbols in parallel
-    const signals = [];
+    // ===========================================================
+    // STAGE 1: COLLECT CANDIDATES (pre-filter with score)
+    // ===========================================================
+    const BATCH_SIZE = 50;
+    const candidates = [];
 
     for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
       const batch = symbols.slice(i, i + BATCH_SIZE);
-      const batchPromises = batch.map(symbol => scanSymbol(symbol));
+      const batchPromises = batch.map(async (symbol) => {
+        try {
+          // Load candle and live data
+          const candleData = loadCandleData(symbol);
+          if (!candleData || !candleData.candles || candleData.candles.length === 0) {
+            return null;
+          }
+
+          const latestCandle = candleData.candles[candleData.candles.length - 1];
+          const liveData = await fetchLiveMarketData(symbol);
+          if (!liveData) {
+            return null;
+          }
+
+          // Calculate pre-score (for hotlist ranking)
+          const score = calculateCandidateScore(latestCandle, liveData);
+
+          // Evaluate if passes basic filters
+          const evaluation = evaluateSignal(latestCandle, liveData);
+
+          // Only consider symbols that pass basic checks
+          if (evaluation.passed) {
+            const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
+            return {
+              symbol,
+              score,
+              direction,
+              candle: latestCandle,
+              liveData
+            };
+          }
+
+          return null;
+        } catch (error) {
+          return null;
+        }
+      });
+
       const batchResults = await Promise.all(batchPromises);
 
-      // Collect valid signals
-      for (const signal of batchResults) {
-        if (signal) {
-          signals.push(signal);
-        }
-      }
-
-      // Debug: Log sample data from first batch only
-      if (i === 0 && debugSampleCount < maxDebugSamples) {
-        for (const symbol of batch.slice(0, maxDebugSamples)) {
-          const candleData = loadCandleData(symbol);
-          const liveData = await fetchLiveMarketData(symbol);
-
-          if (candleData && liveData && candleData.candles.length > 0) {
-            const c = candleData.candles[candleData.candles.length - 1];
-            console.log(`\n📋 Sample: ${symbol}`);
-            console.log(`  Volatility: ${c.volatility != null ? c.volatility.toFixed(2) + '%' : 'N/A'} (need ${CONFIG.minVolatility}%)`);
-            console.log(`  Volume Spike: ${c.volumeSpike != null ? c.volumeSpike.toFixed(2) + 'x' : 'N/A'} (need ${CONFIG.minVolumeSpike}x)`);
-            console.log(`  Velocity: ${Math.abs(c.velocity || 0).toFixed(3)}%/min (need ${CONFIG.minVelocity}%/min)`);
-            console.log(`  Momentum (1m): ${Math.abs(c.priceChange1m || 0).toFixed(2)}% (need ${CONFIG.minPriceChange1m}%)`);
-            console.log(`  Imbalance: ${liveData.imbalance != null ? liveData.imbalance.toFixed(2) : 'N/A'} (need ${CONFIG.minImbalance})`);
-            console.log(`  Spread: ${liveData.spread != null ? liveData.spread.toFixed(3) + '%' : 'N/A'} (need <${CONFIG.maxSpread}%)`);
-            debugSampleCount++;
-          }
+      for (const candidate of batchResults) {
+        if (candidate) {
+          candidates.push(candidate);
         }
       }
     }
+
+    console.log(`✅ Stage 1 complete: ${candidates.length} candidates found`);
+
+    // ===========================================================
+    // STAGE 2: UPDATE HOT LIST (top 30 get trade WS)
+    // ===========================================================
+    if (candidates.length > 0) {
+      // Sort by score (highest first)
+      candidates.sort((a, b) => b.score - a.score);
+
+      // Take top 30 for hot list
+      const FLOW_SYMBOL_LIMIT = 30;
+      const hotSymbols = candidates.slice(0, FLOW_SYMBOL_LIMIT).map(c => c.symbol);
+
+      // Send to Engine API to update trade WS subscriptions
+      try {
+        const response = await fetch(`${CONFIG.engineApiUrl}/api/flow/hotlist`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols: hotSymbols })
+        });
+        const result = await response.json();
+
+        if (result.ok) {
+          console.log(`🔥 Stage 2 complete: Hotlist updated with ${hotSymbols.length} symbols`);
+          if (result.result.changed) {
+            console.log(`   Added: ${result.result.added.length}, Removed: ${result.result.removed.length}`);
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Stage 2 error: Failed to update hotlist:`, error.message);
+      }
+
+      // Wait 500ms for trade WS to connect and receive first messages
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // ===========================================================
+    // STAGE 3: GENERATE SIGNALS (with orderFlow validation)
+    // ===========================================================
+    const signals = [];
+
+    for (const candidate of candidates) {
+      const { symbol, direction, candle, liveData } = candidate;
+
+      // Update persistence tracker
+      const cycleCount = updateSignalPersistence(symbol, direction);
+
+      // Check persistence requirement
+      if (!isSignalPersistent(symbol)) {
+        continue;
+      }
+
+      // Calculate entry prices
+      const entryPrice = liveData.price || 0;
+      const bid = liveData.bid || entryPrice;
+      const ask = liveData.ask || entryPrice;
+      const entry = direction === 'LONG' ? ask : bid;
+
+      // Calculate TP/SL
+      const tp = direction === 'LONG'
+        ? ask * 1.0022
+        : bid * 0.9978;
+
+      const sl = direction === 'LONG'
+        ? bid * 0.9985
+        : ask * 1.0015;
+
+      // Calculate expected profit
+      const positionSize = 125;
+      const expectedProfit = Math.abs((tp - entry) / entry) * positionSize;
+
+      // Re-evaluate with current data (including orderFlow from hotlist)
+      const currentLiveData = await fetchLiveMarketData(symbol);
+      if (!currentLiveData) continue;
+
+      const evaluation = evaluateSignal(candle, currentLiveData);
+      if (!evaluation.passed) continue;
+
+      const signal = {
+        symbol,
+        direction,
+        confidence: evaluation.confidence,
+        timestamp: new Date().toISOString(),
+        entry,
+        tp,
+        sl,
+        expectedProfit,
+        candle: {
+          volatility: candle.volatility,
+          velocity: candle.velocity,
+          volumeSpike: candle.volumeSpike,
+          priceChange1m: candle.priceChange1m
+        },
+        live: {
+          price: currentLiveData.price,
+          imbalance: currentLiveData.imbalance,
+          spread: currentLiveData.spread,
+          orderFlowNet60s: currentLiveData.orderFlowNet60s
+        },
+        checks: evaluation.checks
+      };
+
+      signals.push(signal);
+    }
+
+    console.log(`✅ Stage 3 complete: ${signals.length} persistent signals generated`);
 
     // Log results
     if (signals.length > 0) {
@@ -362,7 +516,7 @@ async function scanAllSymbols() {
         console.log(`  ${s.symbol} ${s.direction} @ ${s.entry} (confidence: ${s.confidence}%)`);
         console.log(`    TP: ${s.tp} | SL: ${s.sl}`);
         console.log(`    Volatility: ${s.candle.volatility}% | Volume Spike: ${s.candle.volumeSpike}x`);
-        console.log(`    Imbalance: ${s.live.imbalance} | Spread: ${s.live.spread}%\n`);
+        console.log(`    Imbalance: ${s.live.imbalance} | OrderFlow: ${s.live.orderFlowNet60s}\n`);
       });
 
       // Save signals to file
