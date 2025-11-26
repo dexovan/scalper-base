@@ -152,6 +152,32 @@ const CONFIG = {
 };
 
 // ============================================================
+// LIVE DATA CACHE (reduces API spam)
+// ============================================================
+const liveDataCache = new Map(); // symbol -> { data, timestamp }
+const CACHE_TTL = 3000; // 3 seconds cache (fresh enough for scalping)
+
+function getCachedLiveData(symbol) {
+  const cached = liveDataCache.get(symbol);
+  if (!cached) return null;
+
+  const age = Date.now() - cached.timestamp;
+  if (age > CACHE_TTL) {
+    liveDataCache.delete(symbol);
+    return null;
+  }
+
+  return cached.data;
+}
+
+function setCachedLiveData(symbol, data) {
+  liveDataCache.set(symbol, {
+    data,
+    timestamp: Date.now()
+  });
+};
+
+// ============================================================
 // LOAD CANDLE DATA FROM JSON
 // ============================================================
 
@@ -195,10 +221,18 @@ function loadCandleData(symbol) {
 }
 
 // ============================================================
-// FETCH LIVE MARKET DATA FROM ENGINE (with retry + timeout)
+// FETCH LIVE MARKET DATA FROM ENGINE (with retry + timeout + CACHE)
 // ============================================================
 
-async function fetchLiveMarketData(symbol, retries = 3) {
+async function fetchLiveMarketData(symbol, retries = 3, useCache = true) {
+  // Check cache first (skip API call if data is fresh)
+  if (useCache) {
+    const cached = getCachedLiveData(symbol);
+    if (cached) {
+      return cached;
+    }
+  }
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const url = `${CONFIG.engineApiUrl}/api/live-market/${symbol}`;
@@ -234,6 +268,8 @@ async function fetchLiveMarketData(symbol, retries = 3) {
         return null;
       }
 
+      // Cache the result
+      setCachedLiveData(symbol, data.live);
       return data.live;
     } catch (error) {
       if (error.name === 'AbortError') {
@@ -679,8 +715,8 @@ async function fastTrackLoop() {
 
   for (const ft of fastTrackSymbols) {
     try {
-      // Quick check: only live data (no file I/O)
-      const liveData = await fetchLiveMarketData(ft.symbol);
+      // Quick check: use cached data (avoid API spam every 2s)
+      const liveData = await fetchLiveMarketData(ft.symbol, 3, true); // useCache=true
       if (!liveData) continue;
 
       ft.lastCheck = now;
@@ -809,6 +845,11 @@ async function scanAllSymbols() {
       // === BATCH API CALL (50 symbols at once) ===
       const liveDataMap = await fetchLiveMarketBatch(batch);
 
+      // Cache batch results (avoid duplicate fetching in Stage 3)
+      for (const [symbol, data] of Object.entries(liveDataMap)) {
+        setCachedLiveData(symbol, data);
+      }
+
       // Rate-limit: 100ms pause between batches (prevents Engine overload)
       if (i + BATCH_SIZE < symbols.length) {
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -925,8 +966,9 @@ async function scanAllSymbols() {
         continue;
       }
 
-      // Re-evaluate with current data (including orderFlow from hotlist)
-      const currentLiveData = await fetchLiveMarketData(symbol);
+      // Re-evaluate with CACHED data (already fetched in Stage 1 batch!)
+      // Only fetch fresh if cache expired (3s TTL)
+      const currentLiveData = await fetchLiveMarketData(symbol, 3, true); // useCache=true
       if (!currentLiveData) continue;
 
       const evaluation = evaluateSignal(candle, currentLiveData);
