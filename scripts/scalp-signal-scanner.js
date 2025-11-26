@@ -155,9 +155,9 @@ const CONFIG = {
 // ============================================================
 
 function loadCandleData(symbol) {
-  try {
-    const filePath = path.join(CONFIG.dataDir, `${symbol}_live.json`);
+  const filePath = path.join(CONFIG.dataDir, `${symbol}_live.json`);
 
+  try {
     if (!fs.existsSync(filePath)) {
       return null;
     }
@@ -174,9 +174,21 @@ function loadCandleData(symbol) {
 
     return data;
   } catch (error) {
-    console.error(`❌ Error loading candles for ${symbol}:`, error.message);
-    console.error(`   File: ${path.join(CONFIG.dataDir, `${symbol}_live.json`)}`);
-    console.error(`   This file may be corrupted or incomplete`);
+    // Handle corrupted JSON files
+    if (error instanceof SyntaxError) {
+      console.error(`❌ [DATA] Corrupted JSON for ${symbol}: ${error.message}`);
+      console.error(`   File will be deleted: ${filePath}`);
+
+      // Delete corrupted file so it can be regenerated
+      try {
+        fs.unlinkSync(filePath);
+        console.log(`✅ [DATA] Deleted corrupted file: ${symbol}_live.json`);
+      } catch (deleteError) {
+        console.error(`❌ [DATA] Failed to delete corrupted file: ${deleteError.message}`);
+      }
+    } else {
+      console.error(`❌ Error loading candles for ${symbol}:`, error.message);
+    }
     return null;
   }
 }
