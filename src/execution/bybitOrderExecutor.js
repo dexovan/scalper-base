@@ -927,31 +927,61 @@ export async function executeTrade(signal) {
     const pullbackCheck = await checkPricePullback(signal.symbol, signal.direction, signal.entry);
     if (!pullbackCheck.passed) {
       console.log(`❌ [EXECUTOR] Trade rejected: ${pullbackCheck.reason}`);
-      return { success: false, reason: pullbackCheck.reason };
+
+      return {
+        success: false,
+        mode: 'REJECTED_PULLBACK',
+        symbol: signal.symbol,
+        direction: signal.direction,
+        reason: pullbackCheck.reason,
+        tickSize: ctx.tickSize || null
+      };
     }
 
     // Phase 2: Momentum recheck (BALANCED MODE)
     const momentumCheck = await recheckMomentum(signal.symbol, signal.direction, signal.initialMomentum || 0);
     if (!momentumCheck.passed) {
       console.log(`❌ [EXECUTOR] Trade rejected: ${momentumCheck.reason}`);
-      return { success: false, reason: momentumCheck.reason };
+
+      return {
+        success: false,
+        mode: 'REJECTED_MOMENTUM',
+        symbol: signal.symbol,
+        direction: signal.direction,
+        reason: momentumCheck.reason,
+        tickSize: ctx.tickSize || null
+      };
     }
 
     // Execute based on mode
-    let result;
+    let rawResult;
     if (EXECUTION_CONFIG.entryMode === 'MAKER_FIRST_BALANCED' || EXECUTION_CONFIG.entryMode === 'MAKER_FIRST') {
-      result = await executeTradeMakerFirst(ctx);
+      rawResult = await executeTradeMakerFirst(ctx);
     } else {
-      result = await executeTradeMarketOnly(ctx);
+      rawResult = await executeTradeMarketOnly(ctx);
     }
 
     const elapsed = Date.now() - startTime;
     console.log(`✅ [EXECUTOR] Trade completed in ${elapsed}ms`);
-    console.log(`   Mode: ${result.mode}`);
-    console.log(`   Success: ${result.success}`);
+    console.log(`   Mode: ${rawResult.mode}`);
+    console.log(`   Success: ${rawResult.success}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-    return result;
+    // FINAL, NORMALIZED RESPONSE
+    return {
+      success: rawResult.success,
+      mode: rawResult.mode,
+      symbol: ctx.symbol,
+      direction: ctx.direction,
+      entry: rawResult.entry ?? ctx.entry,
+      tp: rawResult.tp ?? ctx.tp,
+      sl: rawResult.sl ?? ctx.sl,
+      orderId: rawResult.orderId ?? null,
+      leverage: ctx.leverage,
+      positionSize: ctx.positionSize,
+      tickSize: ctx.tickSize || null,
+      reason: rawResult.reason || null
+    };
 
   } catch (err) {
     const elapsed = Date.now() - startTime;
@@ -960,6 +990,17 @@ export async function executeTrade(signal) {
 
     return {
       success: false,
+      mode: 'ERROR',
+      symbol: signal.symbol,
+      direction: signal.direction,
+      entry: signal.entry ?? null,
+      tp: signal.tp ?? null,
+      sl: signal.sl ?? null,
+      orderId: null,
+      leverage: EXECUTION_CONFIG.leverage,
+      positionSize: EXECUTION_CONFIG.marginPerTrade * EXECUTION_CONFIG.leverage,
+      tickSize: null,
+      reason: err.message,
       error: err.message
     };
   }
