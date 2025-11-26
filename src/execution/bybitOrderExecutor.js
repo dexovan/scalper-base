@@ -148,10 +148,13 @@ async function getValidQuantity(symbol, usdValue, price) {
     // Calculate raw quantity
     let qty = usdValue / price;
 
-    // Round down to qtyStep precision
+    // Round down to qtyStep precision (preserve trailing zeros for Bybit API)
     const precision = qtyStep.toString().split('.')[1]?.length || 0;
     qty = Math.floor(qty / qtyStep) * qtyStep;
-    qty = parseFloat(qty.toFixed(precision));
+
+    // Format with fixed precision to preserve trailing zeros
+    const qtyString = qty.toFixed(precision);
+    qty = parseFloat(qtyString);
 
     // Clamp to min/max
     if (qty < minOrderQty) {
