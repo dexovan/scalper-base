@@ -827,9 +827,11 @@ export function startMonitorApiServer(port = 8090) {
   app.get("/api/live-market/:symbol", async (req, res) => {
     try {
       const { symbol } = req.params;
+      console.log(`[LIVE-MARKET] Request for ${symbol} - START`);
 
       // 1. Get ticker data (price, bid, ask)
       const ticker = latestTickers.get(symbol);
+      console.log(`[LIVE-MARKET] ${symbol} - Ticker:`, ticker ? 'EXISTS' : 'MISSING');
       if (!ticker) {
         return res.json({
           ok: false,
@@ -840,7 +842,9 @@ export function startMonitorApiServer(port = 8090) {
       }
 
       // 2. Get orderbook summary (imbalance, spread, walls)
+      console.log(`[LIVE-MARKET] ${symbol} - Getting orderbook...`);
       const orderbook = OrderbookManager.getOrderbookSummary(symbol, 50);
+      console.log(`[LIVE-MARKET] ${symbol} - Orderbook:`, orderbook ? 'EXISTS' : 'MISSING');
 
       // 3. Calculate spread - PRIORITIZE orderbook over ticker for accurate bid/ask
       let bid = ticker.bid || ticker.price || 0;
