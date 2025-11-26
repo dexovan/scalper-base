@@ -11,17 +11,17 @@ import fetch from 'node-fetch';
 // ============================================================
 
 const EXECUTION_CONFIG = {
-  enabled: false,  // ⚠️ DRY-RUN MODE by default (set true for live trading)
+  enabled: true,  // 🔥 LIVE TRADING MODE
   apiKey: process.env.BYBIT_API_KEY || '',
   apiSecret: process.env.BYBIT_API_SECRET || '',
   baseUrl: 'https://api.bybit.com',  // Mainnet
   // baseUrl: 'https://api-testnet.bybit.com',  // Testnet
 
   // Risk management
-  maxPositions: 3,           // Max concurrent positions
+  maxPositions: 1,           // Max 1 concurrent position (start conservative)
   minBalance: 100,           // Min USDT balance to trade
   defaultLeverage: 5,        // 5x leverage
-  defaultMargin: 25,         // $25 per trade
+  defaultMargin: 25,         // $25 per trade (~$125 notional)
 
   // Order settings
   orderType: 'Market',       // Market orders for instant fill
