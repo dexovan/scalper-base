@@ -150,6 +150,61 @@ async function setTakeProfitStopLoss(symbol, side, positionIdx, takeProfit, stop
 }
 
 // ============================================================
+// GET INSTRUMENT INFO (Price & Qty Precision)
+// ============================================================
+
+async function getInstrumentInfo(symbol) {
+  try {
+    const url = `${EXECUTION_CONFIG.baseUrl}/v5/market/instruments-info?category=linear&symbol=${symbol}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.retCode !== 0 || !data.result?.list?.[0]) {
+      throw new Error(`Instrument info failed: ${data.retMsg}`);
+    }
+
+    const info = data.result.list[0];
+    return {
+      tickSize: parseFloat(info.priceFilter.tickSize),
+      qtyStep: parseFloat(info.lotSizeFilter.qtyStep),
+      minOrderQty: parseFloat(info.lotSizeFilter.minOrderQty),
+      maxOrderQty: parseFloat(info.lotSizeFilter.maxOrderQty)
+    };
+  } catch (error) {
+    console.error(`❌ [BYBIT] Instrument info error:`, error.message);
+    // Fallback to conservative defaults
+    return {
+      tickSize: 0.01,
+      qtyStep: 0.001,
+      minOrderQty: 0.001,
+      maxOrderQty: 10000
+    };
+  }
+}
+
+// ============================================================
+// ROUND PRICE TO TICK SIZE
+// ============================================================
+
+function roundToTickSize(price, tickSize) {
+  const rounded = Math.round(price / tickSize) * tickSize;
+  // Format with correct decimals to match tickSize
+  const decimals = tickSize.toString().split('.')[1]?.length || 0;
+  return parseFloat(rounded.toFixed(decimals));
+}
+
+// ============================================================
+// ROUND QTY TO QTY STEP
+// ============================================================
+
+function roundToQtyStep(qty, qtyStep) {
+  const rounded = Math.floor(qty / qtyStep) * qtyStep;
+  // Format with correct decimals to match qtyStep
+  const decimals = qtyStep.toString().split('.')[1]?.length || 0;
+  return parseFloat(rounded.toFixed(decimals));
+}
+
+// ============================================================
 // GET WALLET BALANCE
 // ============================================================
 
@@ -215,12 +270,30 @@ export async function executeTrade(signal) {
 
   // ===== CALCULATE POSITION SIZE =====
 
+  // Get instrument precision requirements
+  const instrumentInfo = await getInstrumentInfo(symbol);
+  console.log(`📊 [BYBIT] Instrument info: tickSize=${instrumentInfo.tickSize}, qtyStep=${instrumentInfo.qtyStep}`);
+
   const marginUsdt = EXECUTION_CONFIG.defaultMargin;
   const leverage = EXECUTION_CONFIG.defaultLeverage;
   const positionValue = marginUsdt * leverage; // $25 × 5 = $125
-  const qty = (positionValue / entry).toFixed(3); // Round to 3 decimals
+
+  // Calculate qty and round to qtyStep
+  const qtyRaw = positionValue / entry;
+  const qty = roundToQtyStep(qtyRaw, instrumentInfo.qtyStep);
+
+  // Validate qty limits
+  if (qty < instrumentInfo.minOrderQty) {
+    console.log(`⚠️  [EXECUTOR] Order qty too small: ${qty} < ${instrumentInfo.minOrderQty}`);
+    return { success: false, error: 'Order qty below minimum' };
+  }
+
+  // Round TP/SL to tickSize
+  const tpRounded = roundToTickSize(tp, instrumentInfo.tickSize);
+  const slRounded = roundToTickSize(sl, instrumentInfo.tickSize);
 
   console.log(`💰 [EXECUTOR] Position size: ${qty} contracts ($${positionValue} notional)`);
+  console.log(`🎯 [EXECUTOR] TP: ${tpRounded} | SL: ${slRounded} (rounded to tickSize)`);
 
   // ===== PLACE MARKET ORDER =====
 
@@ -234,13 +307,13 @@ export async function executeTrade(signal) {
       side,
       qty,
       entry,
-      tp,
-      sl,
+      tp: tpRounded,
+      sl: slRounded,
       timestamp: Date.now()
     });
 
-    // Set TP/SL
-    await setTakeProfitStopLoss(symbol, side, 0, tp, sl);
+    // Set TP/SL (use rounded values)
+    await setTakeProfitStopLoss(symbol, side, 0, tpRounded, slRounded);
 
     console.log(`✅ [EXECUTOR] Trade executed successfully!`);
     console.log(`   Order ID: ${orderResult.orderId}`);
