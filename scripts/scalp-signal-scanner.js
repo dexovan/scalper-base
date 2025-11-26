@@ -195,37 +195,63 @@ function loadCandleData(symbol) {
 }
 
 // ============================================================
-// FETCH LIVE MARKET DATA FROM ENGINE
+// FETCH LIVE MARKET DATA FROM ENGINE (with retry + timeout)
 // ============================================================
 
-async function fetchLiveMarketData(symbol) {
-  try {
-    const url = `${CONFIG.engineApiUrl}/api/live-market/${symbol}`;
-    const response = await fetch(url);
+async function fetchLiveMarketData(symbol, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const url = `${CONFIG.engineApiUrl}/api/live-market/${symbol}`;
 
-    // Check if response is valid
-    if (!response.ok) {
-      console.warn(`⚠️  [API] HTTP ${response.status} for ${symbol}`);
-      return null;
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      // Check if response is valid
+      if (!response.ok) {
+        if (attempt === retries) {
+          console.warn(`⚠️  [API] HTTP ${response.status} for ${symbol} (after ${retries} attempts)`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+        continue;
+      }
+
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        if (attempt === retries) {
+          console.warn(`⚠️  [API] Empty response for ${symbol} (after ${retries} attempts)`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
+      }
+
+      const data = JSON.parse(text);
+
+      if (!data.ok) {
+        return null;
+      }
+
+      return data.live;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        if (attempt === retries) {
+          console.error(`❌ Timeout fetching live market for ${symbol} (after ${retries} attempts)`);
+        }
+      } else if (attempt === retries) {
+        console.error(`❌ Error fetching live market for ${symbol} (after ${retries} attempts):`, error.message);
+      }
+
+      // Wait before retry (exponential backoff)
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+      }
     }
-
-    const text = await response.text();
-    if (!text || text.trim() === '') {
-      console.warn(`⚠️  [API] Empty response for ${symbol}`);
-      return null;
-    }
-
-    const data = JSON.parse(text);
-
-    if (!data.ok) {
-      return null;
-    }
-
-    return data.live;
-  } catch (error) {
-    console.error(`❌ Error fetching live market for ${symbol}:`, error.message);
-    return null;
   }
+
+  return null; // All retries failed
 }
 
 // ============================================================
@@ -562,12 +588,18 @@ async function attemptExecution(symbol, signalState, liveData) {
   console.log(`   Initial Momentum: ${(executionRequest.initialMomentum * 100).toFixed(1)}% (from signalState)`);
 
   try {
+    // Add timeout to prevent hanging on execution API
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout for execution
+
     const response = await fetch(FAST_TRACK_CONFIG.executionApiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(executionRequest)
+      body: JSON.stringify(executionRequest),
+      signal: controller.signal
     });
 
+    clearTimeout(timeout);
     const result = await response.json();
 
     if (result.ok) {
