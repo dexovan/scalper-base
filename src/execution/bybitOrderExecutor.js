@@ -19,7 +19,7 @@ const EXECUTION_CONFIG = {
 
   // Risk management
   maxPositions: 1,           // Max 1 concurrent position (start conservative)
-  minBalance: 100,           // Min USDT balance to trade
+  minBalance: 20,            // Min USDT balance to trade (lowered for testing)
   defaultLeverage: 5,        // 5x leverage
   defaultMargin: 25,         // $25 per trade (~$125 notional)
 
@@ -210,28 +210,50 @@ function roundToQtyStep(qty, qtyStep) {
 
 async function getWalletBalance() {
   try {
-    const response = await bybitRequest('/v5/account/wallet-balance', 'GET', {
+    // Try UNIFIED account first
+    let response = await bybitRequest('/v5/account/wallet-balance', 'GET', {
       accountType: 'UNIFIED'
     });
 
+    console.log('📊 [BYBIT] wallet-balance UNIFIED raw response:', JSON.stringify(response, null, 2));
+
     if (response.retCode !== 0) {
-      console.error(`❌ [BYBIT] Balance API error: ${response.retMsg} (code: ${response.retCode})`);
-      throw new Error(`Balance check failed: ${response.retMsg}`);
+      console.warn(`⚠️  [BYBIT] UNIFIED balance error: ${response.retMsg} (code: ${response.retCode})`);
+      console.warn(`⚠️  [BYBIT] Trying CONTRACT account type...`);
+
+      // Fallback to CONTRACT account
+      response = await bybitRequest('/v5/account/wallet-balance', 'GET', {
+        accountType: 'CONTRACT'
+      });
+
+      console.log('📊 [BYBIT] wallet-balance CONTRACT raw response:', JSON.stringify(response, null, 2));
+
+      if (response.retCode !== 0) {
+        throw new Error(`Both UNIFIED and CONTRACT balance failed: ${response.retMsg} (code: ${response.retCode})`);
+      }
     }
 
-    const usdtCoin = response.result.list[0]?.coin?.find(c => c.coin === 'USDT');
-    const balance = parseFloat(usdtCoin?.walletBalance || 0);
+    // Extract USDT balance from all accounts in list
+    const list = response.result?.list || [];
+    let balance = 0;
 
-    console.log(`✅ [BYBIT] Balance retrieved: $${balance.toFixed(2)} USDT`);
+    for (const acc of list) {
+      const usdtCoin = acc.coin?.find(c => c.coin === 'USDT');
+      if (usdtCoin) {
+        const walletBal = parseFloat(usdtCoin.walletBalance || 0);
+        balance += walletBal;
+        console.log(`   → Found USDT: $${walletBal.toFixed(2)} in account`);
+      }
+    }
+
+    console.log(`✅ [BYBIT] Total USDT balance: $${balance.toFixed(2)}`);
     return balance;
   } catch (error) {
     console.error(`❌ [BYBIT] Balance check error:`, error.message);
-    console.error(`❌ [BYBIT] This might be an API credentials or network issue`);
+    console.error(`❌ [BYBIT] This might be an API credentials or permission issue`);
     return 0;
   }
-}
-
-// ============================================================
+}// ============================================================
 // EXECUTE TRADE (Main Entry Point)
 // ============================================================
 
