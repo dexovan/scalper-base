@@ -55,7 +55,7 @@ const EXECUTION_CONFIG = {
   // baseUrl: 'https://api-testnet.bybit.com',  // Testnet
 
   // Risk management
-  maxPositions: 1,           // Max 1 concurrent position (start conservative)
+  maxPositions: 3,           // Max 3 concurrent positions (increased for scalping)
   minBalance: 20,            // Min USDT balance to trade (lowered for testing)
   defaultLeverage: 5,        // 5x leverage
   defaultMargin: 25,         // $25 per trade (~$125 notional)
@@ -476,23 +476,64 @@ export async function closePosition(symbol) {
 }
 
 // ============================================================
+// SYNC POSITIONS WITH BYBIT (Check actual open positions)
+// ============================================================
+
+async function syncPositionsWithBybit() {
+  try {
+    const response = await bybitRequest('/v5/position/list', 'GET', {
+      category: 'linear',
+      settleCoin: 'USDT'
+    });
+
+    if (response.retCode !== 0) {
+      console.error(`⚠️  [SYNC] Failed to fetch positions: ${response.retMsg}`);
+      return;
+    }
+
+    const openPositions = response.result?.list || [];
+    const openSymbols = new Set(
+      openPositions
+        .filter(p => parseFloat(p.size) > 0)
+        .map(p => p.symbol)
+    );
+
+    // Remove closed positions from local tracker
+    for (const [symbol] of activePositions.entries()) {
+      if (!openSymbols.has(symbol)) {
+        console.log(`🧹 [SYNC] Position closed on Bybit: ${symbol} - removing from tracker`);
+        activePositions.delete(symbol);
+      }
+    }
+
+    console.log(`✅ [SYNC] Position sync complete: ${activePositions.size} active, ${openSymbols.size} on Bybit`);
+
+  } catch (error) {
+    console.error(`❌ [SYNC] Position sync error:`, error.message);
+  }
+}
+
+// ============================================================
 // CLEANUP OLD POSITIONS (if TP/SL hit but not tracked)
 // ============================================================
 
 export function cleanupStalePositions() {
   const now = Date.now();
-  const maxAge = 3600000; // 1 hour
+  const maxAge = 600000; // 10 minutes (reduced from 1 hour)
 
   for (const [symbol, pos] of activePositions.entries()) {
     if (now - pos.timestamp > maxAge) {
-      console.log(`🧹 [EXECUTOR] Removing stale position: ${symbol}`);
+      console.log(`🧹 [EXECUTOR] Removing stale position: ${symbol} (${Math.floor((now - pos.timestamp) / 60000)}min old)`);
       activePositions.delete(symbol);
     }
   }
 }
 
-// Cleanup every 5 minutes
-setInterval(cleanupStalePositions, 300000);
+// Sync with Bybit every 30 seconds
+setInterval(syncPositionsWithBybit, 30000);
+
+// Cleanup stale positions every 2 minutes
+setInterval(cleanupStalePositions, 120000);
 
 export default {
   executeTrade,
