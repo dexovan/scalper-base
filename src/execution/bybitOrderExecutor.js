@@ -8,6 +8,7 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import * as positionTracker from '../risk/positionTracker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -414,6 +415,18 @@ export async function executeTrade(signal) {
     console.log(`   Expected: ${direction === 'LONG' ? `Price rises to ${tpRounded}` : `Price falls to ${tpRounded}`}`);
     console.log(`📊 [EXECUTOR] Active positions: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions}`);
 
+    // Notify positionTracker for dashboard
+    positionTracker.onNewPositionOpened({
+      symbol,
+      side: direction,  // "LONG" or "SHORT"
+      entryPrice: entry,
+      qty,
+      leverage: EXECUTION_CONFIG.defaultLeverage,
+      stopLossPrice: slRounded,
+      takeProfit1Price: tpRounded,
+      takeProfit2Price: null
+    });
+
     // Trigger immediate sync to update position status
     setTimeout(() => syncPositionsWithBybit(), 2000);
 
@@ -512,9 +525,18 @@ async function syncPositionsWithBybit() {
 
     // Remove closed positions from local tracker
     let removed = 0;
-    for (const [symbol] of activePositions.entries()) {
+    for (const [symbol, pos] of activePositions.entries()) {
       if (!openSymbols.has(symbol)) {
         console.log(`🧹 [SYNC] Position closed on Bybit: ${symbol} - removing from tracker`);
+
+        // Notify positionTracker that position closed
+        positionTracker.onPositionClosed({
+          symbol,
+          side: pos.side === 'Buy' ? 'LONG' : 'SHORT',
+          closedAt: new Date().toISOString(),
+          reason: 'TP/SL triggered or manually closed'
+        });
+
         activePositions.delete(symbol);
         removed++;
       }
