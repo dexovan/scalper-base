@@ -166,6 +166,30 @@ async function startEngine() {
         onEvent: (msg) => {
             wsMetrics.wsMarkMessage();
 
+            // 🚀 EMIT EVENTS TO publicEmitter FOR monitorApi.js
+            if (msg.topic) {
+                const [channelType, symbol] = msg.topic.split(".");
+
+                if (channelType === "tickers" && msg.data) {
+                    publicEmitter.emit("event", {
+                        type: "ticker",
+                        symbol,
+                        payload: msg.data,
+                        timestamp: new Date().toISOString()
+                    });
+                } else if (channelType === "publicTrade" && msg.data) {
+                    const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
+                    for (const trade of trades) {
+                        publicEmitter.emit("event", {
+                            type: "trade",
+                            symbol,
+                            payload: trade,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                }
+            }
+
             // OPTIONAL DEBUG
             // console.log("[METRICS-WS] EVENT:", msg.topic);
         }
