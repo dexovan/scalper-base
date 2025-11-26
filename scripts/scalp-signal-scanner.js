@@ -16,6 +16,7 @@ import {
   getEntryZoneDisplay,
   CONFIG as ENTRY_ZONE_CONFIG
 } from './utils/entryZoneOptimizer.js';
+import { runAllSafetyChecks } from './utils/safetyChecks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -449,6 +450,33 @@ async function attemptExecution(symbol, signalState, liveData) {
     console.log(`⚠️  [EXECUTE] ${symbol} - Max execution attempts reached (${attempts}/${FAST_TRACK_CONFIG.maxExecutionAttempts})`);
     return;
   }
+
+  // ===== RUN SAFETY CHECKS =====
+  console.log(`\n🔍 [SAFETY] Running pre-execution checks for ${symbol}...`);
+
+  const safetyResult = runAllSafetyChecks(
+    {
+      symbol,
+      entry: signalState.entryZone.ideal,
+      tp: signalState.tp,
+      sl: signalState.sl
+    },
+    liveData,
+    [] // activePositions - will be fetched from API
+  );
+
+  if (!safetyResult.passed) {
+    console.log(`❌ [SAFETY FAILED] ${symbol} - ${safetyResult.summary}`);
+    safetyResult.failed.forEach(f => {
+      console.log(`   ✗ ${f.check}: ${f.reason}`);
+    });
+
+    // Increment attempt counter
+    signalState.executionAttempts = attempts + 1;
+    return;
+  }
+
+  console.log(`✅ [SAFETY PASSED] ${symbol} - All checks OK`);
 
   // Prepare execution request
   const executionRequest = {
