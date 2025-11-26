@@ -60,11 +60,11 @@
   autoCloseTimeout: 45000
 }; */
 
-//model 3 agresivan
+//model 3 agresivan (ADJUSTED FOR BYBIT FEES)
 
 const SAFETY_CONFIG = {
-  minProfitPercent: 0.08,
-  minFeesCovered: 0.04,
+  minProfitPercent: 0.20,    // Min 0.20% TP (covers 0.11% fees + 0.09% net profit)
+  minFeesCovered: 0.11,      // Bybit round-trip fee (0.055% × 2)
   maxHeat: -30000,
   maxVolatility: 4.0,
   minLiquidity: 1000,
