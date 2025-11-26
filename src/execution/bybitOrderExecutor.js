@@ -147,13 +147,14 @@ async function setLeverage(symbol, leverage) {
 
   const response = await bybitRequest('/v5/position/set-leverage', 'POST', params);
 
+  console.log(`📊 [BYBIT] Leverage API response:`, JSON.stringify(response, null, 2));
+
   if (response.retCode !== 0) {
-    console.warn(`⚠️  [BYBIT] Leverage set failed: ${response.retMsg} (code: ${response.retCode})`);
-    console.warn(`   Continuing with current leverage setting...`);
-    return null;
+    console.error(`❌ [BYBIT] Leverage set FAILED: ${response.retMsg} (code: ${response.retCode})`);
+    throw new Error(`Cannot set leverage to ${leverage}x: ${response.retMsg}`);
   }
 
-  console.log(`✅ [BYBIT] Leverage set to ${leverage}x`);
+  console.log(`✅ [BYBIT] Leverage successfully set to ${leverage}x`);
   return response.result;
 }
 
@@ -189,7 +190,7 @@ async function placeMarketOrder(symbol, side, qty) {
 // SET TP/SL (Trading Stop)
 // ============================================================
 
-async function setTakeProfitStopLoss(symbol, side, positionIdx, takeProfit, stopLoss) {
+async function setTakeProfitStopLoss(symbol, side, positionIdx, takeProfit, stopLoss, maxRetries = 3) {
   const params = {
     category: 'linear',
     symbol,
@@ -200,19 +201,35 @@ async function setTakeProfitStopLoss(symbol, side, positionIdx, takeProfit, stop
     positionIdx: positionIdx || 0  // 0 = one-way mode
   };
 
-  console.log(`📤 [BYBIT] Setting TP/SL: ${symbol} TP=${takeProfit} SL=${stopLoss}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`📤 [BYBIT] Setting TP/SL (attempt ${attempt}/${maxRetries}): ${symbol} TP=${takeProfit} SL=${stopLoss}`);
 
-  const response = await bybitRequest('/v5/position/trading-stop', 'POST', params);
+    try {
+      const response = await bybitRequest('/v5/position/trading-stop', 'POST', params);
 
-  console.log(`📊 [BYBIT] TP/SL Response:`, JSON.stringify(response, null, 2));
+      console.log(`📊 [BYBIT] TP/SL Response (attempt ${attempt}):`, JSON.stringify(response, null, 2));
 
-  if (response.retCode !== 0) {
-    console.error(`⚠️  [BYBIT] TP/SL failed: ${response.retMsg} (code: ${response.retCode})`);
-    return null;
+      if (response.retCode === 0) {
+        console.log(`✅ [BYBIT] TP/SL set successfully on attempt ${attempt}`);
+        return response.result;
+      }
+
+      console.error(`⚠️  [BYBIT] TP/SL failed (attempt ${attempt}): ${response.retMsg} (code: ${response.retCode})`);
+
+      if (attempt < maxRetries) {
+        console.log(`   Retrying in 1 second...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (error) {
+      console.error(`❌ [BYBIT] TP/SL request error (attempt ${attempt}):`, error.message);
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
   }
 
-  console.log(`✅ [BYBIT] TP/SL set successfully`);
-  return response.result;
+  console.error(`❌ [BYBIT] TP/SL FAILED after ${maxRetries} attempts!`);
+  return null;
 }
 
 // ============================================================
@@ -409,7 +426,15 @@ export async function executeTrade(signal) {
 
   // ===== SET LEVERAGE BEFORE ORDER =====
 
-  await setLeverage(symbol, leverage);
+  try {
+    await setLeverage(symbol, leverage);
+  } catch (error) {
+    console.error(`❌ [EXECUTOR] Cannot proceed without setting leverage!`);
+    return {
+      success: false,
+      error: `Leverage setup failed: ${error.message}`
+    };
+  }
 
   // ===== PLACE MARKET ORDER =====
 
@@ -417,9 +442,7 @@ export async function executeTrade(signal) {
     const side = direction === 'LONG' ? 'Buy' : 'Sell';
     console.log(`📊 [EXECUTOR] Direction: ${direction} → Bybit side: ${side}`);
 
-    const orderResult = await placeMarketOrder(symbol, side, qty);
-
-    // Track position
+    const orderResult = await placeMarketOrder(symbol, side, qty);    // Track position
     activePositions.set(symbol, {
       orderId: orderResult.orderId,
       side,
@@ -430,13 +453,29 @@ export async function executeTrade(signal) {
       timestamp: Date.now()
     });
 
-    // Set TP/SL (use rounded values)
+    // Set TP/SL (use rounded values) - CRITICAL: Must succeed or close position!
     console.log(`🎯 [EXECUTOR] Setting TP/SL: TP=${tpRounded} (${direction === 'LONG' ? 'above' : 'below'} entry), SL=${slRounded} (${direction === 'LONG' ? 'below' : 'above'} entry)`);
     const tpSlResult = await setTakeProfitStopLoss(symbol, side, 0, tpRounded, slRounded);
 
     if (!tpSlResult) {
-      console.error(`⚠️  [EXECUTOR] WARNING: TP/SL may not be set! Manual intervention required.`);
-      console.error(`   Order placed but risk management incomplete!`);
+      console.error(`🚨 [EXECUTOR] CRITICAL: TP/SL failed after retries!`);
+      console.error(`   FORCE CLOSING POSITION to prevent unprotected risk!`);
+
+      // Close position immediately
+      try {
+        const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
+        await placeMarketOrder(symbol, closeSide, qty);
+        activePositions.delete(symbol);
+        console.log(`🔴 [EXECUTOR] Position force-closed due to TP/SL failure`);
+      } catch (closeError) {
+        console.error(`❌ [EXECUTOR] FAILED TO CLOSE POSITION:`, closeError.message);
+        console.error(`   ⚠️  MANUAL INTERVENTION REQUIRED FOR ${symbol}!`);
+      }
+
+      return {
+        success: false,
+        error: 'TP/SL setup failed - position was closed for safety'
+      };
     }
 
     console.log(`✅ [EXECUTOR] Trade executed successfully!`);
