@@ -637,9 +637,9 @@ async function attemptExecution(symbol, signalState, liveData) {
 
   try {
     // Add timeout to prevent hanging on execution API
-    // 30s timeout: execution involves multiple Bybit API calls (leverage, quantity check, order, TP/SL)
+    // 10s timeout: execution should be fast, don't block Stage 1 refresh
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout for execution
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout for execution
 
     const response = await fetch(FAST_TRACK_CONFIG.executionApiUrl, {
       method: 'POST',
