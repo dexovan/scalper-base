@@ -1,90 +1,90 @@
 // ============================================================
-// PRICE FORMATTER - Bybit-style decimal precision
-// Automatically formats prices with correct decimal places
+// PRICE FORMATTER - Bybit TickSize Accurate Version
+// Formats all prices EXACTLY per Bybit market specifications
 // ============================================================
 
 /**
- * Determines correct decimal places based on price magnitude
- * Matches Bybit's display standards
+ * Calculates number of decimals from tickSize
+ * Example:
+ * tickSize = 0.0001 → returns 4
+ * tickSize = 0.1     → returns 1
  */
-export function getPrecisionForPrice(price) {
-  if (!price || price === 0) return 2;
-
-  const absPrice = Math.abs(price);
-
-  // High-value assets (BTC, ETH range)
-  if (absPrice >= 1000) return 2;        // $10,000+ → 12345.67
-  if (absPrice >= 100) return 2;         // $100-999 → 123.45
-  if (absPrice >= 10) return 3;          // $10-99 → 12.345
-  if (absPrice >= 1) return 4;           // $1-9 → 1.2345
-
-  // Mid-range altcoins
-  if (absPrice >= 0.1) return 4;         // $0.1-0.99 → 0.1234
-  if (absPrice >= 0.01) return 5;        // $0.01-0.099 → 0.01234
-  if (absPrice >= 0.001) return 5;       // $0.001-0.009 → 0.00123
-
-  // Micro-cap altcoins
-  if (absPrice >= 0.0001) return 6;      // $0.0001-0.0009 → 0.000123
-  if (absPrice >= 0.00001) return 7;     // $0.00001-0.00009 → 0.0000123
-  if (absPrice >= 0.000001) return 8;    // $0.000001-0.000009 → 0.00000123
-
-  // Ultra low-cap (meme coins)
-  return 10;                              // < $0.000001 → 0.0000000123
+export function getDecimalsFromTickSize(tickSize) {
+  const s = tickSize.toString();
+  const dot = s.indexOf('.');
+  if (dot === -1) return 0;
+  return s.length - dot - 1;
 }
 
 /**
- * Formats price with correct Bybit-style precision
- * Returns number with exact precision (no floating point artifacts)
+ * Rounds price to valid Bybit tickSize
  */
-export function formatPrice(price) {
+export function roundPriceToTick(price, tickSize) {
+  return Math.round(price / tickSize) * tickSize;
+}
+
+/**
+ * Formats price EXACTLY how Bybit expects it:
+ * - properly rounded to tickSize
+ * - returned as string with correct decimal places
+ */
+export function formatPriceByTick(price, tickSize) {
   if (price === null || price === undefined) return 'N/A';
+  if (!tickSize) return String(price);
 
-  const precision = getPrecisionForPrice(price);
-  // Use Number() to avoid parseFloat floating point artifacts
-  return Number(price.toFixed(precision));
+  const decimals = getDecimalsFromTickSize(tickSize);
+  const rounded = roundPriceToTick(price, tickSize);
+  return rounded.toFixed(decimals);   // STRING → ideal for JSON body
 }
 
 /**
- * Formats price as string with trailing zeros (for display)
+ * Formats price for internal numeric usage
+ * Rounded to tick size, returned as number
  */
-export function formatPriceString(price) {
-  if (price === null || price === undefined) return 'N/A';
+export function formatPriceNumber(price, tickSize) {
+  if (price === null || price === undefined) return null;
+  if (!tickSize) return Number(price);
 
-  const precision = getPrecisionForPrice(price);
-  return price.toFixed(precision);
+  const decimals = getDecimalsFromTickSize(tickSize);
+  const rounded = roundPriceToTick(price, tickSize);
+  return Number(rounded.toFixed(decimals));
 }
 
 /**
- * Formats entry zone with consistent precision
+ * Formats entire entry zone
  */
-export function formatEntryZone(entryZone) {
+export function formatEntryZone(entryZone, tickSize) {
   if (!entryZone) return null;
 
-  const precision = getPrecisionForPrice(entryZone.ideal);
-
   return {
-    min: parseFloat(entryZone.min.toFixed(precision)),
-    ideal: parseFloat(entryZone.ideal.toFixed(precision)),
-    max: parseFloat(entryZone.max.toFixed(precision))
+    min: formatPriceNumber(entryZone.min, tickSize),
+    ideal: formatPriceNumber(entryZone.ideal, tickSize),
+    max: formatPriceNumber(entryZone.max, tickSize),
   };
 }
 
 /**
- * Formats entry zone as display string
+ * Display version with nice formatting
  */
-export function formatEntryZoneDisplay(entryZone) {
+export function formatEntryZoneDisplay(entryZone, tickSize) {
   if (!entryZone) return 'N/A';
 
-  const precision = getPrecisionForPrice(entryZone.ideal);
-  const spread = Math.abs((entryZone.max - entryZone.min) / entryZone.ideal * 100);
+  const min = formatPriceByTick(entryZone.min, tickSize);
+  const ideal = formatPriceByTick(entryZone.ideal, tickSize);
+  const max = formatPriceByTick(entryZone.max, tickSize);
 
-  return `[${entryZone.min.toFixed(precision)} — ${entryZone.ideal.toFixed(precision)} — ${entryZone.max.toFixed(precision)}] (±${spread.toFixed(3)}%)`;
+  const spread = Math.abs(
+    ((entryZone.max - entryZone.min) / entryZone.ideal) * 100
+  ).toFixed(3);
+
+  return `[${min} — ${ideal} — ${max}] (±${spread}%)`;
 }
 
 export default {
-  getPrecisionForPrice,
-  formatPrice,
-  formatPriceString,
+  getDecimalsFromTickSize,
+  roundPriceToTick,
+  formatPriceByTick,
+  formatPriceNumber,
   formatEntryZone,
   formatEntryZoneDisplay
 };

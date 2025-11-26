@@ -10,6 +10,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { RestClientV5 } from 'bybit-api';
+import { formatPriceByTick } from '../utils/priceFormatter.js';
+import { fetchInstrumentsUSDTPerp } from '../connectors/bybitPublic.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,10 +55,17 @@ export function setPositionTracker(tracker) {
   console.log('✅ [EXECUTOR] Position tracker registered');
 }
 
-function updatePosition(symbol, data) {
-  if (positionTracker) {
-    positionTracker.updatePosition(symbol, data);
+function updatePosition(symbol, data, tickSize = null) {
+  if (!positionTracker) return;
+
+  // Apply tickSize-safe formatting
+  if (tickSize) {
+    if (data.entry !== undefined) data.entry = Number(formatPriceByTick(data.entry, tickSize));
+    if (data.tp !== undefined)    data.tp    = Number(formatPriceByTick(data.tp,    tickSize));
+    if (data.sl !== undefined)    data.sl    = Number(formatPriceByTick(data.sl,    tickSize));
   }
+
+  positionTracker.updatePosition(symbol, data);
 }
 
 function removePosition(symbol) {
@@ -172,7 +181,7 @@ async function getValidQuantity(symbol, usdValue, price) {
 /**
  * Place market order
  */
-async function placeMarketOrder(symbol, side, qty) {
+async function placeMarketOrder(symbol, side, qty, tickSize) {
   try {
     const response = await bybitClient.submitOrder({
       category: 'linear',
@@ -190,6 +199,7 @@ async function placeMarketOrder(symbol, side, qty) {
 
     console.log(`✅ [MARKET] ${side} ${qty} ${symbol} → OrderID: ${response.result?.orderId}`);
     return response.result;
+
   } catch (err) {
     console.error(`❌ [MARKET] Failed: ${err.message}`);
     throw err;
@@ -199,15 +209,18 @@ async function placeMarketOrder(symbol, side, qty) {
 /**
  * Place limit order (post-only for maker rebate)
  */
-async function placeLimitOrder(symbol, side, qty, price, postOnly = true) {
+async function placeLimitOrder(symbol, side, qty, price, tickSize, postOnly = true) {
   try {
+    // Format price according to tickSize
+    const formattedPrice = formatPriceByTick(price, tickSize);
+
     const response = await bybitClient.submitOrder({
       category: 'linear',
       symbol,
       side,
       orderType: 'Limit',
       qty: String(qty),
-      price: String(price),
+      price: formattedPrice,
       timeInForce: postOnly ? 'PostOnly' : 'GTC',
       positionIdx: 0
     });
@@ -216,8 +229,9 @@ async function placeLimitOrder(symbol, side, qty, price, postOnly = true) {
       throw new Error(`Limit order failed: ${response?.retMsg || 'Unknown error'}`);
     }
 
-    console.log(`✅ [LIMIT] ${side} ${qty} ${symbol} @ ${price} (PostOnly=${postOnly}) → OrderID: ${response.result?.orderId}`);
+    console.log(`✅ [LIMIT] ${side} ${qty} ${symbol} @ ${formattedPrice} (tick=${tickSize}) → OrderID: ${response.result?.orderId}`);
     return response.result;
+
   } catch (err) {
     console.error(`❌ [LIMIT] Failed: ${err.message}`);
     throw err;
@@ -343,9 +357,13 @@ async function setLeverage(symbol, leverage) {
 /**
  * Set TP/SL (Phase 1: retry 3x, auto-close on failure)
  */
-async function setTakeProfitStopLoss(symbol, side, tp, sl) {
+async function setTakeProfitStopLoss(symbol, side, tp, sl, tickSize) {
   const maxAttempts = EXECUTION_CONFIG.tpslRetries;
   const delayMs = EXECUTION_CONFIG.tpslRetryDelayMs;
+
+  // Format TP/SL before sending to Bybit
+  const formattedTP = formatPriceByTick(tp, tickSize);
+  const formattedSL = formatPriceByTick(sl, tickSize);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -353,16 +371,17 @@ async function setTakeProfitStopLoss(symbol, side, tp, sl) {
         category: 'linear',
         symbol,
         positionIdx: 0,
-        takeProfit: String(tp),
-        stopLoss: String(sl)
+        takeProfit: formattedTP,
+        stopLoss: formattedSL
       });
 
       if (response?.retCode !== 0) {
         throw new Error(`Set TP/SL failed: ${response?.retMsg || 'Unknown error'}`);
       }
 
-      console.log(`✅ [TP/SL] ${symbol} → TP: ${tp}, SL: ${sl} (attempt ${attempt}/${maxAttempts})`);
+      console.log(`✅ [TP/SL] ${symbol} → TP: ${formattedTP}, SL: ${formattedSL} (tick=${tickSize})`);
       return true;
+
     } catch (err) {
       console.error(`❌ [TP/SL] Attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
 
@@ -390,12 +409,14 @@ async function closePosition(symbol, side) {
   try {
     const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
 
+    console.log(`🛑 [CLOSE] Closing ${symbol} position (${closeSide})...`);
+
     const response = await bybitClient.submitOrder({
       category: 'linear',
       symbol,
       side: closeSide,
       orderType: 'Market',
-      qty: '0', // Close full position
+      qty: '0', // Auto-close full size
       timeInForce: 'IOC',
       positionIdx: 0,
       reduceOnly: true
@@ -405,9 +426,10 @@ async function closePosition(symbol, side) {
       throw new Error(`Close position failed: ${response?.retMsg || 'Unknown error'}`);
     }
 
-    console.log(`✅ [CLOSE] Position ${symbol} closed`);
+    console.log(`✅ [CLOSE] Position ${symbol} closed (OrderID ${response.result?.orderId})`);
     removePosition(symbol);
     return true;
+
   } catch (err) {
     console.error(`❌ [CLOSE] Failed: ${err.message}`);
     return false;
@@ -609,10 +631,10 @@ async function executeTradeMarketOnly(ctx) {
   const side = direction === 'LONG' ? 'Buy' : 'Sell';
 
   // Place market order
-  const orderResult = await placeMarketOrder(symbol, side, qty);
+  const orderResult = await placeMarketOrder(symbol, side, qty, ctx.tickSize);
 
   // Phase 1: Set TP/SL with retry (auto-closes on failure)
-  await setTakeProfitStopLoss(symbol, side, tp, sl);
+  await setTakeProfitStopLoss(symbol, side, tp, sl, ctx.tickSize);
 
   // Update tracker
   updatePosition(symbol, {
@@ -627,8 +649,9 @@ async function executeTradeMarketOnly(ctx) {
     orderId: orderResult.orderId,
     status: 'OPEN',
     entryMode: 'MARKET_ONLY',
+    tickSize: ctx.tickSize,
     timestamp: new Date().toISOString()
-  });
+  }, ctx.tickSize);
 
   return {
     success: true,
@@ -660,7 +683,7 @@ async function executeTradeMakerFirst(ctx) {
   const side = direction === 'LONG' ? 'Buy' : 'Sell';
 
   // STEP 1: Place post-only limit order at entry price
-  const limitResult = await placeLimitOrder(symbol, side, qty, entry, true);
+  const limitResult = await placeLimitOrder(symbol, side, qty, entry, ctx.tickSize, true);
   const orderId = limitResult.orderId;
 
   // STEP 2: Wait for fill
@@ -675,7 +698,7 @@ async function executeTradeMakerFirst(ctx) {
   if (fillResult.filled) {
     console.log(`✅ [MAKER-FILLED] Order filled, setting TP/SL...`);
 
-    await setTakeProfitStopLoss(symbol, side, tp, sl);
+    await setTakeProfitStopLoss(symbol, side, tp, sl, ctx.tickSize);
 
     updatePosition(symbol, {
       symbol,
@@ -689,8 +712,9 @@ async function executeTradeMakerFirst(ctx) {
       orderId,
       status: 'OPEN',
       entryMode: 'MAKER_FILLED',
+      tickSize: ctx.tickSize,
       timestamp: new Date().toISOString()
-    });
+    }, ctx.tickSize);
 
     return {
       success: true,
@@ -754,8 +778,8 @@ async function executeTradeMakerFirst(ctx) {
   // ALL CONDITIONS GOOD → Market fallback
   console.log(`✅ [MAKER-FALLBACK] Conditions safe, executing market order...`);
 
-  const marketResult = await placeMarketOrder(symbol, side, qty);
-  await setTakeProfitStopLoss(symbol, side, tp, sl);
+  const marketResult = await placeMarketOrder(symbol, side, qty, ctx.tickSize);
+  await setTakeProfitStopLoss(symbol, side, tp, sl, ctx.tickSize);
 
   updatePosition(symbol, {
     symbol,
@@ -769,8 +793,9 @@ async function executeTradeMakerFirst(ctx) {
     orderId: marketResult.orderId,
     status: 'OPEN',
     entryMode: 'MAKER_FALLBACK',
+    tickSize: ctx.tickSize,
     timestamp: new Date().toISOString()
-  });
+  }, ctx.tickSize);
 
   return {
     success: true,
@@ -807,6 +832,48 @@ export async function executeTrade(signal) {
       leverage: EXECUTION_CONFIG.leverage,
       initialMomentum: signal.initialMomentum || 0
     };
+
+    // =====================================================
+    // PATCH 1 – FETCH TICKSIZE & FORMAT PRICES
+    // =====================================================
+
+    try {
+      console.log(`🔍 [TICKSIZE] Fetching tickSize for ${ctx.symbol}...`);
+
+      // Get global instrument metadata
+      const instruments = await fetchInstrumentsUSDTPerp();
+
+      if (instruments.success) {
+        const meta = instruments.symbols.find(x => x.symbol === ctx.symbol);
+
+        if (meta) {
+          ctx.tickSize = meta.tickSize;
+
+          console.log(`✅ [TICKSIZE] ${ctx.symbol} tickSize = ${ctx.tickSize}`);
+
+          // Apply tickSize formatting to entry, TP, SL
+          ctx.entry = parseFloat(formatPriceByTick(ctx.entry, ctx.tickSize));
+          ctx.tp    = parseFloat(formatPriceByTick(ctx.tp,    ctx.tickSize));
+          ctx.sl    = parseFloat(formatPriceByTick(ctx.sl,    ctx.tickSize));
+
+          console.log(`🎯 [PRICE-FIX] Corrected prices:`);
+          console.log(`   ENTRY = ${ctx.entry}`);
+          console.log(`   TP    = ${ctx.tp}`);
+          console.log(`   SL    = ${ctx.sl}`);
+
+        } else {
+          console.warn(`⚠️  [TICKSIZE] No metadata for ${ctx.symbol}, using default tickSize=0.0001`);
+          ctx.tickSize = 0.0001;
+        }
+      } else {
+        console.warn(`⚠️  [TICKSIZE] fetchInstrumentsUSDTPerp() failed: ${instruments.error}`);
+        ctx.tickSize = 0.0001;
+      }
+
+    } catch (err) {
+      console.error(`❌ [TICKSIZE] Error while applying tickSize: ${err.message}`);
+      ctx.tickSize = 0.0001;
+    }
 
     // Phase 2: Pullback check (BALANCED MODE)
     const pullbackCheck = await checkPricePullback(signal.symbol, signal.direction, signal.entry);
