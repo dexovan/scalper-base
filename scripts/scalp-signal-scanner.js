@@ -397,9 +397,11 @@ async function scanSymbol(symbol) {
       const expectedProfit = Math.abs((tp - entry) / entry) * positionSize;
 
       // Extract momentum for executor (needed for Phase 2 timing checks)
-      const bidImbalance = liveData.orderbook?.bidImbalance || 0;
-      const askImbalance = liveData.orderbook?.askImbalance || 0;
-      const initialMomentum = direction === 'LONG' ? bidImbalance : askImbalance;
+      // imbalance > 1.0 = more bids (bullish), < 1.0 = more asks (bearish)
+      const imbalance = liveData.imbalance || 1.0;
+      const initialMomentum = direction === 'LONG'
+        ? Math.max(0, (imbalance - 1.0))  // LONG: excess bid pressure (imbalance > 1.0)
+        : Math.max(0, (1.0 - imbalance));  // SHORT: excess ask pressure (imbalance < 1.0)
 
       const signal = {
         symbol,
@@ -916,9 +918,11 @@ async function scanAllSymbols() {
       const distanceInfo = getDistanceToEntryZone(entryPrice, formattedEntryZone);
 
       // Extract initial momentum for executor
-      const bidImbalance = currentLiveData.orderbook?.bidImbalance || 0;
-      const askImbalance = currentLiveData.orderbook?.askImbalance || 0;
-      const initialMomentum = direction === 'LONG' ? bidImbalance : askImbalance;
+      // imbalance > 1.0 = more bids (bullish), < 1.0 = more asks (bearish)
+      const imbalance = currentLiveData.imbalance || 1.0;
+      const initialMomentum = direction === 'LONG'
+        ? Math.max(0, (imbalance - 1.0))  // LONG: excess bid pressure (imbalance > 1.0)
+        : Math.max(0, (1.0 - imbalance));  // SHORT: excess ask pressure (imbalance < 1.0)
 
       // Initialize signal state tracking
       signalStates.set(symbol, {
@@ -961,9 +965,7 @@ async function scanAllSymbols() {
         expectedProfit,
 
         // Extract momentum for executor (needed for Phase 2 timing checks)
-        initialMomentum: direction === 'LONG'
-          ? (currentLiveData.orderbook?.bidImbalance || 0)
-          : (currentLiveData.orderbook?.askImbalance || 0),
+        initialMomentum,
 
         candle: {
           volatility: candle.volatility,
