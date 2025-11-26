@@ -7,6 +7,41 @@
 // CONFIGURATION
 // ============================================================
 
+// model 3 agresivan
+const SAFETY_CONFIG = {
+  minProfitPercent: 0.08,   // minimalni "bruto" TP move u %
+  minFeesCovered: 0.04,     // dodatni buffer iznad fee-a (u % na marginu)
+  maxHeat: -30000,
+  maxVolatility: 4.0,
+  minLiquidity: 1000,
+  antiPump: {
+    enabled: false
+  },
+  antiRug: {
+    enabled: false
+  },
+  antiLowLiquidity: {
+    enabled: true,
+    minBidDepth: 800,
+    minAskDepth: 800
+  },
+  maxOnePerSymbol: true,
+  maxTotalPositions: 4,
+  autoCloseTimeout: 40000
+};
+
+// ============================================================
+// FEE CONFIG – Bybit linear USDT perp (približne vrednosti)
+// Možeš kasnije podesiti iz env-a / configa
+// ============================================================
+
+const FEE_CONFIG = {
+  // Po defaultu računamo najgori slučaj (taker in, taker out)
+  takerFeeRate: 0.0006,   // 0.06% = 0.0006
+  makerFeeRate: -0.0002,  // -0.02% (popust) → često ~ -0.00025, ali ovo je ok
+  mode: "TAKER_TAKER"     // "TAKER_TAKER" ili "MAKER_FIRST"
+};
+
 //normalan model
 /* const SAFETY_CONFIG = {
   minProfitPercent: 0.15,
@@ -60,30 +95,81 @@
   autoCloseTimeout: 45000
 }; */
 
-//model 3 agresivan (ADJUSTED FOR BYBIT FEES)
+// ============================================================
+// HELPERS: Fee-first estimacija
+// ============================================================
 
-const SAFETY_CONFIG = {
-  minProfitPercent: 0.20,    // Min 0.20% TP (covers 0.11% fees + 0.09% net profit)
-  minFeesCovered: 0.11,      // Bybit round-trip fee (0.055% × 2)
-  maxHeat: -30000,
-  maxVolatility: 4.0,
-  minLiquidity: 1000,
-  antiPump: {
-    enabled: false
-  },
-  antiRug: {
-    enabled: false
-  },
-  antiLowLiquidity: {
-    enabled: true,
-    minBidDepth: 800,
-    minAskDepth: 800
-  },
-  maxOnePerSymbol: true,
-  maxTotalPositions: 4,
-  autoCloseTimeout: 40000
-};
+/**
+ * Gruba procena efektivnog fee-a kao % na marginu
+ * Za leveraged perp: fee se računa na NOTIONAL, ne na margin,
+ * pa je efektivni fee% na marginu ~ feeRate * leverage.
+ */
+function estimateEffectiveFeePercentOnMargin(entry, tp, leverage, feeMode = FEE_CONFIG.mode) {
+  // distance u % (samo za info)
+  const tpMovePercent = Math.abs((tp - entry) / entry * 100);
 
+  let inFeeRate;
+  let outFeeRate;
+
+  if (feeMode === "MAKER_FIRST") {
+    // idealno: maker ulaz, taker izlaz (realno za scalp)
+    inFeeRate = FEE_CONFIG.makerFeeRate;
+    outFeeRate = FEE_CONFIG.takerFeeRate;
+  } else {
+    // default: taker ulaz i taker izlaz (konzervativno)
+    inFeeRate = FEE_CONFIG.takerFeeRate;
+    outFeeRate = FEE_CONFIG.takerFeeRate;
+  }
+
+  const totalFeeRateNotional = inFeeRate + outFeeRate; // npr 0.0006 + 0.0006 = 0.0012 (0.12%)
+  // Efektivno na marginu – množimo sa leverage
+  const effectiveFeePercentOnMargin = totalFeeRateNotional * leverage * 100;
+
+  return {
+    tpMovePercent,
+    effectiveFeePercentOnMargin
+  };
+}
+
+// ============================================================
+// CHECK: Fee-first – TP mora pokriti fee + buffer
+// ============================================================
+
+export function checkFeeCoverage(signal, leverage = 3, feeMode = FEE_CONFIG.mode) {
+  const { entry, tp } = signal;
+
+  if (!entry || !tp) {
+    return {
+      passed: false,
+      reason: "Missing entry or TP price for fee check"
+    };
+  }
+
+  const { tpMovePercent, effectiveFeePercentOnMargin } =
+    estimateEffectiveFeePercentOnMargin(entry, tp, leverage, feeMode);
+
+  // Minimalni poželjni neto profit = fee% + minFeesCovered
+  const minRequiredMove = effectiveFeePercentOnMargin + SAFETY_CONFIG.minFeesCovered;
+
+  if (tpMovePercent < minRequiredMove) {
+    return {
+      passed: false,
+      reason: `TP move (${tpMovePercent.toFixed(3)}%) ne pokriva fee (${effectiveFeePercentOnMargin.toFixed(
+        3
+      )}%) + buffer (${SAFETY_CONFIG.minFeesCovered.toFixed(3)}%)`,
+      tpMovePercent,
+      effectiveFeePercentOnMargin,
+      minRequiredMove
+    };
+  }
+
+  return {
+    passed: true,
+    tpMovePercent,
+    effectiveFeePercentOnMargin,
+    minRequiredMove
+  };
+}
 
 // ============================================================
 // CHECK: Minimum Profit Requirement
@@ -315,9 +401,15 @@ export function checkPositionLimits(symbol, activePositions) {
 // RUN ALL SAFETY CHECKS
 // ============================================================
 
-export function runAllSafetyChecks(signal, liveData, activePositions) {
+export function runAllSafetyChecks(signal, liveData, activePositions, opts = {}) {
+  const {
+    leverage = 3,
+    feeMode = FEE_CONFIG.mode
+  } = opts;
+
   const checks = {
     minProfit: checkMinProfit(signal.tp, signal.sl, signal.entry),
+    feeCoverage: checkFeeCoverage(signal, leverage, feeMode),
     marketHeat: checkMarketHeat(liveData.orderFlowNet60s),
     volatility: checkVolatility(liveData.volatility || 0),
     liquidity: checkLiquidity(liveData.bidDepth || 0, liveData.askDepth || 0),
@@ -344,7 +436,7 @@ export function runAllSafetyChecks(signal, liveData, activePositions) {
 }
 
 // Export config for external modification
-export { SAFETY_CONFIG };
+export { SAFETY_CONFIG, FEE_CONFIG };
 
 export default {
   checkMinProfit,
@@ -354,6 +446,8 @@ export default {
   checkAntiPump,
   checkAntiRug,
   checkPositionLimits,
+  checkFeeCoverage,
   runAllSafetyChecks,
-  SAFETY_CONFIG
+  SAFETY_CONFIG,
+  FEE_CONFIG
 };

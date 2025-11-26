@@ -503,7 +503,11 @@ async function attemptExecution(symbol, signalState, liveData) {
       sl: signalState.sl
     },
     liveData,
-    [] // activePositions - will be fetched from API
+    [], // activePositions - will be fetched from API
+    {
+      leverage: 3,           // Must match EXECUTION_CONFIG.defaultLeverage
+      feeMode: "TAKER_TAKER" // Will change to "MAKER_FIRST" when limit entry is implemented
+    }
   );
 
   if (!safetyResult.passed) {
