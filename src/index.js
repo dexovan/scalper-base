@@ -166,6 +166,11 @@ async function startEngine() {
         onEvent: (msg) => {
             wsMetrics.wsMarkMessage();
 
+            // DEBUG: Log ALL message topics (sample 0.1%)
+            if (Math.random() < 0.001) {
+                console.log(`📨 [WS MESSAGE] Topic: ${msg.topic}, Type: ${msg.type}, HasData: ${!!msg.data}`);
+            }
+
             // 🚀 EMIT EVENTS TO publicEmitter FOR monitorApi.js
             if (msg.topic) {
                 const [channelType, symbol] = msg.topic.split(".");
