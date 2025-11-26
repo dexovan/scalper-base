@@ -663,9 +663,10 @@ async function attemptExecution(symbol, signalState, liveData) {
           dryRun: result.dryRun
         });
 
-        // Mark signal as executed
+        // Mark signal as executed and clear in-progress flag
         signalState.executed = true;
         signalState.executionTime = Date.now();
+        signalState.executionInProgress = false;
 
         // Log to execution history file
         logExecutionHistory({
@@ -683,8 +684,9 @@ async function attemptExecution(symbol, signalState, liveData) {
       } else {
         console.log(`❌ [EXECUTE FAILED] ${symbol} - ${result.error}`);
 
-        // Increment attempt counter
+        // Increment attempt counter and clear in-progress flag
         signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
+        signalState.executionInProgress = false;
 
         // Log failed execution
         logExecutionHistory({
@@ -701,6 +703,7 @@ async function attemptExecution(symbol, signalState, liveData) {
     } catch (error) {
       console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
       signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
+      signalState.executionInProgress = false;
 
       // Log execution error
       logExecutionHistory({
@@ -717,6 +720,7 @@ async function attemptExecution(symbol, signalState, liveData) {
   }).catch(error => {
     console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
     signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
+    signalState.executionInProgress = false;
 
     // Log execution error
     logExecutionHistory({
