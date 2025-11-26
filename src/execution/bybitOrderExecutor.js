@@ -55,7 +55,7 @@ const EXECUTION_CONFIG = {
   // baseUrl: 'https://api-testnet.bybit.com',  // Testnet
 
   // Risk management
-  maxPositions: 3,           // Max 3 concurrent positions (increased for scalping)
+  maxPositions: 5,           // Max 5 concurrent positions (scalping strategy)
   minBalance: 20,            // Min USDT balance to trade (lowered for testing)
   defaultLeverage: 5,        // 5x leverage
   defaultMargin: 25,         // $25 per trade (~$125 notional)
@@ -338,8 +338,11 @@ export async function executeTrade(signal) {
   // Check max positions
   if (activePositions.size >= EXECUTION_CONFIG.maxPositions) {
     console.log(`⚠️  [EXECUTOR] Max positions reached: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions}`);
+    console.log(`   Active symbols: ${Array.from(activePositions.keys()).join(', ')}`);
     return { success: false, error: 'Max positions limit' };
   }
+
+  console.log(`📊 [EXECUTOR] Position slots: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions} used`);
 
   // Check balance
   const balance = await getWalletBalance();
@@ -409,6 +412,10 @@ export async function executeTrade(signal) {
     console.log(`   Order ID: ${orderResult.orderId}`);
     console.log(`   Position: ${qty} contracts @ ${entry}`);
     console.log(`   Expected: ${direction === 'LONG' ? `Price rises to ${tpRounded}` : `Price falls to ${tpRounded}`}`);
+    console.log(`📊 [EXECUTOR] Active positions: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions}`);
+
+    // Trigger immediate sync to update position status
+    setTimeout(() => syncPositionsWithBybit(), 2000);
 
     return {
       success: true,
@@ -481,6 +488,8 @@ export async function closePosition(symbol) {
 
 async function syncPositionsWithBybit() {
   try {
+    console.log(`🔄 [SYNC] Checking Bybit positions...`);
+
     const response = await bybitRequest('/v5/position/list', 'GET', {
       category: 'linear',
       settleCoin: 'USDT'
@@ -498,15 +507,24 @@ async function syncPositionsWithBybit() {
         .map(p => p.symbol)
     );
 
+    console.log(`📊 [SYNC] Local tracker: ${activePositions.size} positions [${Array.from(activePositions.keys()).join(', ') || 'none'}]`);
+    console.log(`📊 [SYNC] Bybit API: ${openSymbols.size} positions [${Array.from(openSymbols).join(', ') || 'none'}]`);
+
     // Remove closed positions from local tracker
+    let removed = 0;
     for (const [symbol] of activePositions.entries()) {
       if (!openSymbols.has(symbol)) {
         console.log(`🧹 [SYNC] Position closed on Bybit: ${symbol} - removing from tracker`);
         activePositions.delete(symbol);
+        removed++;
       }
     }
 
-    console.log(`✅ [SYNC] Position sync complete: ${activePositions.size} active, ${openSymbols.size} on Bybit`);
+    if (removed > 0) {
+      console.log(`✅ [SYNC] Removed ${removed} closed position(s). Now: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions} slots used`);
+    } else {
+      console.log(`✅ [SYNC] All positions in sync: ${activePositions.size}/${EXECUTION_CONFIG.maxPositions} slots used`);
+    }
 
   } catch (error) {
     console.error(`❌ [SYNC] Position sync error:`, error.message);
