@@ -109,6 +109,7 @@ export class BybitPublicWS {
             // DEBUG: Sample 1% of trade messages
             if (Math.random() < 0.01) {
               console.log(`🔥 [publicWS] TRADE MESSAGE: ${symbol}, ${trades.length} trades`);
+              console.log(`🔥 [publicWS] Sample trade:`, JSON.stringify(trades[0]));
             }
 
             for (const t of trades) {
@@ -117,11 +118,18 @@ export class BybitPublicWS {
               const tradeSide = t.S || t.side || "UNKNOWN";
               const tradeTs = parseInt(t.T || t.timestamp || Date.now());
 
+              const volumeUSD = tradePrice * tradeQty;
+
+              // DEBUG: Sample 0.1% to see actual values
+              if (Math.random() < 0.001) {
+                console.log(`💰 [FLOW] ${symbol}: price=${tradePrice}, qty=${tradeQty}, vol=${volumeUSD}, side=${tradeSide}`);
+              }
+
               if (tradePrice > 0 && tradeQty > 0) {
                 tradeFlowAggregator.onTrade({
                   symbol,
                   side: tradeSide,
-                  qty: tradePrice * tradeQty, // Volume in USD
+                  qty: volumeUSD,
                   ts: tradeTs
                 });
               }
