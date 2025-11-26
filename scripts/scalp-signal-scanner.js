@@ -145,7 +145,8 @@ const CONFIG = {
   // Output
   logSignals: true,
   saveSignals: true,
-  signalsFile: path.join(__dirname, '../data/signals.json')
+  signalsFile: path.join(__dirname, '../data/signals.json'),
+  executionLogFile: path.join(__dirname, '../data/execution_history.json')
 };
 
 // ============================================================
@@ -428,6 +429,19 @@ async function updateFastTrack(topCandidates) {
 }
 
 // ============================================================
+// LOG EXECUTION HISTORY
+// ============================================================
+
+function logExecutionHistory(execution) {
+  try {
+    const logEntry = JSON.stringify(execution) + '\n';
+    fs.appendFileSync(CONFIG.executionLogFile, logEntry, 'utf-8');
+  } catch (error) {
+    console.error('❌ [LOG] Failed to write execution history:', error.message);
+  }
+}
+
+// ============================================================
 // EXECUTION TRIGGER
 // ============================================================
 
@@ -518,16 +532,53 @@ async function attemptExecution(symbol, signalState, liveData) {
       signalState.executed = true;
       signalState.executionTime = now;
 
+      // Log to execution history file
+      logExecutionHistory({
+        symbol,
+        direction: signalState.direction,
+        entry: executionRequest.entry,
+        tp: executionRequest.tp,
+        sl: executionRequest.sl,
+        success: true,
+        dryRun: result.dryRun,
+        orderId: result.orderId,
+        timestamp: new Date().toISOString()
+      });
+
     } else {
       console.log(`❌ [EXECUTE FAILED] ${symbol} - ${result.error}`);
 
       // Increment attempt counter
       signalState.executionAttempts = attempts + 1;
+
+      // Log failed execution
+      logExecutionHistory({
+        symbol,
+        direction: signalState.direction,
+        entry: executionRequest.entry,
+        tp: executionRequest.tp,
+        sl: executionRequest.sl,
+        success: false,
+        error: result.error,
+        timestamp: new Date().toISOString()
+      });
     }
 
   } catch (error) {
     console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
     signalState.executionAttempts = attempts + 1;
+
+    // Log execution error
+    logExecutionHistory({
+      symbol,
+      direction: signalState.direction,
+      entry: executionRequest.entry,
+      tp: executionRequest.tp,
+      sl: executionRequest.sl,
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 

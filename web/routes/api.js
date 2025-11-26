@@ -606,5 +606,103 @@ router.post("/scalp-scanner/clear", (req, res) => {
   }
 });
 
+/* ---------------------------------------------------------
+   GET /api/execution/positions – Get active trading positions
+--------------------------------------------------------- */
+router.get("/execution/positions", async (req, res) => {
+  try {
+    // Fetch from Engine API
+    const response = await fetch('http://localhost:8090/api/positions');
+    const data = await response.json();
+
+    res.json(data);
+  } catch (error) {
+    console.error('[API] Error fetching positions:', error);
+    res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+  }
+});
+
+/* ---------------------------------------------------------
+   GET /api/execution/stats – Get execution statistics
+--------------------------------------------------------- */
+router.get("/execution/stats", (req, res) => {
+  try {
+    const executionLogFile = path.join(paths.DATA_DIR, 'execution_history.json');
+
+    // Check if execution log exists
+    if (!fs.existsSync(executionLogFile)) {
+      return res.json({
+        ok: true,
+        stats: {
+          totalExecutions: 0,
+          successfulExecutions: 0,
+          failedExecutions: 0,
+          dryRunExecutions: 0,
+          successRate: 0
+        },
+        recentTrades: []
+      });
+    }
+
+    // Read execution log
+    const data = fs.readFileSync(executionLogFile, 'utf-8');
+    const lines = data.trim().split('\n').filter(line => line.trim());
+    const executions = lines.map(line => {
+      try {
+        return JSON.parse(line);
+      } catch (err) {
+        return null;
+      }
+    }).filter(Boolean);
+
+    // Calculate stats
+    const totalExecutions = executions.length;
+    const successfulExecutions = executions.filter(e => e.success).length;
+    const failedExecutions = executions.filter(e => !e.success).length;
+    const dryRunExecutions = executions.filter(e => e.dryRun).length;
+    const successRate = totalExecutions > 0 ? (successfulExecutions / totalExecutions * 100) : 0;
+
+    // Get recent trades (last 20)
+    const recentTrades = executions
+      .slice(-20)
+      .reverse()
+      .map(e => ({
+        symbol: e.symbol,
+        direction: e.direction,
+        entry: e.entry,
+        tp: e.tp,
+        sl: e.sl,
+        success: e.success,
+        dryRun: e.dryRun,
+        orderId: e.orderId,
+        timestamp: e.timestamp,
+        error: e.error
+      }));
+
+    res.json({
+      ok: true,
+      stats: {
+        totalExecutions,
+        successfulExecutions,
+        failedExecutions,
+        dryRunExecutions,
+        successRate: successRate.toFixed(2)
+      },
+      recentTrades
+    });
+
+  } catch (error) {
+    console.error('[API] Error fetching execution stats:', error);
+    res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+  }
+});
+
 export default router;
+
 
