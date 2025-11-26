@@ -473,6 +473,22 @@ router.get("/scalp-scanner", (req, res) => {
         confidence: parseFloat(signal.confidence) || 0,
         timestamp: signal.timestamp,
         entry: signal.entry || signal.live?.price || 0,
+
+        // Entry Zone (NEW)
+        entryZone: signal.entryZone ? {
+          min: signal.entryZone.min,
+          ideal: signal.entryZone.ideal,
+          max: signal.entryZone.max,
+          display: signal.entryZone.display
+        } : null,
+
+        // Entry Status (NEW)
+        entryStatus: signal.entryStatus ? {
+          inZone: signal.entryStatus.inZone,
+          distancePercent: signal.entryStatus.distancePercent || 0,
+          direction: signal.entryStatus.direction || 'UNKNOWN'
+        } : null,
+
         takeProfit: parseFloat(signal.tp) || 0,
         stopLoss: parseFloat(signal.sl) || 0,
         expectedProfit: signal.expectedProfit || 0,
@@ -481,7 +497,15 @@ router.get("/scalp-scanner", (req, res) => {
         velocity,
         momentum,
         imbalance,
-        spread
+        spread,
+
+        // Live data for display
+        live: signal.live ? {
+          price: signal.live.price,
+          bid: signal.live.bid,
+          ask: signal.live.ask,
+          orderFlowNet60s: signal.live.orderFlowNet60s
+        } : null
       };
     }).reverse(); // Most recent first
 

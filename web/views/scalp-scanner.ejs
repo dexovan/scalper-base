@@ -203,10 +203,40 @@ function renderSignal(signal) {
           </div>
         </div>
         <div class="text-right">
-          <div class="text-xs text-slate-400">Entry</div>
-          <div class="text-lg font-bold text-blue-400">$${fmt(signal.entry)}</div>
+          <div class="text-xs text-slate-400 mb-1">Entry Zone</div>
+          ${signal.entryZone ? `
+            <div class="text-xs text-slate-500 font-mono mb-0.5">
+              ${fmt(signal.entryZone.min)} — ${fmt(signal.entryZone.max)}
+            </div>
+            <div class="text-base font-bold text-blue-400">
+              Ideal: $${fmt(signal.entryZone.ideal)}
+            </div>
+          ` : `
+            <div class="text-lg font-bold text-blue-400">$${fmt(signal.entry)}</div>
+          `}
         </div>
       </div>
+
+      <!-- Entry Status Indicator (NEW) -->
+      ${signal.entryStatus ? `
+        <div class="mb-3 px-3 py-2 rounded-lg border ${
+          signal.entryStatus.inZone
+            ? 'bg-green-500/10 border-green-500/30'
+            : 'bg-amber-500/10 border-amber-500/30'
+        }">
+          <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2">
+              ${signal.entryStatus.inZone
+                ? '<span class="text-green-400 font-bold">✅ READY FOR ENTRY</span>'
+                : `<span class="text-amber-400">⏳ Waiting (${signal.entryStatus.direction} ${fmt(signal.entryStatus.distancePercent)}%)</span>`
+              }
+            </div>
+            <div class="text-slate-400">
+              Current: <span class="text-slate-200 font-semibold">$${fmt(signal.live?.price || signal.entry)}</span>
+            </div>
+          </div>
+        </div>
+      ` : ''}
 
       <div class="grid grid-cols-3 gap-2 mb-3 text-xs">
         <div>
