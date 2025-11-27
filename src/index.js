@@ -13,16 +13,9 @@ import {
     getUniverseSnapshot
 } from "./market/universe_v2.js";
 
-import {
-    initPublicConnection,
-    onPublicEvent
-} from "./connectors/bybitPublic.js";
-
-import { publicEmitter } from "./connectors/bybitPublic.js";
-
 import { initEventHub } from "./ws/eventHub.js";
 
-import { saveTicker, saveTrade, getStorageStats } from "./utils/dataStorage.js";
+import { getStorageStats } from "./utils/dataStorage.js";
 
 import CONFIG from "./config/index.js";
 
@@ -71,53 +64,8 @@ async function startEngine() {
         symbolCount: Object.keys(universeCheck?.symbols || {}).length
     });
 
-    // MAIN WS (dynamic)
-    console.log("🔍 DEBUG: Calling initPublicConnection...");
-    await initPublicConnection(); // koristi CONFIG.custom.primeSymbols
-
     console.log("🔍 DEBUG: Initializing EventHub...");
     initEventHub();
-
-    const primeSymbols = getSymbolsByCategory("Prime");
-    if (primeSymbols.length > 0) {
-        subscribeSymbols(primeSymbols);
-        console.log("📡 PRIME subscribed:", primeSymbols);
-    }
-
-    // =====================================================
-    // PHASE 2 VARIJANTA B - EVENT HANDLER
-    // =====================================================
-    onPublicEvent((evt) => {
-        // evt = { type: "ticker" | "trade", timestamp, symbol, payload }
-
-        if (evt.type === "ticker") {
-            // FULLY DISABLED: Console.log spam fills logs at 50,000+ logs/second = GIGABYTES/hour!
-            // Even 0.01% sampling still generates too many logs (193MB in minutes!)
-            // All ticker processing happens silently now
-
-            // const lastPrice = evt.payload.lastPrice || evt.payload.price || "";
-            // console.log("[TICKER]", evt.symbol, lastPrice);
-
-            // DISABLED: Tickers disk storage fills disk too fast
-            // KORAK 2: Save ticker data to CSV file
-            // saveTicker(evt.symbol, evt.payload);
-
-        } else if (evt.type === "trade") {
-            // FULLY DISABLED: Console.log spam fills logs at hundreds of logs/second!
-            // Even 0.1% sampling still generates too many logs (193MB in minutes!)
-            // All trade processing happens silently now
-
-            // const side = evt.payload.S;
-            // const price = evt.payload.p;
-            // const qty = evt.payload.v;
-            // const tickDir = evt.payload.L;
-            // console.log("[TRADE]", evt.symbol, `${side} at $${price} (size: ${qty}) [${tickDir}]`);
-
-            // DISABLED: Trades disk storage fills disk too fast (15GB+ in days!)
-            // KORAK 2: Save trade data to CSV file
-            // saveTrade(evt.symbol, evt.payload);
-        }
-    });
 
     // DISABLED: Universe refresh writes to disk every 15s (500+ symbols × 1KB = 500KB+ per write = 2MB/min = 2.9GB/day!)
     // refreshUniversePeriodically();
@@ -219,11 +167,6 @@ async function startEngine() {
     console.log("⚡ Engine running normally.");
 
     console.log("🚀 DEBUG: Ready to start Monitor API…");
-
-    // Attach real-time listeners for dashboard
-    console.log("🔗 DEBUG: About to call attachRealtimeListeners with publicEmitter:", typeof publicEmitter);
-    attachRealtimeListeners(publicEmitter);
-    console.log("📡 Real-time dashboard listeners attached");
 
     await startMonitorApiServer(8090); // AWAIT to ensure FeatureEngine is ready
     console.log("🚀 DEBUG: Monitor API started AND FeatureEngine ready");
