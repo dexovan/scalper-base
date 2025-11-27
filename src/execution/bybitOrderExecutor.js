@@ -836,6 +836,151 @@ export function analyzeMomentumTrend(symbol, direction) {
 }
 
 // =====================================================
+// MODULE D: Bid/Ask Swing Filter + Volume Spike Protector (v1.0)
+// =====================================================
+//
+// Koristi microstructure pattern-e da detektuje:
+//  - swing reversal
+//  - delta flip
+//  - volatility spike
+//  - volume spike (>200%)
+//  - extreme micro-structure distortion
+//
+// Ovaj modul eliminiše ulaze na lokalnim max/min tačkama.
+//
+// =====================================================
+
+const structureHistory = new Map();
+
+export function addStructureSample(symbol, marketState) {
+    let list = structureHistory.get(symbol);
+    if (!list) list = [];
+
+    list.push({
+        t: Date.now(),
+        imbalance: marketState.imbalance || 1.0,
+        flow: marketState.orderFlow || 0,
+        spread: marketState.spread || 0,
+        bid: marketState.bid || null,
+        ask: marketState.ask || null,
+        price: marketState.price || null
+    });
+
+    if (list.length > 10) list.shift();
+    structureHistory.set(symbol, list);
+}
+
+export function analyzeStructure(symbol, direction) {
+    const list = structureHistory.get(symbol);
+    if (!list || list.length < 5) {
+        return { ok: true, reason: "Not enough structure samples" };
+    }
+
+    const last = list[list.length - 1];
+    const prev = list[list.length - 2];
+    const older = list[list.length - 3];
+
+    // ------------------------------------------
+    // 1) BID/ASK SWING REVERSAL DETECTION
+    // ------------------------------------------
+
+    // LONG-ulaz → želiš rast bid pritiska
+    if (direction === "LONG") {
+        const bidWeakening =
+            last.imbalance < prev.imbalance &&
+            prev.imbalance < older.imbalance;
+
+        const flowDrop =
+            last.flow < prev.flow &&
+            prev.flow < older.flow;
+
+        const deltaFlip = last.imbalance < 1.00; // više ask nego bid
+
+        if (bidWeakening && flowDrop) {
+            return {
+                ok: false,
+                reason: "Bid pressure swing reversal detected"
+            };
+        }
+
+        if (deltaFlip) {
+            return {
+                ok: false,
+                reason: "Bid→Ask microstructure flip"
+            };
+        }
+    }
+
+    // SHORT-ulaz → želiš rast ask pritiska
+    if (direction === "SHORT") {
+        const askWeakening =
+            last.imbalance > prev.imbalance &&
+            prev.imbalance > older.imbalance;
+
+        const flowDrop =
+            last.flow > prev.flow &&
+            prev.flow > older.flow;
+
+        const deltaFlip = last.imbalance > 1.00; // više bid nego ask
+
+        if (askWeakening && flowDrop) {
+            return {
+                ok: false,
+                reason: "Ask pressure swing reversal detected"
+            };
+        }
+
+        if (deltaFlip) {
+            return {
+                ok: false,
+                reason: "Ask→Bid microstructure flip"
+            };
+        }
+    }
+
+    // ------------------------------------------
+    // 2) VOLUME SPIKE PROTECTOR
+    // ------------------------------------------
+
+    const flows = list.slice(-5).map(x => x.flow);
+    const avgFlow = flows.reduce((a, b) => a + b, 0) / flows.length;
+    const currentFlow = last.flow;
+
+    if (avgFlow !== 0) {
+        const spikeRatio = currentFlow / avgFlow;
+
+        // Preveliki rast volumena → pump / wick
+        if (spikeRatio > 2.2) {
+            return {
+                ok: false,
+                reason: `Volume spike: ${Math.round(spikeRatio * 100)}% of avg`
+            };
+        }
+
+        // Nagli pad volumena → reversal zone
+        if (spikeRatio < 0.35) {
+            return {
+                ok: false,
+                reason: `Volume collapse: ${Math.round(spikeRatio * 100)}% of avg`
+            };
+        }
+    }
+
+    // ------------------------------------------
+    // 3) Spread expansion → znak ulaska u volatilnost
+    // ------------------------------------------
+
+    if (last.spread > 0.003) { // 0.30%
+        return {
+            ok: false,
+            reason: `Spread too wide (${(last.spread * 100).toFixed(2)}%)`
+        };
+    }
+
+    return { ok: true };
+}
+
+// =====================================================
 // 10) MAKER-FIRST: Wait for limit order fill
 // =====================================================
 async function waitForMakerFill({ symbol, orderId, limitPrice, config }) {
@@ -1240,6 +1385,28 @@ export async function executeTrade(signal) {
             success: false,
             mode: 'REJECTED_MOMENTUM_SHIFT',
             reason: momentumShift.reason,
+            symbol: signal.symbol,
+            direction: signal.direction,
+            tickSize: ctx.tickSize
+        };
+    }
+
+    // =====================================================
+    // MODULE D – Bid/Ask Swing + Volume Spike Check
+    // =====================================================
+    const liveState = await getLiveMarketState(signal.symbol);
+    if (liveState) {
+        addStructureSample(signal.symbol, liveState);
+    }
+
+    const structureCheck = analyzeStructure(signal.symbol, signal.direction);
+
+    if (!structureCheck.ok) {
+        console.log(`❌ [STRUCTURE] Trade rejected: ${structureCheck.reason}`);
+        return {
+            success: false,
+            mode: 'REJECTED_STRUCTURE',
+            reason: structureCheck.reason,
             symbol: signal.symbol,
             direction: signal.direction,
             tickSize: ctx.tickSize
