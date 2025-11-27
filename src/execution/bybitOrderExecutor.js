@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { RestClientV5 } from 'bybit-api';
-import { formatPriceByTick } from '../utils/priceFormatter.js';
+import { formatPriceByTick } from '../../scripts/utils/priceFormatter.js';
 import { fetchInstrumentsUSDTPerp } from '../connectors/bybitPublic.js';
 
 const __filename = fileURLToPath(import.meta.url);
