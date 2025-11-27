@@ -537,10 +537,27 @@ function getCandles(symbol, timeframe, limit = 100) {
 }
 
 /**
- * Lista svih aktivnih simbola
+ * Lista svih aktivnih simbola (samo oni sa orderbook ili trade podacima)
  */
 function getActiveSymbols() {
-  return Object.keys(state.symbols);
+  const activeSymbols = [];
+
+  for (const [symbol, symbolState] of Object.entries(state.symbols)) {
+    // Simbol je aktivan samo ako ima orderbook podatke ILI trade podatke
+    const hasOrderbook = symbolState.orderbook &&
+                        symbolState.orderbook.bids &&
+                        symbolState.orderbook.bids.length > 0 &&
+                        symbolState.orderbook.asks &&
+                        symbolState.orderbook.asks.length > 0;
+
+    const hasTrades = symbolState.trades && symbolState.trades.length > 0;
+
+    if (hasOrderbook || hasTrades) {
+      activeSymbols.push(symbol);
+    }
+  }
+
+  return activeSymbols;
 }
 
 /**
