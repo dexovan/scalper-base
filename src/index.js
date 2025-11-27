@@ -22,8 +22,6 @@ import { publicEmitter } from "./connectors/bybitPublic.js";
 
 import { initEventHub } from "./ws/eventHub.js";
 
-import { AiMarketHub } from './ws/aiMarketHub.js';
-
 import { saveTicker, saveTrade, getStorageStats } from "./utils/dataStorage.js";
 
 import CONFIG from "./config/index.js";
@@ -79,11 +77,6 @@ async function startEngine() {
 
     console.log("🔍 DEBUG: Initializing EventHub...");
     initEventHub();
-
-    // Initialize AI Market Hub (WebSocket orderbook + trades)
-    console.log("📡 [ENGINE] Starting AI Market Hub...");
-    global.marketHub = new AiMarketHub();
-    global.marketHub.start();
 
     const primeSymbols = getSymbolsByCategory("Prime");
     if (primeSymbols.length > 0) {
@@ -172,7 +165,7 @@ async function startEngine() {
 
     metricsWS.connect({
         symbols: primeSymbolsForWS,
-        channels: ["tickers"], // ⚠️ ONLY TICKERS - trade subscriptions managed by hotlist
+        channels: ["tickers", "orderbook.50"], // ✅ Added orderbook.50 for imbalance/spread data
 
         // MUST HAVE THE RAW MESSAGE
         onEvent: (msg) => {
@@ -219,6 +212,9 @@ async function startEngine() {
     });
 
     console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);
+
+    // 🚀 Export metricsWS globally for API access (orderbook + trade flow data)
+    global.metricsWS = metricsWS;
 
     console.log("⚡ Engine running normally.");
 

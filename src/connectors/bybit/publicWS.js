@@ -28,6 +28,9 @@ export class BybitPublicWS {
 
     this.connected = false;
     this._messageCount = 0;       // lokalni counter za debug
+
+    // 🔥 ORDERBOOK STORAGE (added for AI Market Hub compatibility)
+    this.orderbooks = new Map();  // symbol -> { bids: [[price,qty]], asks: [[price,qty]], lastUpdate: timestamp }
   }
 
   /**
@@ -139,6 +142,14 @@ export class BybitPublicWS {
                   ts: tradeTs
                 });
               }
+            }
+          }
+
+          // 🔥 FEED ORDERBOOK DATA (added for AI Market Hub compatibility)
+          if (msg.topic && msg.topic.startsWith("orderbook.") && msg.data) {
+            const symbol = msg.topic.split(".")[2]; // orderbook.50.BTCUSDT -> BTCUSDT
+            if (symbol) {
+              this._handleOrderbookMessage(symbol, msg);
             }
           }
 
@@ -345,6 +356,132 @@ export class BybitPublicWS {
     }
 
     console.log(`🔥 [METRICS-WS] Trade topics updated: ${this.tradeTopics.size} active`);
+  }
+
+  // ========================================================
+  // ORDERBOOK METHODS (AI Market Hub compatibility)
+  // ========================================================
+
+  /**
+   * Handle orderbook WebSocket message
+   * @param {string} symbol - e.g., "BTCUSDT"
+   * @param {object} msg - Bybit WS message with { type: "snapshot"|"delta", data: {...} }
+   */
+  _handleOrderbookMessage(symbol, msg) {
+    if (!msg.data) return;
+
+    const { type, data } = msg;
+    const now = Date.now();
+
+    if (type === "snapshot") {
+      // Full orderbook snapshot
+      const bids = (data.b || []).map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+      const asks = (data.a || []).map(([p, q]) => [parseFloat(p), parseFloat(q)]);
+
+      this.orderbooks.set(symbol, {
+        bids: bids.slice(0, 20),  // Keep top 20 levels
+        asks: asks.slice(0, 20),
+        lastUpdate: now
+      });
+    } else if (type === "delta") {
+      // Incremental update
+      const existing = this.orderbooks.get(symbol);
+      if (!existing) return; // Need snapshot first
+
+      // Update bids
+      if (data.b && data.b.length > 0) {
+        for (const [priceStr, qtyStr] of data.b) {
+          const price = parseFloat(priceStr);
+          const qty = parseFloat(qtyStr);
+
+          // Remove existing level
+          existing.bids = existing.bids.filter(([p]) => p !== price);
+
+          // Add new level if qty > 0
+          if (qty > 0) {
+            existing.bids.push([price, qty]);
+          }
+        }
+
+        // Sort bids descending (highest first)
+        existing.bids.sort((a, b) => b[0] - a[0]);
+        existing.bids = existing.bids.slice(0, 20);
+      }
+
+      // Update asks
+      if (data.a && data.a.length > 0) {
+        for (const [priceStr, qtyStr] of data.a) {
+          const price = parseFloat(priceStr);
+          const qty = parseFloat(qtyStr);
+
+          // Remove existing level
+          existing.asks = existing.asks.filter(([p]) => p !== price);
+
+          // Add new level if qty > 0
+          if (qty > 0) {
+            existing.asks.push([price, qty]);
+          }
+        }
+
+        // Sort asks ascending (lowest first)
+        existing.asks.sort((a, b) => a[0] - b[0]);
+        existing.asks = existing.asks.slice(0, 20);
+      }
+
+      existing.lastUpdate = now;
+    }
+  }
+
+  /**
+   * Get market state for a symbol (AI Market Hub compatible API)
+   * @param {string} symbol - e.g., "BTCUSDT"
+   * @returns {object|null} Market state with price, bid, ask, imbalance, spread, orderFlowNet60s
+   */
+  getSymbolState(symbol) {
+    const orderbook = this.orderbooks.get(symbol);
+    if (!orderbook || !orderbook.bids.length || !orderbook.asks.length) {
+      return null;
+    }
+
+    const bid = orderbook.bids[0][0];  // Best bid price
+    const ask = orderbook.asks[0][0];  // Best ask price
+    const price = (bid + ask) / 2;     // Mid price
+
+    // Calculate spread
+    const spread = ask - bid;
+    const spreadPercent = (spread / price) * 100;
+
+    // Calculate imbalance (bid volume / ask volume)
+    const bidVolTop20 = orderbook.bids.slice(0, 20).reduce((sum, [p, q]) => sum + (p * q), 0);
+    const askVolTop20 = orderbook.asks.slice(0, 20).reduce((sum, [p, q]) => sum + (p * q), 0);
+
+    let imbalance = 1.0;
+    if (askVolTop20 > 0) {
+      imbalance = bidVolTop20 / askVolTop20;
+    } else if (bidVolTop20 > 0) {
+      imbalance = 3.0; // Max imbalance if no asks
+    }
+
+    // Get order flow from TradeFlowAggregator
+    const flowData = tradeFlowAggregator.getFlow(symbol);
+    const orderFlowNet60s = flowData?.netFlow || 0;
+    const orderFlowBuyVol60s = flowData?.buyVol || 0;
+    const orderFlowSellVol60s = flowData?.sellVol || 0;
+
+    return {
+      symbol,
+      price,
+      bid,
+      ask,
+      spread,
+      spreadPercent,
+      imbalance,
+      orderFlowNet60s,
+      orderFlowBuyVol60s,
+      orderFlowSellVol60s,
+      volumeAbs60s: orderFlowBuyVol60s + orderFlowSellVol60s,
+      lastUpdate: orderbook.lastUpdate
+    };
   }
 }
 

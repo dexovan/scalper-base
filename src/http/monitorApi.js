@@ -834,22 +834,22 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   // GET /api/live-market/:symbol - Live market state (for Signal Scanner & Executor)
   // ============================================================
-  // 🔥 POWERED BY AI MARKET HUB - Real-time orderbook + trade feed
+  // 🔥 POWERED BY BybitPublicWS - Real-time orderbook + trade feed
   app.get("/api/live-market/:symbol", async (req, res) => {
     try {
       const symbol = (req.params.symbol || '').toUpperCase();
 
-      // Check if AI Market Hub is initialized
-      if (!global.marketHub) {
+      // Check if BybitPublicWS is initialized
+      if (!global.metricsWS) {
         return res.status(500).json({
           ok: false,
-          error: 'AI Market Hub not initialized',
+          error: 'BybitPublicWS not initialized',
           symbol,
         });
       }
 
-      // Get state from AI Market Hub (WebSocket data)
-      const state = global.marketHub.getSymbolState(symbol);
+      // Get state from BybitPublicWS (WebSocket data)
+      const state = global.metricsWS.getSymbolState(symbol);
 
       if (!state) {
         return res.json({
@@ -875,16 +875,8 @@ export function startMonitorApiServer(port = 8090) {
           orderFlowBuyVol60s: state.orderFlowBuyVol60s,   // Total buy volume USD
           orderFlowSellVol60s: state.orderFlowSellVol60s, // Total sell volume USD
 
-          // AI Risk Scores (v1 heuristics)
-          pumpScore: state.pumpScore,               // Pump/dump risk (0-1)
-          spoofScore: state.spoofScore,             // Spoofing risk (0-1)
-          wallScore: state.wallScore,               // Wall strength (0-1)
-          wallDirection: state.wallDirection,       // 'UP' or 'DOWN' or null
-
           // Metadata
           volumeAbs60s: state.volumeAbs60s,         // Total volume USD (60s)
-          lastTradePrice: state.lastTradePrice,
-          lastTradeTs: state.lastTradeTs,
           lastUpdate: state.lastUpdate,
         },
         timestamp: new Date().toISOString()
@@ -926,7 +918,7 @@ export function startMonitorApiServer(port = 8090) {
       if (!global.marketHub) {
         return res.status(500).json({
           ok: false,
-          error: 'AI Market Hub not initialized',
+          error: 'BybitPublicWS not initialized',
           timestamp: new Date().toISOString()
         });
       }
@@ -936,7 +928,7 @@ export function startMonitorApiServer(port = 8090) {
 
       for (const symbol of symbols) {
         try {
-          const state = global.marketHub.getSymbolState(symbol);
+          const state = global.metricsWS.getSymbolState(symbol);
 
           if (!state) {
             errors.push({ symbol, error: 'No market state (WS warming up)' });
@@ -954,13 +946,7 @@ export function startMonitorApiServer(port = 8090) {
             orderFlowNet60s: state.orderFlowNet60s,
             orderFlowBuyVol60s: state.orderFlowBuyVol60s,
             orderFlowSellVol60s: state.orderFlowSellVol60s,
-            pumpScore: state.pumpScore,
-            spoofScore: state.spoofScore,
-            wallScore: state.wallScore,
-            wallDirection: state.wallDirection,
             volumeAbs60s: state.volumeAbs60s,
-            lastTradePrice: state.lastTradePrice,
-            lastTradeTs: state.lastTradeTs,
             lastUpdate: state.lastUpdate,
           };
 
