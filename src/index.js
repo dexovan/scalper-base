@@ -148,6 +148,18 @@ async function startEngine() {
                     }
 
                     for (const trade of trades) {
+                        // 📊 SEND TRADE DATA TO OrderbookManager
+                        const tradeEvent = {
+                            price: parseFloat(trade.p || trade.price || 0),
+                            qty: parseFloat(trade.v || trade.qty || trade.size || 0),
+                            side: (trade.S || trade.side || 'Buy').toUpperCase() === 'BUY' ? 'BUY' : 'SELL',
+                            tradeId: trade.i || trade.tradeId || trade.id,
+                            ts: parseInt(trade.T || trade.timestamp || Date.now())
+                        };
+
+                        OrderbookManager.onTradeEvent(symbol, tradeEvent);
+
+                        // Emit to publicEmitter for dashboard
                         publicEmitter.emit("event", {
                             type: "trade",
                             symbol,
