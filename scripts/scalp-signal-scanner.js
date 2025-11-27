@@ -593,13 +593,6 @@ async function scanSymbol(symbol) {
       return null;
     }
 
-    // 2B. Fetch live market state from AI Market Hub (if available)
-    let hubData = null;
-    if (global.marketHub) {
-      hubData = global.marketHub.getSymbolState(symbol);
-      // hubData now contains: { price, bid, ask, spread, imbalance, orderFlowNet60s, pumpScore, spoofScore, wallScore, ... }
-    }
-
     // 3. Evaluate signal
     const evaluation = evaluateSignal(latestCandle, liveData);
 
