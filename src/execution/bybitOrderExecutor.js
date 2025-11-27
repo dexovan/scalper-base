@@ -116,6 +116,44 @@ console.log(`⏱️  [EXECUTOR] Maker wait: ${EXECUTION_CONFIG.makerFirst.fallba
 console.log(`📊 [EXECUTOR] Timing: ${EXECUTION_CONFIG.pullbackCheck.recheckDelayMs}ms delay, ${EXECUTION_CONFIG.pullbackCheck.minInitialMomentum * 100}% momentum, ${EXECUTION_CONFIG.pullbackCheck.longTopPercentThreshold * 100}% range`);
 
 // =====================================================
+// 4B) MAP CLEANUP - Prevents memory leaks
+// =====================================================
+const MAP_CLEANUP_INTERVAL = 60000;  // 1 minute
+const MAP_STATE_MAX_AGE = 300000;    // 5 minutes
+
+setInterval(() => {
+  let cleanedCount = 0;
+
+  // Cleanup microHighState
+  for (const [symbol, state] of microHighState?.entries() || []) {
+    if (Date.now() - state.lastUpdate > MAP_STATE_MAX_AGE) {
+      microHighState.delete(symbol);
+      cleanedCount++;
+    }
+  }
+
+  // Cleanup momentumHistory
+  for (const [symbol, list] of momentumHistory?.entries() || []) {
+    if (list.length > 0 && Date.now() - list[list.length - 1].t > MAP_STATE_MAX_AGE) {
+      momentumHistory.delete(symbol);
+      cleanedCount++;
+    }
+  }
+
+  // Cleanup structureHistory
+  for (const [symbol, list] of structureHistory?.entries() || []) {
+    if (list.length > 0 && Date.now() - list[list.length - 1].t > MAP_STATE_MAX_AGE) {
+      structureHistory.delete(symbol);
+      cleanedCount++;
+    }
+  }
+
+  if (cleanedCount > 0) {
+    console.log(`🧹 [CLEANUP] Removed ${cleanedCount} stale symbol states from memory`);
+  }
+}, MAP_CLEANUP_INTERVAL);
+
+// =====================================================
 // 5) HELPER: Sleep
 // =====================================================
 function sleep(ms) {
@@ -698,6 +736,13 @@ export async function antiTopFinalCheck(symbol, direction) {
 
     const price = live.price;
 
+    // Check if micro-high state is stale (older than 60s)
+    const existingState = getMicroHighState(symbol);
+    if (existingState && Date.now() - existingState.lastUpdate > 60000) {
+        microHighState.delete(symbol);
+        console.log(`🔄 [ANTI-TOP] Micro-high state expired for ${symbol}, resetting`);
+    }
+
     // Update micro-high tracker
     updateMicroHigh(symbol, price);
 
@@ -946,7 +991,8 @@ export function analyzeStructure(symbol, direction) {
     const avgFlow = flows.reduce((a, b) => a + b, 0) / flows.length;
     const currentFlow = last.flow;
 
-    if (avgFlow !== 0) {
+    // Proveri da li imamo značajan baseline flow
+    if (Math.abs(avgFlow) > 0.0001) {
         const spikeRatio = currentFlow / avgFlow;
 
         // Preveliki rast volumena → pump / wick
@@ -1029,10 +1075,26 @@ export function analyzeFakePump(symbol, direction, marketState) {
     const imbalance  = Number(marketState.imbalance  ?? 1.0);
     const flow       = Number(marketState.orderFlow  ?? 0);
 
-    // Ako engine još uvek ne računa ove skorove → sve 0 → nema blokade.
+    // Ako engine još uvek ne računa ove skorove → koristimo fallback logiku
     const hasRiskSignals = pumpScore > 0 || spoofScore > 0 || wallScore > 0;
     if (!hasRiskSignals) {
-        return { ok: true, reason: "No risk scores yet" };
+        // FALLBACK: Detektuj pump preko spread + imbalance kombinacije
+        if (spread > 0.005 && Math.abs(imbalance - 1.0) > 0.15) {
+            return {
+                ok: false,
+                reason: `High spread (${(spread * 100).toFixed(2)}%) + imbalance (${imbalance.toFixed(3)}) suggests pump/trap`
+            };
+        }
+
+        // FALLBACK: Ekstremno širok spread
+        if (spread > 0.008) {
+            return {
+                ok: false,
+                reason: `Extreme spread ${(spread * 100).toFixed(2)}% detected`
+            };
+        }
+
+        return { ok: true, reason: "No risk scores yet (fallback passed)" };
     }
 
     // 1) Direktan spoof / wall signal
@@ -1580,43 +1642,38 @@ export async function executeTrade(signal) {
     }
 
     // =====================================================
-    // SMART MOMENTUM SHIFT FILTER (OPTION C)
-    // =====================================================
-    const live = await getLiveMarketState(signal.symbol);
-    if (live) {
-        addMomentumSample(
-            signal.symbol,
-            live.imbalance || 1.0,
-            live.orderFlow || 0
-        );
-    }
-
-    const momentumShift = analyzeMomentumTrend(signal.symbol, signal.direction);
-
-    if (!momentumShift.ok) {
-        console.log(formatRejectionLog({
-            symbol: signal.symbol,
-            direction: signal.direction,
-            reason: momentumShift.reason,
-            momentumCheck: momentumShift,
-            tickSize: ctx.tickSize
-        }));
-        return {
-            success: false,
-            mode: 'REJECTED_MOMENTUM_SHIFT',
-            reason: momentumShift.reason,
-            symbol: signal.symbol,
-            direction: signal.direction,
-            tickSize: ctx.tickSize
-        };
-    }
-
-    // =====================================================
-    // MODULE D + E – Struktura + Anti-Fake-Pump filteri
+    // MODULES C + D + E – Combined market state fetch (optimized)
     // =====================================================
     const liveState = await getLiveMarketState(signal.symbol);
 
     if (liveState) {
+      // C: Smart Momentum Shift Filter
+      addMomentumSample(
+          signal.symbol,
+          liveState.imbalance || 1.0,
+          liveState.orderFlow || 0
+      );
+
+      const momentumShift = analyzeMomentumTrend(signal.symbol, signal.direction);
+
+      if (!momentumShift.ok) {
+          console.log(formatRejectionLog({
+              symbol: signal.symbol,
+              direction: signal.direction,
+              reason: momentumShift.reason,
+              momentumCheck: momentumShift,
+              tickSize: ctx.tickSize
+          }));
+          return {
+              success: false,
+              mode: 'REJECTED_MOMENTUM_SHIFT',
+              reason: momentumShift.reason,
+              symbol: signal.symbol,
+              direction: signal.direction,
+              tickSize: ctx.tickSize
+          };
+      }
+
       // D: Bid/Ask swing + volume spike
       addStructureSample(signal.symbol, liveState);
       const structureCheck = analyzeStructure(signal.symbol, signal.direction);
