@@ -28,7 +28,7 @@ import PumpPreSignalsEngine from './pumpPreSignals.js';
 
 import logger from '../utils/logger.js';
 import { getUniverseSymbols, getSymbolMeta } from '../market/universe_v2.js';
-import { getOrderbookSummary, getRecentTrades, getCandles, touchSymbolActivity } from '../microstructure/OrderbookManager.js';
+import { getOrderbookSummary, getRecentTrades, getCandles, touchSymbolActivity, getActiveSymbols } from '../microstructure/OrderbookManager.js';
 
 class FeatureEngine {
     constructor(config = {}) {
@@ -178,7 +178,6 @@ class FeatureEngine {
         await new Promise(resolve => setTimeout(resolve, 3000));
         console.log('🔧 [FEATURE ENGINE] Wait complete, checking active symbols...');
 
-        const { getActiveSymbols } = await import('../microstructure/OrderbookManager.js');
         const activeSymbols = getActiveSymbols();
 
         console.log(`🔧 [FEATURE ENGINE] Active symbols with data: ${activeSymbols.length}`);
@@ -217,7 +216,6 @@ class FeatureEngine {
     async startActiveSymbolUpdates() {
         if (!this.isRunning) return;
 
-        const { getActiveSymbols } = await import('../microstructure/OrderbookManager.js');
         const activeSymbols = getActiveSymbols();
 
         if (activeSymbols.length === 0) {
