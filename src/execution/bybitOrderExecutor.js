@@ -1116,6 +1116,68 @@ export function analyzeFakePump(symbol, direction, marketState) {
 }
 
 // =====================================================
+// MINI LOG FORMATTER v1.0
+// Ultra-jasan prikaz razloga zašto je signal odbijen
+// =====================================================
+
+export function formatRejectionLog({
+    symbol,
+    direction,
+    reason,
+    pullbackCheck = null,
+    momentumCheck = null,
+    structureCheck = null,
+    fakePumpCheck = null,
+    tickSize = null
+}) {
+    const parts = [];
+
+    parts.push(`❌ REJECTED ${symbol} ${direction}`);
+
+    if (reason) parts.push(`Main=${reason}`);
+
+    if (pullbackCheck && pullbackCheck.pricePosition !== undefined) {
+        parts.push(`PullbackPos=${(pullbackCheck.pricePosition*100).toFixed(1)}%`);
+    }
+
+    if (momentumCheck && momentumCheck.momentum !== undefined) {
+        parts.push(`Momentum=${(momentumCheck.momentum*100).toFixed(1)}%`);
+    }
+
+    if (structureCheck && structureCheck.score !== undefined) {
+        parts.push(`StructScore=${(structureCheck.score*100).toFixed(1)}%`);
+    }
+
+    if (fakePumpCheck) {
+        const fs = fakePumpCheck.raw || {};
+        if (fs.pumpScore !== undefined) {
+            parts.push(`Pump=${(fs.pumpScore*100).toFixed(1)}%`);
+        }
+        if (fs.spoofScore !== undefined) {
+            parts.push(`Spoof=${(fs.spoofScore*100).toFixed(1)}%`);
+        }
+        if (fs.wallScore !== undefined) {
+            parts.push(`Wall=${(fs.wallScore*100).toFixed(1)}%`);
+        }
+        if (fs.spread !== undefined) {
+            parts.push(`Spread=${(fs.spread*100).toFixed(2)}%`);
+        }
+        if (fs.imbal !== undefined) {
+            parts.push(`Imb=${fs.imbal.toFixed(3)}`);
+        }
+        if (fs.flow !== undefined) {
+            parts.push(`Flow=${fs.flow.toFixed(4)}`);
+        }
+    }
+
+    if (tickSize) {
+        parts.push(`Tick=${tickSize}`);
+    }
+
+    return parts.join(" | ");
+}
+
+// =====================================================
 // 10) MAKER-FIRST: Wait for limit order fill
 // =====================================================
 async function waitForMakerFill({ symbol, orderId, limitPrice, config }) {
@@ -1456,7 +1518,13 @@ export async function executeTrade(signal) {
     // Phase 2: Pullback check (BALANCED MODE)
     const pullbackCheck = await checkPricePullback(signal.symbol, signal.direction, signal.entry);
     if (!pullbackCheck.passed) {
-      console.log(`❌ [EXECUTOR] Trade rejected: ${pullbackCheck.reason}`);
+      console.log(formatRejectionLog({
+        symbol: signal.symbol,
+        direction: signal.direction,
+        reason: pullbackCheck.reason,
+        pullbackCheck,
+        tickSize: ctx.tickSize
+      }));
 
       return {
         success: false,
@@ -1471,7 +1539,13 @@ export async function executeTrade(signal) {
     // Phase 2: Momentum recheck (BALANCED MODE)
     const momentumCheck = await recheckMomentum(signal.symbol, signal.direction, signal.initialMomentum || 0);
     if (!momentumCheck.passed) {
-      console.log(`❌ [EXECUTOR] Trade rejected: ${momentumCheck.reason}`);
+      console.log(formatRejectionLog({
+        symbol: signal.symbol,
+        direction: signal.direction,
+        reason: momentumCheck.reason,
+        momentumCheck,
+        tickSize: ctx.tickSize
+      }));
 
       return {
         success: false,
@@ -1489,7 +1563,12 @@ export async function executeTrade(signal) {
     const antiTop = await antiTopFinalCheck(signal.symbol, signal.direction);
 
     if (!antiTop.passed) {
-        console.log(`❌ [ANTI-TOP] Trade rejected: ${antiTop.reason}`);
+        console.log(formatRejectionLog({
+            symbol: signal.symbol,
+            direction: signal.direction,
+            reason: antiTop.reason,
+            tickSize: ctx.tickSize
+        }));
         return {
             success: false,
             mode: 'REJECTED_ANTI_TOP',
@@ -1515,7 +1594,13 @@ export async function executeTrade(signal) {
     const momentumShift = analyzeMomentumTrend(signal.symbol, signal.direction);
 
     if (!momentumShift.ok) {
-        console.log(`❌ [MOMENTUM-SHIFT] Trade rejected: ${momentumShift.reason}`);
+        console.log(formatRejectionLog({
+            symbol: signal.symbol,
+            direction: signal.direction,
+            reason: momentumShift.reason,
+            momentumCheck: momentumShift,
+            tickSize: ctx.tickSize
+        }));
         return {
             success: false,
             mode: 'REJECTED_MOMENTUM_SHIFT',
@@ -1537,7 +1622,13 @@ export async function executeTrade(signal) {
       const structureCheck = analyzeStructure(signal.symbol, signal.direction);
 
       if (!structureCheck.ok) {
-        console.log(`❌ [STRUCTURE] Trade rejected: ${structureCheck.reason}`);
+        console.log(formatRejectionLog({
+          symbol: signal.symbol,
+          direction: signal.direction,
+          reason: structureCheck.reason,
+          structureCheck,
+          tickSize: ctx.tickSize
+        }));
         return {
           success: false,
           mode: 'REJECTED_STRUCTURE',
@@ -1551,7 +1642,13 @@ export async function executeTrade(signal) {
       // E: Anti-Fake-Pump & Spoof-Wall
       const fakePumpCheck = analyzeFakePump(signal.symbol, signal.direction, liveState);
       if (!fakePumpCheck.ok) {
-        console.log(`❌ [FAKE-PUMP] Trade rejected: ${fakePumpCheck.reason}`);
+        console.log(formatRejectionLog({
+          symbol: signal.symbol,
+          direction: signal.direction,
+          reason: fakePumpCheck.reason,
+          fakePumpCheck,
+          tickSize: ctx.tickSize
+        }));
         return {
           success: false,
           mode: 'REJECTED_FAKE_PUMP',
