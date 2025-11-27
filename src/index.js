@@ -142,9 +142,11 @@ async function startEngine() {
                 } else if (channelType === "publicTrade" && msg.data) {
                     const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
 
-                    // DEBUG: Sample 1% of trade events to verify emission
-                    if (Math.random() < 0.01) {
-                        console.log(`🔥 [TRADE EMIT] ${symbol}: ${trades.length} trades emitted to publicEmitter`);
+                    // DEBUG: Log first trade event for each symbol (track up to 10 symbols)
+                    if (!global._tradeFirstLogs) global._tradeFirstLogs = new Set();
+                    if (!global._tradeFirstLogs.has(symbol) && global._tradeFirstLogs.size < 10) {
+                        global._tradeFirstLogs.add(symbol);
+                        console.log(`🔥 [TRADE FIRST] ${symbol}: ${trades.length} trades received`);
                     }
 
                     for (const trade of trades) {
@@ -191,9 +193,11 @@ async function startEngine() {
                         // Send to OrderbookManager
                         OrderbookManager.onOrderbookEvent(symbol, orderbookEvent);
 
-                        // DEBUG: Sample 0.1% to verify processing
-                        if (Math.random() < 0.001) {
-                            console.log(`📊 [ORDERBOOK] ${symbol}: ${orderbookEvent.bids.length} bids, ${orderbookEvent.asks.length} asks`);
+                        // DEBUG: Log first orderbook event for each symbol (track up to 10 symbols)
+                        if (!global._orderbookFirstLogs) global._orderbookFirstLogs = new Set();
+                        if (!global._orderbookFirstLogs.has(symbol) && global._orderbookFirstLogs.size < 10) {
+                            global._orderbookFirstLogs.add(symbol);
+                            console.log(`📊 [ORDERBOOK FIRST] ${symbol}: ${orderbookEvent.bids.length} bids, ${orderbookEvent.asks.length} asks, type: ${msg.type}`);
                         }
                     }
                 }
