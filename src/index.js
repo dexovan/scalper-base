@@ -15,6 +15,8 @@ import {
 
 import { initEventHub } from "./ws/eventHub.js";
 
+import { publicEmitter } from "./connectors/bybitPublic.js";
+
 import { getStorageStats } from "./utils/dataStorage.js";
 
 import CONFIG from "./config/index.js";
