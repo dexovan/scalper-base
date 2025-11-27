@@ -377,7 +377,7 @@ export function startMonitorApiServer(port = 8090) {
       const { getUniverseStats } = await import("../market/universe_v2.js");
       const universeStats = getUniverseStats();
 
-      // Get WebSocket connection status from bybitPublic
+      // Get WebSocket connection status from BybitPublicWS (new system)
       let marketDataMetrics = {
         wsConnected: false,
         lastMessageAt: null,
@@ -386,19 +386,18 @@ export function startMonitorApiServer(port = 8090) {
       };
 
       try {
-        // Try to get WS status from bybitPublic connector
-        const bybitPublicModule = await import("../connectors/bybitPublic.js");
-        if (bybitPublicModule.getConnectionStatus) {
-          const wsStatus = bybitPublicModule.getConnectionStatus();
+        // Get WS status from new BybitPublicWS connector (global.metricsWS)
+        if (global.metricsWS) {
+          const wsStatus = global.metricsWS.getStatus();
           marketDataMetrics = {
             wsConnected: wsStatus.connected || false,
             lastMessageAt: wsStatus.lastMessageAt || null,
             reconnectAttempts: wsStatus.reconnectAttempts || 0,
-            subscribedSymbols: wsStatus.subscribedSymbols || 0
+            subscribedSymbols: global.metricsWS.subscriptions?.length || 0
           };
         }
       } catch (error) {
-        console.warn("⚠️ [SUMMARY] Could not get WS status from bybitPublic:", error.message);
+        console.warn("⚠️ [SUMMARY] Could not get WS status from metricsWS:", error.message);
       }
 
       return res.json({
@@ -774,10 +773,15 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   app.post("/api/monitor/refresh-ws", async (req, res) => {
     try {
-      const { refreshWebSocketSubscription } = await import("../connectors/bybitPublic.js");
-
       console.log("🔄 [API] Refreshing WebSocket subscription requested...");
-      await refreshWebSocketSubscription();
+
+      // Reconnect new BybitPublicWS system
+      if (global.metricsWS) {
+        await global.metricsWS.reconnect();
+        console.log("✅ [API] BybitPublicWS reconnected successfully");
+      } else {
+        console.warn("⚠️ [API] global.metricsWS not initialized");
+      }
 
       return res.json({
         ok: true,
