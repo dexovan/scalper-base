@@ -832,91 +832,60 @@ export function startMonitorApiServer(port = 8090) {
 
   // GET /api/symbol/:symbol/orderbook - Current orderbook
   // ============================================================
-  // GET /api/live-market/:symbol - Live market state (for Signal Scanner)
+  // GET /api/live-market/:symbol - Live market state (for Signal Scanner & Executor)
   // ============================================================
+  // 🔥 POWERED BY AI MARKET HUB - Real-time orderbook + trade feed
   app.get("/api/live-market/:symbol", async (req, res) => {
     try {
-      const { symbol } = req.params;
-      console.log(`[LIVE-MARKET] Request for ${symbol} - START`);
+      const symbol = (req.params.symbol || '').toUpperCase();
 
-      // Check cache first (200ms TTL)
-      const cached = liveDataCache.get(symbol);
-      if (cached) {
-        return res.json(cached);
-      }
-
-      // 1. Get ticker data (price, bid, ask)
-      const ticker = latestTickers.get(symbol);
-      console.log(`[LIVE-MARKET] ${symbol} - Ticker:`, ticker ? 'EXISTS' : 'MISSING');
-      if (!ticker) {
-        return res.json({
+      // Check if AI Market Hub is initialized
+      if (!global.marketHub) {
+        return res.status(500).json({
           ok: false,
-          error: `No ticker data for symbol: ${symbol}`,
+          error: 'AI Market Hub not initialized',
           symbol,
-          timestamp: new Date().toISOString()
         });
       }
 
-      // 2. Get orderbook summary (imbalance, spread, walls)
-      console.log(`[LIVE-MARKET] ${symbol} - Getting orderbook...`);
-      const orderbook = OrderbookManager.getOrderbookSummary(symbol, 50);
-      console.log(`[LIVE-MARKET] ${symbol} - Orderbook:`, orderbook ? 'EXISTS' : 'MISSING');
+      // Get state from AI Market Hub (WebSocket data)
+      const state = global.marketHub.getSymbolState(symbol);
 
-      // 3. Calculate spread - PRIORITIZE orderbook over ticker for accurate bid/ask
-      let bid = ticker.bid || ticker.price || 0;
-      let ask = ticker.ask || ticker.price || 0;
-
-      if (orderbook && orderbook.bestBid && orderbook.bestAsk) {
-        // Use orderbook bid/ask (more accurate than ticker which Bybit rounds)
-        // bestBid/bestAsk are numbers (prices), not objects
-        bid = orderbook.bestBid;
-        ask = orderbook.bestAsk;
+      if (!state) {
+        return res.json({
+          ok: true,
+          live: null,
+          note: 'No market state yet (WS warming up or symbol not subscribed)',
+          symbol,
+        });
       }
 
-      // Calculate spread - CORRECTED
-      const spreadAbsolute = bid > 0 && ask > 0 ? (ask - bid) : 0;
-      const spreadPercent = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
-
-      // Calculate price - use ticker, fallback to orderbook mid-price
-      let price = ticker.price;
-      if (!price && bid > 0 && ask > 0) {
-        price = (bid + ask) / 2; // Orderbook mid-price fallback
-      }
-
-      // 4. Get imbalance (default to 1.0 if no orderbook)
-      const imbalance = orderbook?.imbalance ?? 1.0;
-
-      // 5. Calculate bid/ask depth in USDT (price * qty for each level)
-      let bidDepth = 0;
-      let askDepth = 0;
-      if (orderbook && orderbook.bids && orderbook.asks) {
-        bidDepth = orderbook.bids.reduce((sum, [price, qty]) => sum + (price * qty), 0);
-        askDepth = orderbook.asks.reduce((sum, [price, qty]) => sum + (price * qty), 0);
-      }
-
-      // 6. Get order flow from TradeFlowAggregator (60s rolling window)
-      const flow = tradeFlowAggregator.getFlow(symbol);
-      const orderFlowNet60s = flow.net;
-
-      // 7. Return live market state
+      // Return live market state with all metrics
       const response = {
         ok: true,
         symbol,
         live: {
-          price: price,
-          bid: bid,
-          ask: ask,
-          spread: parseFloat(spreadAbsolute.toFixed(6)),
-          spreadPercent: spreadPercent.toFixed(4),
-          imbalance: parseFloat(imbalance.toFixed(2)),
-          bidDepth: parseFloat(bidDepth.toFixed(2)),
-          askDepth: parseFloat(askDepth.toFixed(2)),
-          orderFlowNet60s: orderFlowNet60s,
-          orderFlowBuyVol60s: flow.buyVol,
-          orderFlowSellVol60s: flow.sellVol,
-          volume24h: ticker.volume24h || 0,
-          change24h: ticker.change24h || 0,
-          lastUpdate: ticker.timestamp || new Date().toISOString()
+          price: state.price,
+          bid: state.bid,
+          ask: state.ask,
+          spread: state.spread,                     // Absolute spread (ask - bid)
+          spreadPercent: state.spreadPercent,       // Percent spread
+          imbalance: state.imbalance,               // Bid/ask imbalance (0.5-3.0 range)
+          orderFlowNet60s: state.orderFlowNet60s,   // Net order flow in USD (60s window)
+          orderFlowBuyVol60s: state.orderFlowBuyVol60s,   // Total buy volume USD
+          orderFlowSellVol60s: state.orderFlowSellVol60s, // Total sell volume USD
+
+          // AI Risk Scores (v1 heuristics)
+          pumpScore: state.pumpScore,               // Pump/dump risk (0-1)
+          spoofScore: state.spoofScore,             // Spoofing risk (0-1)
+          wallScore: state.wallScore,               // Wall strength (0-1)
+          wallDirection: state.wallDirection,       // 'UP' or 'DOWN' or null
+
+          // Metadata
+          volumeAbs60s: state.volumeAbs60s,         // Total volume USD (60s)
+          lastTradePrice: state.lastTradePrice,
+          lastTradeTs: state.lastTradeTs,
+          lastUpdate: state.lastUpdate,
         },
         timestamp: new Date().toISOString()
       };
@@ -939,6 +908,7 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   // POST /api/live-market-batch - Batch live market data (ANTI-OVERLOAD)
   // Handles 50 symbols in one request instead of 50 separate requests
+  // 🔥 POWERED BY AI MARKET HUB
   // ============================================================
   app.post("/api/live-market-batch", async (req, res) => {
     try {
@@ -952,82 +922,47 @@ export function startMonitorApiServer(port = 8090) {
         });
       }
 
+      // Check if AI Market Hub is initialized
+      if (!global.marketHub) {
+        return res.status(500).json({
+          ok: false,
+          error: 'AI Market Hub not initialized',
+          timestamp: new Date().toISOString()
+        });
+      }
+
       const results = {};
       const errors = [];
 
       for (const symbol of symbols) {
         try {
-          // Check cache first
-          const cached = liveDataCache.get(symbol);
-          if (cached) {
-            results[symbol] = cached.live;
+          const state = global.marketHub.getSymbolState(symbol);
+
+          if (!state) {
+            errors.push({ symbol, error: 'No market state (WS warming up)' });
             continue;
           }
 
-          // Get fresh data
-          const ticker = latestTickers.get(symbol);
-          if (!ticker) {
-            errors.push({ symbol, error: 'No ticker data' });
-            continue;
-          }
-
-          const orderbook = OrderbookManager.getOrderbookSummary(symbol, 50);
-
-          let bid = ticker.bid || ticker.price || 0;
-          let ask = ticker.ask || ticker.price || 0;
-
-          if (orderbook && orderbook.bestBid && orderbook.bestAsk) {
-            bid = orderbook.bestBid;
-            ask = orderbook.bestAsk;
-          }
-
-          // Calculate spread - CORRECTED
-          const spreadAbsolute = bid > 0 && ask > 0 ? (ask - bid) : 0;
-          const spreadPercent = bid > 0 && ask > 0 ? ((ask - bid) / bid * 100) : 0;
-
-          let price = ticker.price;
-          if (!price && bid > 0 && ask > 0) {
-            price = (bid + ask) / 2;
-          }
-
-          const imbalance = orderbook?.imbalance ?? 1.0;
-
-          // Calculate bid/ask depth in USDT
-          let bidDepth = 0;
-          let askDepth = 0;
-          if (orderbook && orderbook.bids && orderbook.asks) {
-            bidDepth = orderbook.bids.reduce((sum, [price, qty]) => sum + (price * qty), 0);
-            askDepth = orderbook.asks.reduce((sum, [price, qty]) => sum + (price * qty), 0);
-          }
-
-          const flow = tradeFlowAggregator.getFlow(symbol);
-
-          const liveData = {
-            price: price,
-            bid: bid,
-            ask: ask,
-            spread: parseFloat(spreadAbsolute.toFixed(6)),
-            spreadPercent: spreadPercent.toFixed(4),
-            imbalance: parseFloat(imbalance.toFixed(2)),
-            bidDepth: parseFloat(bidDepth.toFixed(2)),
-            askDepth: parseFloat(askDepth.toFixed(2)),
-            orderFlowNet60s: flow.net,
-            orderFlowBuyVol60s: flow.buyVol,
-            orderFlowSellVol60s: flow.sellVol,
-            volume24h: ticker.volume24h || 0,
-            change24h: ticker.change24h || 0,
-            lastUpdate: ticker.timestamp || new Date().toISOString()
+          // Return same format as single endpoint
+          results[symbol] = {
+            price: state.price,
+            bid: state.bid,
+            ask: state.ask,
+            spread: state.spread,
+            spreadPercent: state.spreadPercent,
+            imbalance: state.imbalance,
+            orderFlowNet60s: state.orderFlowNet60s,
+            orderFlowBuyVol60s: state.orderFlowBuyVol60s,
+            orderFlowSellVol60s: state.orderFlowSellVol60s,
+            pumpScore: state.pumpScore,
+            spoofScore: state.spoofScore,
+            wallScore: state.wallScore,
+            wallDirection: state.wallDirection,
+            volumeAbs60s: state.volumeAbs60s,
+            lastTradePrice: state.lastTradePrice,
+            lastTradeTs: state.lastTradeTs,
+            lastUpdate: state.lastUpdate,
           };
-
-          // Cache individual result
-          liveDataCache.set(symbol, {
-            ok: true,
-            symbol,
-            live: liveData,
-            timestamp: new Date().toISOString()
-          });
-
-          results[symbol] = liveData;
 
         } catch (error) {
           errors.push({ symbol, error: error.message });
