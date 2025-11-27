@@ -128,7 +128,9 @@ async function startEngine() {
 
             // 🚀 EMIT EVENTS TO publicEmitter FOR monitorApi.js
             if (msg.topic) {
-                const [channelType, symbol] = msg.topic.split(".");
+                const parts = msg.topic.split(".");
+                const channelType = parts[0];
+                const symbol = parts.length === 3 ? parts[2] : parts[1]; // orderbook.50.SYMBOL vs tickers.SYMBOL
 
                 if (channelType === "tickers" && msg.data) {
                     publicEmitter.emit("event", {
@@ -152,6 +154,35 @@ async function startEngine() {
                             payload: trade,
                             timestamp: new Date().toISOString()
                         });
+                    }
+                } else if (channelType === "orderbook" && msg.data) {
+                    // 📊 SEND ORDERBOOK DATA TO OrderbookManager
+                    const orderbookData = Array.isArray(msg.data) ? msg.data[0] : msg.data;
+
+                    if (orderbookData && symbol) {
+                        const isSnapshot = msg.type === 'snapshot';
+
+                        const orderbookEvent = {
+                            bids: (orderbookData.b || orderbookData.bids || []).map(level => ({
+                                price: parseFloat(level[0] || level.price || 0),
+                                qty: parseFloat(level[1] || level.qty || 0)
+                            })),
+                            asks: (orderbookData.a || orderbookData.asks || []).map(level => ({
+                                price: parseFloat(level[0] || level.price || 0),
+                                qty: parseFloat(level[1] || level.qty || 0)
+                            })),
+                            lastUpdateId: orderbookData.u || orderbookData.updateId || null,
+                            ts: parseInt(orderbookData.ts || orderbookData.timestamp || Date.now()),
+                            isSnapshot: isSnapshot
+                        };
+
+                        // Send to OrderbookManager
+                        OrderbookManager.onOrderbookEvent(symbol, orderbookEvent);
+
+                        // DEBUG: Sample 0.1% to verify processing
+                        if (Math.random() < 0.001) {
+                            console.log(`📊 [ORDERBOOK] ${symbol}: ${orderbookEvent.bids.length} bids, ${orderbookEvent.asks.length} asks`);
+                        }
                     }
                 }
             }
