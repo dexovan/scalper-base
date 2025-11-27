@@ -588,6 +588,153 @@ async function recheckMomentum(symbol, direction, initialMomentum) {
   return { passed: true, momentum: currentMomentum };
 }
 
+//Ovde postaviti nove module za entry
+// =====================================================
+// MODULE 1: Micro High Tracker (prevents top entries)
+// =====================================================
+
+const microHighState = new Map();
+
+export function updateMicroHigh(symbol, price) {
+    let state = microHighState.get(symbol);
+    if (!state) {
+        state = {
+            microHigh: price,
+            microLow: price,
+            lastUpdate: Date.now()
+        };
+    }
+
+    if (price > state.microHigh) state.microHigh = price;
+    if (price < state.microLow) state.microLow = price;
+
+    state.lastUpdate = Date.now();
+    microHighState.set(symbol, state);
+}
+
+export function getMicroHighState(symbol) {
+    return microHighState.get(symbol) || null;
+}
+
+// =====================================================
+// MODULE 2: Micro Pump Detector (detects pump-based tops)
+// =====================================================
+
+export function detectMicroPump(symbol, price) {
+    const state = getMicroHighState(symbol);
+    if (!state) return { pump: false };
+
+    const range = state.microHigh - state.microLow;
+    if (range <= 0) return { pump: false };
+
+    const positionPercent = (price - state.microLow) / range;
+
+    return {
+        pump: positionPercent > 0.92,  // price >= 92% of recent range
+        positionPercent
+    };
+}
+// =====================================================
+// MODULE 3: Micro Breaker (detects immediate top/bottom break)
+// =====================================================
+
+export function detectBreaker(symbol, direction, price) {
+    const state = getMicroHighState(symbol);
+    if (!state) return { breaker: false };
+
+    if (direction === "LONG") {
+        const high = state.microHigh;
+        const slope = (high - price) / high;
+
+        return {
+            breaker: slope > 0.002,     // > 0.20% off the high
+            slope
+        };
+    }
+
+    if (direction === "SHORT") {
+        const low = state.microLow;
+        const slope = (price - low) / low;
+
+        return {
+            breaker: slope > 0.002,
+            slope
+        };
+    }
+
+    return { breaker: false };
+}
+
+// =====================================================
+// MODULE 4: Micro Entry Delay (waits until top cools down)
+// =====================================================
+
+export async function microEntryDelay(symbol, direction, price) {
+    const state = getMicroHighState(symbol);
+    if (!state) return { wait: false };
+
+    const last = state.lastUpdate;
+    const elapsed = Date.now() - last;
+
+    if (elapsed < 3500) {
+        return {
+            wait: true,
+            elapsed
+        };
+    }
+
+    return { wait: false };
+}
+
+// =====================================================
+// MODULE 5: Anti-Top Final Check (FULL BLOCKER)
+// =====================================================
+
+export async function antiTopFinalCheck(symbol, direction) {
+    const live = await getLiveMarketState(symbol);
+    if (!live || !live.price) {
+        return { passed: true, reason: "No market state" };
+    }
+
+    const price = live.price;
+
+    // Update micro-high tracker
+    updateMicroHigh(symbol, price);
+
+    // Pump detection
+    const pump = detectMicroPump(symbol, price);
+    if (pump.pump) {
+        return {
+            passed: false,
+            reason: `Price at ${(pump.positionPercent * 100).toFixed(1)}% of micro-range (pump detected)`
+        };
+    }
+
+    // Breaker detection
+    const br = detectBreaker(symbol, direction, price);
+    if (br.breaker) {
+        return {
+            passed: false,
+            reason: `Breaker detected: slope ${(br.slope * 100).toFixed(3)}%`
+        };
+    }
+
+    // Delay entry after micro-high movement
+    const delay = await microEntryDelay(symbol, direction, price);
+    if (delay.wait) {
+        return {
+            passed: false,
+            reason: `Micro cooldown needed (${delay.elapsed}ms)`
+        };
+    }
+
+    return { passed: true };
+}
+
+
+
+
+
 // =====================================================
 // 10) MAKER-FIRST: Wait for limit order fill
 // =====================================================
@@ -954,6 +1101,23 @@ export async function executeTrade(signal) {
         reason: momentumCheck.reason,
         tickSize: ctx.tickSize || null
       };
+    }
+
+    // =====================================================
+    // ANTI-TOP EXECUTION PATCH
+    // =====================================================
+    const antiTop = await antiTopFinalCheck(signal.symbol, signal.direction);
+
+    if (!antiTop.passed) {
+        console.log(`❌ [ANTI-TOP] Trade rejected: ${antiTop.reason}`);
+        return {
+            success: false,
+            mode: 'REJECTED_ANTI_TOP',
+            reason: antiTop.reason,
+            symbol: signal.symbol,
+            direction: signal.direction,
+            tickSize: ctx.tickSize
+        };
     }
 
     // Execute based on mode
