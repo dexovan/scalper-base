@@ -981,6 +981,141 @@ export function analyzeStructure(symbol, direction) {
 }
 
 // =====================================================
+// MODULE E: Anti-Fake-Pump & Spoof-Wall Filter (v1.0)
+// =====================================================
+//
+// Cilj:
+//  - ubijamo lažne pump signale (fake breakout, wick spike)
+//  - izbegavamo spoof zidove protiv našeg smera
+//  - ne ulazimo kad pumpScore/spoofScore/wallScore signaliziraju manipulaciju
+//
+// Oslanja se na polja iz /api/live-market:
+//  - pumpScore      (0.0 – 1.0)
+//  - spoofScore     (0.0 – 1.0)
+//  - wallScore      (0.0 – 1.0)
+//  - imbalance      (~0.8 – 1.2)
+//  - orderFlow      (net agresivni volumen)
+//  - spread         (procenat širine spreada)
+//
+// Ako neka polja ne postoje → svi skorovi = 0 → filter automatski "propušta".
+//
+// =====================================================
+
+const ANTI_FAKE_PUMP_CONFIG = {
+    maxPumpScore: 0.75,     // iznad ovoga tretiramo kao potencijalno fake pump (ako nema pravog flow-a)
+    maxSpoofScore: 0.70,    // iznad ovoga: spoof walls/high cancel rate
+    maxWallScore: 0.80,     // jake zidine u orderbook-u
+    minRealFlowRatio: 0.25, // odnos flow-a vs "pumpe" (slab realni flow = sumnja)
+    maxSpreadDuringPump: 0.0045 // 0.45% spread tokom "pumpe" = previše, verovatno wick/trap
+};
+
+/**
+ * Analizira da li je trenutni signal verovatno "fake pump / trap"
+ * @param {string} symbol
+ * @param {string} direction - 'LONG' ili 'SHORT'
+ * @param {object} marketState - objekat iz getLiveMarketState()
+ * @returns {{ok: boolean, reason?: string}}
+ */
+export function analyzeFakePump(symbol, direction, marketState) {
+    // Bez marketState → ne blokiramo
+    if (!marketState) {
+        return { ok: true, reason: "No marketState" };
+    }
+
+    const pumpScore  = Number(marketState.pumpScore  ?? 0);
+    const spoofScore = Number(marketState.spoofScore ?? 0);
+    const wallScore  = Number(marketState.wallScore  ?? 0);
+    const spread     = Number(marketState.spread     ?? 0);
+    const imbalance  = Number(marketState.imbalance  ?? 1.0);
+    const flow       = Number(marketState.orderFlow  ?? 0);
+
+    // Ako engine još uvek ne računa ove skorove → sve 0 → nema blokade.
+    const hasRiskSignals = pumpScore > 0 || spoofScore > 0 || wallScore > 0;
+    if (!hasRiskSignals) {
+        return { ok: true, reason: "No risk scores yet" };
+    }
+
+    // 1) Direktan spoof / wall signal
+    if (spoofScore >= ANTI_FAKE_PUMP_CONFIG.maxSpoofScore) {
+        return {
+            ok: false,
+            reason: `High spoofScore ${Math.round(spoofScore * 100)}%`
+        };
+    }
+
+    if (wallScore >= ANTI_FAKE_PUMP_CONFIG.maxWallScore) {
+        return {
+            ok: false,
+            reason: `Strong wallScore ${Math.round(wallScore * 100)}%`
+        };
+    }
+
+    // 2) Pump score bez pravog flou-a → fake pump / wick
+    if (pumpScore >= ANTI_FAKE_PUMP_CONFIG.maxPumpScore) {
+        // koristimo flow kao relativan indikator – ako je skoro nula → nema pravog "pritiska"
+        const flowAbs = Math.abs(flow);
+        const pumpIntensity = pumpScore; // 0–1
+
+        // heuristika: strong pump + slab flow ⇒ fake
+        if (flowAbs < ANTI_FAKE_PUMP_CONFIG.minRealFlowRatio) {
+            return {
+                ok: false,
+                reason: `Fake pump: high pumpScore (${Math.round(pumpScore * 100)}%) with weak flow`
+            };
+        }
+
+        // ako je spread proširen tokom pumpe → wick / trap
+        if (spread > ANTI_FAKE_PUMP_CONFIG.maxSpreadDuringPump) {
+            return {
+                ok: false,
+                reason: `Pump + wide spread (${(spread * 100).toFixed(2)}%)`
+            };
+        }
+    }
+
+    // 3) Kontra-imbalance tokom pumpe
+    //    npr. LONG signal, pumpScore visok, ali imbalance < 1.0 → više ask nego bid → trap
+    if (pumpScore >= ANTI_FAKE_PUMP_CONFIG.maxPumpScore) {
+        if (direction === "LONG" && imbalance < 1.0) {
+            return {
+                ok: false,
+                reason: `Pump LONG with ask-dominant imbalance (${imbalance.toFixed(3)})`
+            };
+        }
+        if (direction === "SHORT" && imbalance > 1.0) {
+            return {
+                ok: false,
+                reason: `Pump SHORT with bid-dominant imbalance (${imbalance.toFixed(3)})`
+            };
+        }
+    }
+
+    // 4) Spoof zid "protiv" našeg smera (ako engine kasnije doda wall bias)
+    // Ovde samo ostavljamo hook – ništa ne lomimo ako wallDirection ne postoji.
+    if (marketState.wallDirection) {
+        // primer: wallDirection = 'UP' (zid iznad cene), 'DOWN' (zid ispod cene)
+        if (direction === "LONG" && marketState.wallDirection === "DOWN" && wallScore > 0.5) {
+            // zid ispod cene → često trap za LONG izlaz, ali ne blokiramo nužno
+        }
+        if (direction === "LONG" && marketState.wallDirection === "UP" && wallScore > 0.5) {
+            // zid iznad cene → blokira rast → oprez
+            return {
+                ok: false,
+                reason: `Wall above price against LONG (score ${Math.round(wallScore * 100)}%)`
+            };
+        }
+        if (direction === "SHORT" && marketState.wallDirection === "DOWN" && wallScore > 0.5) {
+            return {
+                ok: false,
+                reason: `Wall below price against SHORT (score ${Math.round(wallScore * 100)}%)`
+            };
+        }
+    }
+
+    return { ok: true };
+}
+
+// =====================================================
 // 10) MAKER-FIRST: Wait for limit order fill
 // =====================================================
 async function waitForMakerFill({ symbol, orderId, limitPrice, config }) {
@@ -1392,25 +1527,40 @@ export async function executeTrade(signal) {
     }
 
     // =====================================================
-    // MODULE D – Bid/Ask Swing + Volume Spike Check
+    // MODULE D + E – Struktura + Anti-Fake-Pump filteri
     // =====================================================
     const liveState = await getLiveMarketState(signal.symbol);
+
     if (liveState) {
-        addStructureSample(signal.symbol, liveState);
-    }
+      // D: Bid/Ask swing + volume spike
+      addStructureSample(signal.symbol, liveState);
+      const structureCheck = analyzeStructure(signal.symbol, signal.direction);
 
-    const structureCheck = analyzeStructure(signal.symbol, signal.direction);
-
-    if (!structureCheck.ok) {
+      if (!structureCheck.ok) {
         console.log(`❌ [STRUCTURE] Trade rejected: ${structureCheck.reason}`);
         return {
-            success: false,
-            mode: 'REJECTED_STRUCTURE',
-            reason: structureCheck.reason,
-            symbol: signal.symbol,
-            direction: signal.direction,
-            tickSize: ctx.tickSize
+          success: false,
+          mode: 'REJECTED_STRUCTURE',
+          symbol: signal.symbol,
+          direction: signal.direction,
+          reason: structureCheck.reason,
+          tickSize: ctx.tickSize || null
         };
+      }
+
+      // E: Anti-Fake-Pump & Spoof-Wall
+      const fakePumpCheck = analyzeFakePump(signal.symbol, signal.direction, liveState);
+      if (!fakePumpCheck.ok) {
+        console.log(`❌ [FAKE-PUMP] Trade rejected: ${fakePumpCheck.reason}`);
+        return {
+          success: false,
+          mode: 'REJECTED_FAKE_PUMP',
+          symbol: signal.symbol,
+          direction: signal.direction,
+          reason: fakePumpCheck.reason,
+          tickSize: ctx.tickSize || null
+        };
+      }
     }
 
     // Execute based on mode
