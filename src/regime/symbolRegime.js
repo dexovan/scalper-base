@@ -41,7 +41,10 @@ const THRESHOLDS = {
   // Staleness detection
   STALE_ORDERBOOK_MS: 2000,
   STALE_TRADES_MS: 2000,
-  STALE_FEATURES_MS: 3000
+  STALE_FEATURES_MS: 3000,
+
+  // Grace period for new symbols (allow orderbook to arrive before marking STALE)
+  INIT_GRACE_PERIOD_MS: 5000 // 5 seconds to collect first orderbook snapshot
 };
 
 // ================================================================
@@ -58,6 +61,7 @@ function createRegimeState(symbol) {
     previous: null,
     updatedAt: new Date().toISOString(),
     transitionedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(), // NEW: Track when symbol was initialized
 
     // Feature scores
     pumpStrength: 0.0,
@@ -116,7 +120,11 @@ function determineSymbolRegime(symbol, featureState, symbolHealth, previousRegim
   // PRIORITY 1: STALE (no data updates)
   // ================================================================
 
-  if (symbolHealth && !symbolHealth.isActive) {
+  // Skip STALE check during initialization grace period (allow orderbook to arrive)
+  const initGraceEndsAt = new Date(newState.createdAt).getTime() + THRESHOLDS.INIT_GRACE_PERIOD_MS;
+  const isInGracePeriod = now < initGraceEndsAt;
+
+  if (symbolHealth && !symbolHealth.isActive && !isInGracePeriod) {
     if (prev.current !== 'STALE') {
       logger.info(`[REGIME] ${symbol}: ${prev.current} → STALE (staleness: ${symbolHealth.staleness})`);
       logStaleSymbol(symbol, symbolHealth.timeSinceLastTick);
