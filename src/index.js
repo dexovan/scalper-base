@@ -115,7 +115,7 @@ async function startEngine() {
 
     metricsWS.connect({
         symbols: primeSymbolsForWS,
-        channels: ["tickers", "orderbook.50", "publicTrade"], // ✅ publicTrade for order flow aggregation
+        channels: ["tickers", "orderbook.50"], // ✅ orderbook for imbalance; publicTrade managed separately by flowHotlistManager
 
         // MUST HAVE THE RAW MESSAGE
         onEvent: (msg) => {
