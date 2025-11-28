@@ -115,7 +115,7 @@ async function startEngine() {
 
     metricsWS.connect({
         symbols: primeSymbolsForWS,
-        channels: ["tickers", "orderbook.50"], // ✅ Added orderbook.50 for imbalance/spread data
+        channels: ["tickers", "orderbook.50", "publicTrade"], // ✅ publicTrade for order flow aggregation
 
         // MUST HAVE THE RAW MESSAGE
         onEvent: (msg) => {
