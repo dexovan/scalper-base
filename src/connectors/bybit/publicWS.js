@@ -148,6 +148,12 @@ export class BybitPublicWS {
           // 🔥 FEED ORDERBOOK DATA (added for AI Market Hub compatibility)
           if (msg.topic && msg.topic.startsWith("orderbook.") && msg.data) {
             const symbol = msg.topic.split(".")[2]; // orderbook.50.BTCUSDT -> BTCUSDT
+
+            // DEBUG: Log orderbook messages - CRITICAL for diagnostics
+            if (this._messageCount <= 50 || Math.random() < 0.01) {
+              console.log(`📊 [ORDERBOOK-MSG] Topic: ${msg.topic}, Symbol: ${symbol}, Type: ${msg.data.type}`);
+            }
+
             if (symbol) {
               this._handleOrderbookMessage(symbol, msg);
             }
@@ -202,6 +208,16 @@ export class BybitPublicWS {
 
     console.log(`📡 [METRICS-WS] Subscribing to ${this.subscriptions.length} topics in ${batches.length} batches...`);
 
+    // DEBUG: Log all topics being subscribed (especially orderbook topics)
+    const orderbookTopics = this.subscriptions.filter(t => t.includes('orderbook'));
+    const tickerTopics = this.subscriptions.filter(t => t.includes('tickers'));
+    const tradeTopics = this.subscriptions.filter(t => t.includes('publicTrade'));
+
+    console.log(`🔍 [METRICS-WS DEBUG] Topic breakdown:`);
+    console.log(`   - Orderbook topics: ${orderbookTopics.length} (${orderbookTopics.slice(0, 3).join(', ')}${orderbookTopics.length > 3 ? '...' : ''})`);
+    console.log(`   - Ticker topics: ${tickerTopics.length} (${tickerTopics.slice(0, 3).join(', ')}${tickerTopics.length > 3 ? '...' : ''})`);
+    console.log(`   - Trade topics: ${tradeTopics.length}`);
+
     batches.forEach((batch, index) => {
       setTimeout(() => {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
@@ -212,8 +228,14 @@ export class BybitPublicWS {
         };
 
         try {
+          // DEBUG: Log batch details before sending
+          const batchOrderbooks = batch.filter(t => t.includes('orderbook'));
+          const batchTickers = batch.filter(t => t.includes('tickers'));
+
+          console.log(`📡 [METRICS-WS] Batch ${index + 1}/${batches.length}: ${batch.length} topics (${batchOrderbooks.length} orderbooks, ${batchTickers.length} tickers)`);
+          console.log(`📡 [METRICS-WS] Sending: ${JSON.stringify(payload)}`);
+
           this.ws.send(JSON.stringify(payload));
-          console.log(`📡 [METRICS-WS] Batch ${index + 1}/${batches.length}: ${batch.length} topics`);
         } catch (err) {
           console.error(`❌ [METRICS-WS] Subscribe batch ${index + 1} error:`, err.message);
         }
