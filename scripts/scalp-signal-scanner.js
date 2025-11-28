@@ -472,9 +472,9 @@ async function fetchLiveMarketBatch(symbols) {
 
     const data = await response.json();
 
-    // Handle engine not ready (metricsWS not initialized yet)
-    if (response.status === 503 || data.error === 'metricsWS not initialized') {
-      console.warn('⏳ [SCANNER] Engine WS not ready yet (metricsWS). Retrying next cycle...');
+    // Handle engine not ready (support both old and new error strings)
+    if (response.status === 503 || data.error === 'metricsWS not initialized' || data.error === 'BybitPublicWS not initialized') {
+      console.warn('⏳ [SCANNER] Engine WS not ready (waiting metricsWS). Retrying next cycle...');
       return {};
     }
 

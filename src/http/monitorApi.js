@@ -845,10 +845,11 @@ export function startMonitorApiServer(port = 8090) {
 
       // Check if BybitPublicWS is initialized
       if (!global.metricsWS) {
-        return res.status(500).json({
+        return res.status(503).json({
           ok: false,
-          error: 'BybitPublicWS not initialized',
+          error: 'metricsWS not initialized',
           symbol,
+          ready: false
         });
       }
 
@@ -899,6 +900,15 @@ export function startMonitorApiServer(port = 8090) {
         timestamp: new Date().toISOString()
       });
     }
+  });
+
+  // ============================================================
+  // GET /api/ws/ready - WebSocket readiness + subscription count
+  // ============================================================
+  app.get('/api/ws/ready', (req, res) => {
+    const ready = !!global.metricsWS && !!global.metricsWS.connected;
+    const subsCount = ready ? (global.metricsWS.subscriptions?.length || 0) : 0;
+    return res.json({ ok: true, ready, subsCount, timestamp: new Date().toISOString() });
   });
 
   // ============================================================
