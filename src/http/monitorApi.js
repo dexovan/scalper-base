@@ -903,8 +903,8 @@ export function startMonitorApiServer(port = 8090) {
 
   // ============================================================
   // POST /api/live-market-batch - Batch live market data (ANTI-OVERLOAD)
-  // Handles 50 symbols in one request instead of 50 separate requests
-  // 🔥 POWERED BY AI MARKET HUB
+  // Handles N symbols in one request instead of N separate requests
+  // 🔥 POWERED BY BybitPublicWS (migrated from legacy AI Market Hub)
   // ============================================================
   app.post("/api/live-market-batch", async (req, res) => {
     try {
@@ -918,12 +918,13 @@ export function startMonitorApiServer(port = 8090) {
         });
       }
 
-      // Check if AI Market Hub is initialized
-      if (!global.marketHub) {
-        return res.status(500).json({
+      // Check if metrics WS (BybitPublicWS instance) is initialized in engine process
+      if (!global.metricsWS) {
+        return res.status(503).json({
           ok: false,
-          error: 'BybitPublicWS not initialized',
-          timestamp: new Date().toISOString()
+          error: 'metricsWS not initialized',
+          timestamp: new Date().toISOString(),
+          ready: false
         });
       }
 
@@ -935,7 +936,7 @@ export function startMonitorApiServer(port = 8090) {
           const state = global.metricsWS.getSymbolState(symbol);
 
           if (!state) {
-            errors.push({ symbol, error: 'No market state (WS warming up)' });
+            errors.push({ symbol, error: 'No market state (WS warming up or symbol not subscribed)' });
             continue;
           }
 
