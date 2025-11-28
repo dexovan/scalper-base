@@ -151,7 +151,8 @@ export class BybitPublicWS {
 
             // DEBUG: Log orderbook messages - CRITICAL for diagnostics
             if (this._messageCount <= 50 || Math.random() < 0.01) {
-              console.log(`📊 [ORDERBOOK-MSG] Topic: ${msg.topic}, Symbol: ${symbol}, Type: ${msg.data.type}`);
+              const msgType = msg.type || msg.data?.type || 'unknown';
+              console.log(`📊 [ORDERBOOK-MSG] Topic: ${msg.topic}, Symbol: ${symbol}, Type: ${msgType}, HasBids: ${msg.data?.b?.length || 0}, HasAsks: ${msg.data?.a?.length || 0}`);
             }
 
             if (symbol) {
