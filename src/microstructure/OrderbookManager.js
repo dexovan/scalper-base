@@ -50,7 +50,7 @@ function ensureSymbolState(symbol) {
     state.symbols[symbol] = {
       symbol,
       lastUpdateAt: null,
-      lastTickAt: null, // Activity heartbeat - updated on every WS event
+      lastTickAt: Date.now(), // Activity heartbeat - INITIALIZE with current time to allow grace period for orderbook collection
       priceInfo: {
         lastPrice: null,
         bestBid: null,
