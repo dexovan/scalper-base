@@ -557,15 +557,7 @@ router.get("/scalp-scanner", (req, res) => {
 
     return res.json({
       ok: true,
-      signals: recentSignals.filter(s => {
-        // Only show signals that pass ALL 6 filters
-        return s.volatility >= 0.15 &&
-               s.volumeSpike >= 1.5 &&
-               s.velocity >= 0.03 &&
-               s.momentum >= 0.1 &&
-               s.imbalance >= 1.5 &&
-               s.spread <= 0.1;
-      }),
+      signals: recentSignals,  // Show all detected signals (not just those passing all filters)
       topCandidates,
       stats,
       filterStats,
