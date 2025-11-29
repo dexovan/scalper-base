@@ -68,11 +68,14 @@ export class BybitPublicWS {
       const timeout = setTimeout(() => {
         if (!this.connected) {
           console.warn(`⏳ [METRICS-WS] ⚠️ TIMEOUT: Connect failed in 3s - Bybit unavailable or network issue`);
-          console.warn(`⏳ [METRICS-WS] Engine will continue WITHOUT WebSocket for now`);
-          console.warn(`⏳ [METRICS-WS] Reconnection attempts will continue in background...`);
-          // Resolve anyway to let engine continue
-          // WebSocket will keep trying to reconnect automatically
-          resolve();
+          console.warn(`⏳ [METRICS-WS] Engine will continue - WebSocket will retry in background`);
+
+          // 🔥 CRITICAL: Resolve promise so engine continues
+          if (this._openPromise) {
+            console.log("✅ [METRICS-WS] Resolving connectPromise despite timeout");
+            this._openPromise();
+            this._openPromise = null;
+          }
         }
         clearTimeout(timeout);
       }, 3000); // ⚠️ ONLY 3 seconds!
@@ -129,6 +132,14 @@ export class BybitPublicWS {
             console.error("   Error closing WS:", e.message);
           }
           this.ws = null;
+
+          // 🔥 CRITICAL: Resolve promise anyway so engine continues (WebSocket will retry in background)
+          if (this._openPromise) {
+            console.warn("⚠️ [METRICS-WS] Resolving connectPromise despite deadline - engine continues");
+            this._openPromise();
+            this._openPromise = null;
+          }
+
           this._scheduleReconnect();
         }
       }, 3000);
@@ -440,15 +451,15 @@ export class BybitPublicWS {
    * @param {string[]} options.remove - Symbols to remove
    */
   async updateTradeSubscriptions({ add = [], remove = [] } = {}) {
-    // ⏳ RETRY LOGIC: Wait up to 60s for WS to be ready
+    // ⏳ RETRY LOGIC: Wait up to 5s for WS to be ready (fail fast)
     let attempts = 0;
-    const MAX_ATTEMPTS = 60;  // 60 seconds for WS to open (can be slow on startup)
+    const MAX_ATTEMPTS = 5;  // 5 seconds max - fail fast if WS not available
 
     while ((!this.ws || this.ws.readyState !== WebSocket.OPEN) && attempts < MAX_ATTEMPTS) {
       if (attempts === 0) {
         console.warn(`⏳ [METRICS-WS] WS not ready yet, waiting for connection (add: ${add.length}, remove: ${remove.length})...`);
       }
-      if (attempts % 10 === 0 && attempts > 0) {
+      if (attempts % 2 === 0 && attempts > 0) {
         console.warn(`⏳ [METRICS-WS] Still waiting... (${attempts}/${MAX_ATTEMPTS}s)`);
       }
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
@@ -458,6 +469,7 @@ export class BybitPublicWS {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.error(`❌ [METRICS-WS] Failed to update trade subs after ${MAX_ATTEMPTS}s - WS still not open`);
       console.warn(`⚠️ [METRICS-WS] Check: ws exists=${!!this.ws}, readyState=${this.ws?.readyState} (OPEN=${WebSocket.OPEN})`);
+      console.warn(`⚠️ [METRICS-WS] Bybit WebSocket appears unreachable - engine continuing without dynamic trade subscriptions`);
       return;
     }
 
