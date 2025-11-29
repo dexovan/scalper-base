@@ -60,15 +60,15 @@ const signalStates = new Map(); // symbol -> { entryZone, direction, firstSeen, 
 const executionHistory = new Map(); // symbol -> { lastExecution, attempts }
 
 const PERSISTENCE_CONFIG = {
-  minCycles: 1,           // REDUCED: 1 cycle (30s) - faster signal generation for quieter market
+  minCycles: 0,           // INSTANT: 0 cycles (signal appears immediately when detected)
   maxAge: 120000,         // Clear old signals after 2 minutes
   resetOnDirectionChange: true,  // Reset counter if direction flips
 
   // Score-based persistence (for micro-scalping 0.22% TP)
   scoreThresholds: {
-    instant: 90,   // Score > 90: 1 cycle (30s) - A+ obvious signal
-    fast: 75,      // Score > 75: 1 cycle (30s) - Strong signal (reduced from 2)
-    normal: 0      // Score <= 75: 1 cycle (30s) - Standard signal (reduced from 3)
+    instant: 0,   // Score > 90: instant (0s)
+    fast: 0,      // Score > 75: instant (0s)
+    normal: 0     // Score <= 75: instant (0s)
   }
 };
 
@@ -285,7 +285,7 @@ const CONFIG = {
   engineApiUrl: 'http://localhost:8090',
 
   // Scan interval - Balance between responsiveness and resource usage
-  scanInterval: 30000, // 30 seconds (candles update every 60s, so 30s is reasonable)
+  scanInterval: 10000, // 10 seconds - FAST for scalping (was 30s)
 
   // Historical filters (from candles) - ZERO REQUIREMENTS FOR QUIET MARKET
   minVolatility: 0.0,        // 0.0% = NO VOLATILITY REQUIREMENT (accept flat market)
@@ -299,7 +299,7 @@ const CONFIG = {
   minOrderFlow: 0,           // Positive order flow (more buys than sells)
 
   // Debug mode: show rejection reasons
-  debugFilters: true,        // Set to true to see detailed rejection logs
+  debugFilters: false,        // Disable debug for performance
 
   // Output
   logSignals: true,
