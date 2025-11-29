@@ -26,8 +26,7 @@ import {
     initUniverse,
     refreshUniversePeriodically,
     getSymbolsByCategory,
-    getUniverseSnapshot,
-    loadExistingUniverse
+    getUniverseSnapshot
 } from "./market/universe_v2.js";
 
 import { initEventHub } from "./ws/eventHub.js";
@@ -85,9 +84,7 @@ async function startEngine() {
       console.log("✅ [ENGINE] initUniverse() completed successfully!");
     } catch (universeErr) {
       console.error("❌ [ENGINE] initUniverse failed or timed out:", universeErr.message);
-      console.warn("⚠️ [ENGINE] Skipping universe init - using cached snapshot only");
-      // Load from cache if available, otherwise continue with empty
-      await loadExistingUniverse();
+      console.warn("⚠️ [ENGINE] Skipping universe init - will use cached snapshot in getUniverseSnapshot()");
     }
 
     console.log("⏰ [ENGINE] About to call getUniverseSnapshot()...");
