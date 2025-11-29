@@ -1149,6 +1149,7 @@ async function scanAllSymbols() {
         // Only consider symbols that pass basic checks
         if (evaluation.passed) {
           const direction = liveData.imbalance > 1.0 ? 'LONG' : 'SHORT';  // imbalance > 1 = more bids (bullish) = LONG
+          console.log(`📍 [STAGE1] ${symbol}: imbalance=${(liveData.imbalance || 1.0).toFixed(4)} → direction=${direction}`);
           candidates.push({
             symbol,
             score,
@@ -1273,6 +1274,9 @@ async function scanAllSymbols() {
       // Extract initial momentum for executor
       // imbalance > 1.0 = more bids (bullish), < 1.0 = more asks (bearish)
       const imbalance = currentLiveData.imbalance || 1.0;
+
+      // DEBUG: Log imbalance values to identify pattern
+      console.log(`🔍 [DEBUG] ${symbol}: Stage1_direction=${direction}, CurrentImbalance=${imbalance.toFixed(4)}`);
 
       let initialMomentum = 0;
       if (direction === 'LONG') {
