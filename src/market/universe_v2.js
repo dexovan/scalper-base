@@ -18,7 +18,31 @@ const DATA_DIR = path.resolve(__dirname, "../../data/system");
 const UNIVERSE_FILE = path.join(DATA_DIR, "universe.v2.json");
 
 // Prime simboli koji stvarno postoje na Bybit-u (verifikovano)
-const DEFAULT_PRIME_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "DOTUSDT", "AVAXUSDT"];
+// EXPANDED: Added more volatile/active altcoins for better coverage
+const DEFAULT_PRIME_SYMBOLS = [
+  // Mega-cap (stable, always available)
+  "BTCUSDT", "ETHUSDT", "BNBUSDT",
+
+  // Top altcoins (high volume + volatility)
+  "ADAUSDT", "DOTUSDT", "AVAXUSDT",
+  "SOLUSDT", "XRPUSDT", "LINKUSDT",
+  "LTCUSDT", "BCHUSDT", "ETCUSDT",
+
+  // DeFi leaders
+  "UNIUSDT", "AAVEUSDT", "GRTUSDT",
+
+  // High-volume movers
+  "DOGEUSDT", "SHIBUSDT",
+
+  // Layer-2 / Scaling solutions
+  "ARBITUSDT", "OPTIMUSDT", "POLYUSDT",
+
+  // Gaming / Metaverse
+  "AXSUSDT", "SANDUSDT",
+
+  // Emerging & Volatile
+  "FTMUSDT", "ORDIUSDT", "INJUSDT"
+];
 
 const UniverseState = {
   fetchedAt: null,
