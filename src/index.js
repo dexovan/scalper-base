@@ -75,9 +75,9 @@ async function startEngine() {
     // --------------------------
     console.log("🌍 [ENGINE] About to call initUniverse()...");
     try {
-      // ADD TIMEOUT: initUniverse should complete within 10s (quick fail)
+      // TIMEOUT: initUniverse should complete within 3s (ultra-fast fail)
       const universeTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("initUniverse timeout (10s exceeded)")), 10000);
+        setTimeout(() => reject(new Error("initUniverse timeout (3s exceeded)")), 3000);
       });
 
       await Promise.race([initUniverse(), universeTimeoutPromise]);
@@ -87,10 +87,10 @@ async function startEngine() {
       console.warn("⚠️ [ENGINE] Skipping universe init - will use cached snapshot");
     }
 
-    console.log("⏰ [ENGINE] About to call getUniverseSnapshot() with 5s timeout...");
+    console.log("⏰ [ENGINE] About to call getUniverseSnapshot() with 3s timeout...");
     try {
       const snapshotTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("getUniverseSnapshot timeout (5s exceeded)")), 5000);
+        setTimeout(() => reject(new Error("getUniverseSnapshot timeout (3s exceeded)")), 3000);
       });
 
       const universeCheck = await Promise.race([getUniverseSnapshot(), snapshotTimeoutPromise]);
@@ -113,10 +113,10 @@ async function startEngine() {
     console.log("⚠️ [ENGINE] Universe periodic refresh DISABLED - preventing disk fill");
 
     // KORAK 2: Display storage stats
-    console.log("⏰ [INDEX] About to get storage stats with 5s timeout...");
+    console.log("⏰ [INDEX] About to get storage stats with 3s timeout...");
     try {
       const storageTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("getStorageStats timeout (5s exceeded)")), 5000);
+        setTimeout(() => reject(new Error("getStorageStats timeout (3s exceeded)")), 3000);
       });
 
       const storageStats = await Promise.race([getStorageStats(), storageTimeoutPromise]);
@@ -170,12 +170,12 @@ async function startEngine() {
     try {
       console.log(`⏳ [INDEX] Step 1: Attempting to fetch Prime symbols dynamically...`);
 
-      // ADD TIMEOUT: If getSymbolsByCategory takes > 5s, use fallback
+      // ADD TIMEOUT: If getSymbolsByCategory takes > 3s, use fallback
       const timeoutPromise = new Promise((resolve) => {
         setTimeout(() => {
-          console.warn(`⚠️ [INDEX] Step 2a: getSymbolsByCategory timeout (5s) - using fallback`);
+          console.warn(`⚠️ [INDEX] Step 2a: getSymbolsByCategory timeout (3s) - using fallback`);
           resolve({ timeout: true, data: [] });
-        }, 5000);
+        }, 3000);
       });
 
       const resultPromise = getSymbolsByCategory("Prime").then(data => {

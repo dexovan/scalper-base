@@ -56,23 +56,26 @@ export class BybitPublicWS {
     console.log("📡 [METRICS-WS] connect() → topics built:", this.subscriptions);
 
     // 🔥 Return promise that resolves when WS fully opens or rejects on error
-    // BUT: Add 15s timeout as fallback (WS may reconnect in background)
+    // ULTRA-SHORT timeout (3s) - fail fast if Bybit server unreachable
     this.connectPromise = new Promise((resolve, reject) => {
       console.log("🔥 [METRICS-WS] Promise created, about to call _open()...");
 
       this._openPromise = resolve;     // Store resolve for use in _open()
       this._rejectPromise = reject;    // Store reject for use on error
 
-      // Timeout: If WS doesn't connect in 15s, resolve anyway (WS will keep trying)
+      // CRITICAL: Only wait 3s for actual connection
+      // If Bybit is down/unreachable, fail FAST so engine can continue
       const timeout = setTimeout(() => {
         if (!this.connected) {
-          console.warn(`⏳ [METRICS-WS] Connect timeout (15s) - WebSocket may still be connecting in background`);
+          console.warn(`⏳ [METRICS-WS] ⚠️ TIMEOUT: Connect failed in 3s - Bybit unavailable or network issue`);
+          console.warn(`⏳ [METRICS-WS] Engine will continue WITHOUT WebSocket for now`);
+          console.warn(`⏳ [METRICS-WS] Reconnection attempts will continue in background...`);
           // Resolve anyway to let engine continue
           // WebSocket will keep trying to reconnect automatically
           resolve();
         }
         clearTimeout(timeout);
-      }, 15000);
+      }, 3000); // ⚠️ ONLY 3 seconds!
 
       this._openTimeout = timeout;
       console.log("🔥 [METRICS-WS] NOW CALLING _open()...");
