@@ -1065,8 +1065,8 @@ export function startMonitorApiServer(port = 8090) {
         });
       }
 
-      // Update flow subscriptions (adds/removes publicTrade.* topics)
-      const result = updateFlowSymbols(symbols);
+      // Update flow subscriptions (adds/removes publicTrade.* topics) - NOW AWAITS ASYNC
+      const result = await updateFlowSymbols(symbols);
 
       return res.json({
         ok: true,

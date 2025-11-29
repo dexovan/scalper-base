@@ -334,10 +334,26 @@ export class BybitPublicWS {
    * @param {string[]} options.add - Symbols to add (e.g., ["BTCUSDT", "ETHUSDT"])
    * @param {string[]} options.remove - Symbols to remove
    */
-  updateTradeSubscriptions({ add = [], remove = [] } = {}) {
+  async updateTradeSubscriptions({ add = [], remove = [] } = {}) {
+    // ⏳ RETRY LOGIC: Wait up to 30s for WS to be ready
+    let attempts = 0;
+    const MAX_ATTEMPTS = 30;
+
+    while ((!this.ws || this.ws.readyState !== WebSocket.OPEN) && attempts < MAX_ATTEMPTS) {
+      if (attempts === 0) {
+        console.warn(`⏳ [METRICS-WS] WS not ready yet, waiting for connection (add: ${add.length}, remove: ${remove.length})...`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+      attempts++;
+    }
+
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn("⚠️ [METRICS-WS] Cannot update trade subs, WS not open");
+      console.error(`❌ [METRICS-WS] Failed to update trade subs after ${MAX_ATTEMPTS}s - WS still not open`);
       return;
+    }
+
+    if (attempts > 0) {
+      console.log(`✅ [METRICS-WS] WS connected after ${attempts}s, proceeding with subscription update (add: ${add.length}, remove: ${remove.length})`);
     }
 
     const BATCH_SIZE = 10;

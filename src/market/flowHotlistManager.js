@@ -27,9 +27,9 @@ let currentFlowSymbols = new Set(); // Symbols currently subscribed to publicTra
 /**
  * Update which symbols get real-time trade data
  * @param {string[]} symbols - Array of symbol names (e.g., ["BTCUSDT", "ETHUSDT"])
- * @returns {Object} Result with changed status, current list, added/removed symbols
+ * @returns {Promise<Object>} Result with changed status, current list, added/removed symbols
  */
-function updateFlowSymbols(symbols) {
+async function updateFlowSymbols(symbols) {
   // 1) Normalize and limit input
   const next = new Set(
     symbols
@@ -52,9 +52,9 @@ function updateFlowSymbols(symbols) {
     };
   }
 
-  // 4) Update WS subscription (only for publicTrade.* topics)
+  // 4) Update WS subscription (only for publicTrade.* topics) - NOW ASYNC WITH RETRY
   try {
-    bybitPublicWS.updateTradeSubscriptions({ add: toSub, remove: toUnsub });
+    await bybitPublicWS.updateTradeSubscriptions({ add: toSub, remove: toUnsub });
   } catch (error) {
     console.error("❌ [FLOW-HOTLIST] Failed to update WS subscriptions:", error.message);
     return {
