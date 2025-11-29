@@ -226,6 +226,19 @@ export function getNextState(currentState, event, context) {
     return handleManualOverride(currentState, payload);
   }
 
+  // TPSL events can happen in any position state
+  if (type === EventType.TPSL_TP1_HIT) {
+    return handleTpslTp1Hit(currentState, payload, context);
+  }
+
+  if (type === EventType.TPSL_TP2_HIT || type === EventType.TPSL_SL_HIT) {
+    return {
+      nextState: TradeState.EXITED,
+      reason: `Position closed: ${type}`,
+      sideUpdate: null
+    };
+  }
+
   // Check for global blocks that force BLOCKED_REGIME
   if (type === EventType.REGIME_UPDATE && shouldBlockRegime(context)) {
     return {
@@ -647,6 +660,43 @@ function createEntryPlan(context, armedState, timestamp) {
     qty: 0,
     leverage: 1,
     mode: "SIM" // Default to simulation mode
+  };
+}
+
+/**
+ * Handle TPSL_TP1_HIT event
+ * Transition to MANAGING state to handle partial close + SL move to BE
+ * @param {string} currentState
+ * @param {Object} payload - From TPSL_TP1_HIT event
+ * @param {Object} context - SymbolStateContext
+ * @returns {Object} { nextState, reason, sideUpdate }
+ */
+function handleTpslTp1Hit(currentState, payload, context) {
+  // Only applies if we're in an active position state
+  const positionStates = [
+    TradeState.IN_POSITION_LONG,
+    TradeState.IN_POSITION_SHORT,
+    TradeState.MANAGING_LONG,
+    TradeState.MANAGING_SHORT
+  ];
+
+  if (!positionStates.includes(currentState)) {
+    return { nextState: null, reason: "TPSL_TP1_HIT in non-position state" };
+  }
+
+  // Move to MANAGING state to handle the partial close + SL adjustment
+  const managingState = currentState === TradeState.IN_POSITION_LONG
+    ? TradeState.MANAGING_LONG
+    : TradeState.MANAGING_SHORT;
+
+  console.log(`[StateModel] 💰 TP1 HIT for ${payload.symbol} - Moving to ${managingState}`);
+  console.log(`[StateModel] Partial close qty: ${payload.partialCloseQty}, Current price: ${payload.currentPrice}`);
+
+  return {
+    nextState: managingState,
+    reason: `TP1_HIT at ${payload.currentPrice} - executing partial close (50%)`,
+    sideUpdate: null,
+    tpslEvent: payload  // Pass TP1 data for execution layer
   };
 }
 

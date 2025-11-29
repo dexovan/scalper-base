@@ -17,6 +17,10 @@ export const EventType = {
   EXECUTION_ORDER_CANCELLED: "EXECUTION_ORDER_CANCELLED",
   EXECUTION_POSITION_OPENED: "EXECUTION_POSITION_OPENED",
   EXECUTION_POSITION_CLOSED: "EXECUTION_POSITION_CLOSED",
+  TPSL_TP1_HIT: "TPSL_TP1_HIT",
+  TPSL_TP2_HIT: "TPSL_TP2_HIT",
+  TPSL_SL_HIT: "TPSL_SL_HIT",
+  TPSL_TRAILING_ACTIVATED: "TPSL_TRAILING_ACTIVATED",
   MANUAL_OVERRIDE: "MANUAL_OVERRIDE"
 };
 
@@ -126,6 +130,77 @@ export function createTimeTickPayload(now) {
  */
 export function createManualOverridePayload(action, reason) {
   return { action, reason };
+}
+
+/**
+ * Create TPSL_TP1_HIT event payload
+ * @param {string} symbol - Symbol name
+ * @param {string} side - "LONG" or "SHORT"
+ * @param {number} tp1Price - TP1 price level
+ * @param {number} currentPrice - Current price when TP1 hit
+ * @param {number} partialCloseQty - Quantity to close (50% of position)
+ * @returns {Object}
+ */
+export function createTpslTp1HitPayload(symbol, side, tp1Price, currentPrice, partialCloseQty) {
+  return {
+    symbol,
+    side,
+    tp1Price,
+    currentPrice,
+    partialCloseQty,
+    action: 'PARTIAL_CLOSE_50'
+  };
+}
+
+/**
+ * Create TPSL_TP2_HIT event payload
+ * @param {string} symbol - Symbol name
+ * @param {string} side - "LONG" or "SHORT"
+ * @param {number} tp2Price - TP2 price level
+ * @param {number} currentPrice - Current price when TP2 hit
+ * @returns {Object}
+ */
+export function createTpslTp2HitPayload(symbol, side, tp2Price, currentPrice) {
+  return {
+    symbol,
+    side,
+    tp2Price,
+    currentPrice,
+    action: 'CLOSE_REMAINING'
+  };
+}
+
+/**
+ * Create TPSL_SL_HIT event payload
+ * @param {string} symbol - Symbol name
+ * @param {string} side - "LONG" or "SHORT"
+ * @param {number} slPrice - Stop loss price level
+ * @param {number} currentPrice - Current price when SL hit
+ * @returns {Object}
+ */
+export function createTpslSlHitPayload(symbol, side, slPrice, currentPrice) {
+  return {
+    symbol,
+    side,
+    slPrice,
+    currentPrice,
+    action: 'CLOSE_LOSS'
+  };
+}
+
+/**
+ * Create TPSL_TRAILING_ACTIVATED event payload
+ * @param {string} symbol - Symbol name
+ * @param {string} side - "LONG" or "SHORT"
+ * @param {number} trailingDistancePct - Trailing distance in percentage
+ * @returns {Object}
+ */
+export function createTpslTrailingActivatedPayload(symbol, side, trailingDistancePct) {
+  return {
+    symbol,
+    side,
+    trailingDistancePct
+  };
 }
 
 // ================================================================

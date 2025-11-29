@@ -8,6 +8,7 @@ import * as trailingEngine from './trailingEngine.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { EventType, createStateEvent, createTpslTp1HitPayload, createTpslTp2HitPayload, createTpslSlHitPayload, createTpslTrailingActivatedPayload } from '../state/stateEvents.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -362,11 +363,59 @@ function updateTrailingSL(tpslState, currentPrice, positionState, featureState, 
  * Emit TP/SL event to State Machine
  */
 function emitTpslEvent(event) {
-  // TODO: In future phases, integrate with State Machine event system
   console.log('[TpslEngine] Event:', event.type, event.symbol, event.side);
 
-  // For now, just log
-  // Later: global.stateMachine?.handleEvent(event)
+  // Convert TPSL event to State Machine event format
+  if (event.type === 'TPSL_TP1_HIT') {
+    const stateEvent = createStateEvent(
+      EventType.TPSL_TP1_HIT,
+      event.symbol,
+      createTpslTp1HitPayload(
+        event.symbol,
+        event.side,
+        event.tp1Price,
+        event.currentPrice,
+        event.partialCloseQty
+      )
+    );
+    // Emit to state machine if available
+    if (global.stateMachine?.onTpslEvent) {
+      console.log(`[TpslEngine] 📤 Emitting TPSL_TP1_HIT to state machine for ${event.symbol}`);
+      global.stateMachine.onTpslEvent(stateEvent);
+    } else {
+      console.log(`[TpslEngine] ⚠️ State machine not available, event not dispatched`);
+    }
+  } else if (event.type === 'TPSL_TP2_HIT') {
+    const stateEvent = createStateEvent(
+      EventType.TPSL_TP2_HIT,
+      event.symbol,
+      createTpslTp2HitPayload(event.symbol, event.side, event.tp2Price, event.currentPrice)
+    );
+    if (global.stateMachine?.onTpslEvent) {
+      console.log(`[TpslEngine] 📤 Emitting TPSL_TP2_HIT to state machine for ${event.symbol}`);
+      global.stateMachine.onTpslEvent(stateEvent);
+    }
+  } else if (event.type === 'TPSL_SL_HIT') {
+    const stateEvent = createStateEvent(
+      EventType.TPSL_SL_HIT,
+      event.symbol,
+      createTpslSlHitPayload(event.symbol, event.side, event.slPrice, event.currentPrice)
+    );
+    if (global.stateMachine?.onTpslEvent) {
+      console.log(`[TpslEngine] 📤 Emitting TPSL_SL_HIT to state machine for ${event.symbol}`);
+      global.stateMachine.onTpslEvent(stateEvent);
+    }
+  } else if (event.type === 'TPSL_TRAILING_ACTIVATED') {
+    const stateEvent = createStateEvent(
+      EventType.TPSL_TRAILING_ACTIVATED,
+      event.symbol,
+      createTpslTrailingActivatedPayload(event.symbol, event.side, event.trailingDistancePct)
+    );
+    if (global.stateMachine?.onTpslEvent) {
+      console.log(`[TpslEngine] 📤 Emitting TPSL_TRAILING_ACTIVATED to state machine for ${event.symbol}`);
+      global.stateMachine.onTpslEvent(stateEvent);
+    }
+  }
 }
 
 /**

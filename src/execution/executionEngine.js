@@ -47,6 +47,36 @@ export function addEventListener(eventType, callback) {
   eventListeners.get(eventType).push(callback);
 }
 
+/**
+ * Handle TPSL_TP1_HIT event - execute partial close (50%)
+ * @param {Object} tpslEvent - Event from TPSL engine with symbol, side, partialCloseQty
+ */
+export async function handleTpslTp1Hit(tpslEvent) {
+  const { symbol, side, partialCloseQty } = tpslEvent;
+
+  console.log(`💰 [EXEC] TPSL_TP1_HIT received for ${symbol} - closing ${partialCloseQty} qty`);
+
+  try {
+    // Import bybitOrderExecutor dynamically
+    const { partialClosePosition } = await import('./bybitOrderExecutor.js');
+
+    // Convert side format (LONG -> Buy, SHORT -> Sell)
+    const orderSide = side === 'LONG' ? 'Buy' : 'Sell';
+
+    // Execute partial close
+    const success = await partialClosePosition(symbol, orderSide, partialCloseQty);
+
+    if (success) {
+      console.log(`✅ [EXEC] Partial close successful for ${symbol}`);
+    } else {
+      console.error(`❌ [EXEC] Partial close failed for ${symbol}`);
+    }
+
+  } catch (error) {
+    console.error(`❌ [EXEC] Error handling TPSL_TP1_HIT: ${error.message}`);
+  }
+}
+
 // =======================================
 // INITIALIZATION
 // =======================================
@@ -521,4 +551,5 @@ export default {
   getExecutionState,
   getPendingOrders,
   addEventListener,
+  handleTpslTp1Hit,
 };

@@ -438,6 +438,16 @@ function extractEventExtra(event) {
   }
 }
 
+/**
+ * Handle TPSL event from execution engine
+ * @param {Object} event - StateEvent with TPSL type
+ * @returns {Object} { success: boolean, oldState: string, newState: string }
+ */
+export function onTpslEvent(event) {
+  console.log(`[StateMachine] 📥 Received TPSL event: ${event.type} for ${event.symbol}`);
+  return handleEvent(event);
+}
+
 // ================================================================
 // EXPORTS
 // ================================================================
@@ -446,6 +456,7 @@ export default {
   initStateMachine,
   shutdownStateMachine,
   handleEvent,
+  onTpslEvent,
   tick,
   getSymbolState,
   getStatesOverview,

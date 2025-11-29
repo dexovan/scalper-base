@@ -407,6 +407,13 @@ async function startEngine() {
     global.executionEngine = executionEngine;
     console.log("⚡ [EXEC] Stored in global");
 
+    // Setup TPSL_TP1_HIT listener for partial close execution
+    executionEngine.addEventListener('TPSL_TP1_HIT', async (tpslEvent) => {
+      console.log(`🎯 [INDEX] TPSL_TP1_HIT received, calling handleTpslTp1Hit...`);
+      await executionEngine.handleTpslTp1Hit(tpslEvent.payload);
+    });
+    console.log("⚡ [EXEC] TPSL_TP1_HIT listener registered");
+
     const execState = executionEngine.getExecutionState();
     console.log("⚡ [EXEC] Execution Engine started successfully:");
     console.log(`   Mode: ${execState.mode}`);

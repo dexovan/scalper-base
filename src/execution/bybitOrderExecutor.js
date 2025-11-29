@@ -477,6 +477,44 @@ async function closePosition(symbol, side) {
   }
 }
 
+/**
+ * Partially close position (for TP1 hit - close 50%)
+ * @param {string} symbol
+ * @param {string} side - "Buy" or "Sell"
+ * @param {number} qty - Quantity to close
+ * @returns {Promise<boolean>}
+ */
+async function partialClosePosition(symbol, side, qty) {
+  try {
+    const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
+    const closeQty = qty.toString();
+
+    console.log(`💰 [PARTIAL CLOSE] Closing ${closeQty} ${symbol} (${closeSide})...`);
+
+    const response = await bybitClient.submitOrder({
+      category: 'linear',
+      symbol,
+      side: closeSide,
+      orderType: 'Market',
+      qty: closeQty,
+      timeInForce: 'IOC',
+      positionIdx: 0,
+      reduceOnly: true
+    });
+
+    if (response?.retCode !== 0) {
+      throw new Error(`Partial close failed: ${response?.retMsg || 'Unknown error'}`);
+    }
+
+    console.log(`✅ [PARTIAL CLOSE] Closed ${closeQty} ${symbol} (OrderID ${response.result?.orderId})`);
+    return true;
+
+  } catch (err) {
+    console.error(`❌ [PARTIAL CLOSE] Failed: ${err.message}`);
+    return false;
+  }
+}
+
 // =====================================================
 // 7) GET LIVE MARKET STATE (from engine API) - SAFE VERSION v4
 // =====================================================
@@ -1862,4 +1900,4 @@ export async function getActivePositions() {
   }
 }
 
-export default { executeTrade, setPositionTracker, getActivePositions };
+export default { executeTrade, setPositionTracker, getActivePositions, partialClosePosition };
