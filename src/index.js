@@ -114,8 +114,9 @@ async function startEngine() {
     console.log(`📡 [WS] Subscribing to TICKERS + ORDERBOOK for ${primeSymbolsForWS.length} Prime symbols...`);
     console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
 
-    // 🔥 AWAIT WebSocket connection before continuing
-    await metricsWS.connect({
+    // 🔥 AWAIT WebSocket connection before continuing - WITH ERROR HANDLING
+    try {
+      await metricsWS.connect({
         symbols: primeSymbolsForWS,
         channels: ["tickers", "orderbook.50"], // ✅ Prime symbols only to stay under 1006 limit
 
@@ -209,9 +210,14 @@ async function startEngine() {
             // OPTIONAL DEBUG
             // console.log("[METRICS-WS] EVENT:", msg.topic);
         }
-    });
+      });
 
-    console.log("✅ [WS-METRICS] WebSocket connected and subscribed!");
+      console.log("✅ [WS-METRICS] WebSocket connected and subscribed!");
+    } catch (wsErr) {
+      console.error("❌ [WS-METRICS] Failed to connect WebSocket:", wsErr.message);
+      console.warn("⚠️ [WS-METRICS] Continuing anyway (manual reconnect will attempt)...");
+      // Engine continues - WS will try to reconnect automatically
+    }
     console.log("📡 [WS-METRICS] Connector launched with topics:", metricsWS.subscriptions);
 
     // 🚀 Export metricsWS globally for API access (orderbook + trade flow data)

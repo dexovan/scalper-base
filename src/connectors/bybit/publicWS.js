@@ -53,9 +53,10 @@ export class BybitPublicWS {
 
     console.log("📡 [METRICS-WS] connect() → topics:", this.subscriptions);
 
-    // 🔥 Return promise that resolves when WS fully opens
-    this.connectPromise = new Promise((resolve) => {
-      this._openPromise = resolve; // Store resolve for use in _open()
+    // 🔥 Return promise that resolves when WS fully opens or rejects on error
+    this.connectPromise = new Promise((resolve, reject) => {
+      this._openPromise = resolve;     // Store resolve for use in _open()
+      this._rejectPromise = reject;    // Store reject for use on error
       this._open();
     });
 
@@ -196,12 +197,24 @@ export class BybitPublicWS {
       this.ws.on("error", (err) => {
         console.error("❌ [METRICS-WS] Error:", err.message);
         wsMetrics.wsMarkError();
+
+        // 🔥 REJECT CONNECT PROMISE
+        if (this._rejectPromise) {
+          this._rejectPromise(err);
+        }
+
         this._cleanupWS();
         this._scheduleReconnect();
       });
     } catch (err) {
       console.error("❌ [METRICS-WS] Open exception:", err);
       wsMetrics.wsMarkError();
+
+      // 🔥 REJECT CONNECT PROMISE ON EXCEPTION
+      if (this._rejectPromise) {
+        this._rejectPromise(err);
+      }
+
       this._scheduleReconnect();
     }
   }
