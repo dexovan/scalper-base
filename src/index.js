@@ -204,9 +204,10 @@ async function startEngine() {
       console.log(`⚠️ [INDEX] ============ USING FALLBACK: ${primeSymbolsForWS.join(", ")} ============`);
     }
 
+    console.log(`\n🔥 [INDEX] *** AFTER SYMBOL FETCH - ABOUT TO CONNECT WEBSOCKET ***`);
     console.log(`\n⏳ [INDEX] ============ READY TO CONNECT WEBSOCKET ============`);
     console.log(`📡 [WS] Subscribing to TICKERS + ORDERBOOK for ${primeSymbolsForWS.length} Prime symbols...`);
-    console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
+    console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);;
 
     // 🔥 AWAIT WebSocket connection before continuing - WITH ERROR HANDLING
     console.log(`\n⏳ [INDEX] ============ WEBSOCKET CONNECTION START ============`);
