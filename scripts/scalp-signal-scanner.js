@@ -299,7 +299,7 @@ const CONFIG = {
   minOrderFlow: 0,           // Positive order flow (more buys than sells)
 
   // Debug mode: show rejection reasons
-  debugFilters: false,        // Set to true to see detailed rejection logs
+  debugFilters: true,        // Set to true to see detailed rejection logs
 
   // Output
   logSignals: true,
