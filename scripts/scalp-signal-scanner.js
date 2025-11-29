@@ -806,6 +806,15 @@ async function attemptExecution(symbol, signalState, liveData) {
 
   console.log(`✅ [SAFETY PASSED] ${symbol} - All checks OK`);
 
+  // Calculate FRESH momentum from current liveData (not from stale signalState)
+  let freshMomentum = 0;
+  const currentImbalance = liveData.imbalance || 1.0;
+  if (signalState.direction === 'LONG') {
+    freshMomentum = Math.max(0, (currentImbalance - 1.0));
+  } else if (signalState.direction === 'SHORT') {
+    freshMomentum = currentImbalance < 1.0 ? Math.max(0, (1.0 - currentImbalance)) : 0;
+  }
+
   // Prepare execution request
   const executionRequest = {
     symbol,
@@ -814,7 +823,7 @@ async function attemptExecution(symbol, signalState, liveData) {
     tp: signalState.tp,
     sl: signalState.sl,
     confidence: signalState.confidence || 0,
-    initialMomentum: signalState.initialMomentum || 0,  // Include momentum for executor
+    initialMomentum: freshMomentum,  // Use FRESH momentum from current liveData
     entryZone: signalState.entryZone
   };
 
@@ -822,7 +831,7 @@ async function attemptExecution(symbol, signalState, liveData) {
   console.log(`\n🚀 [EXECUTING] ${symbol} ${signalState.direction} @ ${formatPriceByTick(executionRequest.entry, ts)}`);
   console.log(`   TP: ${formatPriceByTick(executionRequest.tp, ts)} | SL: ${formatPriceByTick(executionRequest.sl, ts)}`);
   console.log(`   Entry Zone: [${signalState.entryZone.min} — ${signalState.entryZone.ideal} — ${signalState.entryZone.max}]`);
-  console.log(`   Initial Momentum: ${(executionRequest.initialMomentum * 100).toFixed(1)}% (from signalState)`);
+  console.log(`   Current Momentum: ${(freshMomentum * 100).toFixed(1)}% (imbalance=${currentImbalance.toFixed(2)})`);
 
   // Fire-and-forget: Send execution request WITHOUT waiting for response
   // This prevents execution from blocking Stage 1 refresh
