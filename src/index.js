@@ -111,8 +111,17 @@ async function startEngine() {
     // - Scanner will dynamically subscribe publicTrade.* for top 20-30 candidates
     // - This avoids Bybit 1006 error from too many subscriptions (limit ~100 topics)
 
-    const primeMetadata = await getSymbolsByCategory("Prime");
-    const primeSymbolsForWS = primeMetadata.map(m => m.symbol);
+    console.log(`⏳ [INDEX] Fetching Prime symbols...`);
+    let primeSymbolsForWS = [];
+    try {
+      const primeMetadata = await getSymbolsByCategory("Prime");
+      primeSymbolsForWS = primeMetadata.map(m => m.symbol);
+      console.log(`✅ [INDEX] Got ${primeSymbolsForWS.length} Prime symbols`);
+    } catch (symbolErr) {
+      console.error(`❌ [INDEX] Failed to get Prime symbols:`, symbolErr.message);
+      console.log(`⚠️ [INDEX] Continuing with empty Prime symbols list...`);
+      primeSymbolsForWS = []; // Empty list, will use default tickers
+    }
 
     console.log(`📡 [WS] Subscribing to TICKERS + ORDERBOOK for ${primeSymbolsForWS.length} Prime symbols...`);
     console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
@@ -122,7 +131,7 @@ async function startEngine() {
     try {
       console.log(`⏳ [INDEX] Calling metricsWS.connect() NOW...`);
       const connectPromise = metricsWS.connect({
-        symbols: primeSymbolsForWS,
+        symbols: primeSymbolsForWS.length > 0 ? primeSymbolsForWS : ["BTCUSDT", "ETHUSDT"], // Fallback symbols
         channels: ["tickers", "orderbook.50"], // ✅ Prime symbols only to stay under 1006 limit
 
         // MUST HAVE THE RAW MESSAGE
