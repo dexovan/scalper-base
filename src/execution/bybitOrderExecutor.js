@@ -86,7 +86,7 @@ const EXECUTION_CONFIG = {
     maxWaitMs: 7000,                 // Max 7s total
     pollIntervalMs: 2000,            // Poll every 2s
     maxPriceDriftPercent: 0.15,      // Relaxed to 0.15% (was 0.10%)
-    maxSpreadPercent: 0.20,          // Relaxed to 0.20% (was 0.15%)
+    maxSpreadPercent: 10,            // Relaxed to 10% to allow trades in volatile markets (was 0.20%)
     minMomentumPercent: 50           // Relaxed to 50% (was 55%)
   },
 
