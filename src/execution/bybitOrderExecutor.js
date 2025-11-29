@@ -92,7 +92,7 @@ const EXECUTION_CONFIG = {
 
   // Phase 2: Entry timing – BALANCED parameters
   pullbackCheck: {
-    enabled: true,
+    enabled: false,                  // Disable 6s recheck - initial momentum check is sufficient
     pullbackWindowMinutes: 5,
     longTopPercentThreshold: 0.90,   // 90% instead of 85% (more aggressive)
     shortBottomPercentThreshold: 0.10,
