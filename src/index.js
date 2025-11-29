@@ -90,8 +90,10 @@ async function startEngine() {
       await loadExistingUniverse();
     }
 
+    console.log("⏰ [ENGINE] About to call getUniverseSnapshot()...");
     // Verify universe loaded
     const universeCheck = await getUniverseSnapshot();
+    console.log("✅ [ENGINE] getUniverseSnapshot() returned");
     console.log("🌍 [ENGINE] Universe verification:", {
         totalSymbols: universeCheck?.stats?.totalSymbols || 0,
         fetchedAt: universeCheck?.fetchedAt || 'N/A',
