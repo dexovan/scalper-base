@@ -736,23 +736,3 @@ export {
   getAllTrackedSymbols
 };
 
-export default {
-  initMicrostructure,
-  onOrderbookEvent,
-  onTradeEvent,
-  getSymbolMicroState,
-  getOrderbookSummary,
-  getRecentTrades,
-  getOrderFlow60s,
-  getCandles,
-  getActiveSymbols,
-  getSymbolHealth,
-  touchSymbolActivity,
-  setWebSocketEventCallback,
-  getStats,
-  startStatsPersistence,
-  stopStatsPersistence,
-  flushSnapshotsToDisk,
-  getAllTrackedSymbols
-};
-
