@@ -1329,6 +1329,54 @@ async function executeTradeMarketOnly(ctx) {
 }
 
 // =====================================================
+// DYNAMIC ENTRY LOGIC: Wait for pullback, then use current market price
+// =====================================================
+async function waitForPullbackAndGetCurrentPrice(symbol, direction, signalEntry, config) {
+  const maxWaitMs = 30000;  // Čekaj max 30 sekundi za pullback
+  const startTime = Date.now();
+  const pollIntervalMs = 500;  // Provjeri svaki 500ms
+
+  console.log(`⏳ [PULLBACK-WAIT] Waiting for ${direction} pullback towards ${signalEntry}...`);
+
+  while (Date.now() - startTime < maxWaitMs) {
+    await sleep(pollIntervalMs);
+
+    // Dohvati trenutnu tržišnu cijenu
+    const liveData = await getLiveMarketState(symbol);
+    if (!liveData) continue;
+
+    const currentPrice = direction === 'LONG' ? liveData.ask : liveData.bid;
+
+    // Za LONG: čekaj da se cijena povuče ispod signalEntry (ili dosta blizu)
+    // Za SHORT: čekaj da se cijena povuče iznad signalEntry (ili dosta blizu)
+    const pullbackThreshold = signalEntry * 0.998;  // 0.2% tolerance
+    const reversePullbackThreshold = signalEntry * 1.002;
+
+    if (direction === 'LONG' && currentPrice <= pullbackThreshold) {
+      console.log(`✅ [PULLBACK-DETECTED] LONG pullback: current ${currentPrice} <= signal ${signalEntry}`);
+      return currentPrice;  // Vrati trenutnu cijenu (dinamička!)
+    }
+
+    if (direction === 'SHORT' && currentPrice >= reversePullbackThreshold) {
+      console.log(`✅ [PULLBACK-DETECTED] SHORT pullback: current ${currentPrice} >= signal ${signalEntry}`);
+      return currentPrice;  // Vrati trenutnu cijenu (dinamička!)
+    }
+
+    // Ako cijena nije došla do pullback threshold-a, nakon 5 sekundi koristi trenutnu cijenu ionako
+    if (Date.now() - startTime > 5000) {
+      console.log(`⚠️  [PULLBACK-TIMEOUT] Čekanje od 5s bez pullback-a, koristim trenutnu cijenu: ${currentPrice}`);
+      return currentPrice;  // Vrati trenutnu cijenu nakon 5 sekundi ionako
+    }
+  }
+
+  // Ako je isteklo vrijeme, dohvati posljednju trenutnu cijenu
+  const lastMarketState = await getLiveMarketState(symbol);
+  const fallbackPrice = direction === 'LONG' ? lastMarketState.ask : lastMarketState.bid;
+  console.log(`⏱️  [PULLBACK-MAX-WAIT] Isteklo vrijeme čekanja, koristim trenutnu cijenu: ${fallbackPrice}`);
+  return fallbackPrice;
+}
+
+// =====================================================
 // 12) BALANCED MAKER-FIRST: Limit entry with fallback
 // =====================================================
 async function executeTradeMakerFirst(ctx) {
@@ -1343,19 +1391,24 @@ async function executeTradeMakerFirst(ctx) {
   // Phase 1: Set leverage (throws on failure)
   await setLeverage(symbol, leverage);
 
+  // ========== DYNAMIC ENTRY WITH PULLBACK WAIT ==========
+  // Čekaj da se cijena povuče blizu signal entry price, zatim koristi TRENUTNU tržišnu cijenu
+  const dynamicEntry = await waitForPullbackAndGetCurrentPrice(symbol, direction, entry, config);
+  console.log(`📍 [DYNAMIC-ENTRY] Using current market price: ${dynamicEntry} (was ${entry})`);
+
   // Calculate valid quantity respecting Bybit symbol constraints
-  const qty = await getValidQuantity(symbol, positionSize, entry);
+  const qty = await getValidQuantity(symbol, positionSize, dynamicEntry);
   const side = direction === 'LONG' ? 'Buy' : 'Sell';
 
-  // STEP 1: Place post-only limit order at entry price
-  const limitResult = await placeLimitOrder(symbol, side, qty, entry, ctx.tickSize, true);
+  // STEP 1: Place post-only limit order at DYNAMIC entry price (ne stara signal cijena!)
+  const limitResult = await placeLimitOrder(symbol, side, qty, dynamicEntry, ctx.tickSize, true);
   const orderId = limitResult.orderId;
 
   // STEP 2: Wait for fill
   const fillResult = await waitForMakerFill({
     symbol,
     orderId,
-    limitPrice: entry,
+    limitPrice: dynamicEntry,
     config
   });
 
