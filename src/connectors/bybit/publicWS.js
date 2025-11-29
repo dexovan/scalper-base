@@ -113,12 +113,38 @@ export class BybitPublicWS {
 
     try {
       console.log("📡 [METRICS-WS] Creating new WebSocket...");
+      console.log("📡 [METRICS-WS] URL:", this.url);
       this.ws = new WebSocket(this.url);
       console.log("✅ [METRICS-WS] WebSocket object created successfully");
+      console.log(`📡 [METRICS-WS] WebSocket readyState after creation: ${this.ws.readyState}`);
+
+      // 🔥 EMERGENCY TIMEOUT: If WS doesn't connect within 3 seconds, assume it's dead
+      const connectDeadlineTimer = setTimeout(() => {
+        if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+          console.error("🔴 [METRICS-WS] DEADLINE: WebSocket didn't connect within 3s - forcefully closing");
+          console.error(`   Current readyState: ${this.ws?.readyState} (CONNECTING=0, OPEN=1, CLOSING=2, CLOSED=3)`);
+          try {
+            this.ws.close();
+          } catch (e) {
+            console.error("   Error closing WS:", e.message);
+          }
+          this.ws = null;
+          this._scheduleReconnect();
+        }
+      }, 3000);
+
+      this._connectDeadlineTimer = connectDeadlineTimer;
 
       // ------------- OPEN -------------
       this.ws.on("open", () => {
         console.log("🟢 [METRICS-WS] Connected!");
+
+        // Clear deadline timer since WS connected
+        if (this._connectDeadlineTimer) {
+          clearTimeout(this._connectDeadlineTimer);
+          this._connectDeadlineTimer = null;
+        }
+
         this.reconnectAttempts = 0;
         this.connected = true;
         this._messageCount = 0;
@@ -225,6 +251,10 @@ export class BybitPublicWS {
 
       // ------------- CLOSE -------------
       this.ws.on("close", (code, reason) => {
+        if (this._connectDeadlineTimer) {
+          clearTimeout(this._connectDeadlineTimer);
+          this._connectDeadlineTimer = null;
+        }
         console.warn("🔴 [METRICS-WS] Closed:", code, reason?.toString());
         wsMetrics.wsMarkDisconnected();
         this._cleanupWS();
@@ -233,6 +263,10 @@ export class BybitPublicWS {
 
       // ------------- ERROR -------------
       this.ws.on("error", (err) => {
+        if (this._connectDeadlineTimer) {
+          clearTimeout(this._connectDeadlineTimer);
+          this._connectDeadlineTimer = null;
+        }
         console.error("❌ [METRICS-WS] WebSocket Error Event Fired:", err.message);
         console.error("   Error code:", err.code);
         console.error("   Error details:", JSON.stringify(err, null, 2));
