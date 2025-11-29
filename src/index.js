@@ -302,8 +302,15 @@ async function startEngine() {
 
     console.log(`⚙️  [STATE] Initializing for ${allSymbols.length} symbols...`);
     console.log(`⚙️  [STATE] About to call initStateMachine()...`);
+
+    // Set a timeout to detect if initStateMachine hangs
+    const initTimeout = setTimeout(() => {
+      console.error(`❌ [STATE] TIMEOUT: initStateMachine() took too long (>10s), continuing anyway...`);
+    }, 10000);
+
     try {
       const smStats = stateMachine.initStateMachine(allSymbols);
+      clearTimeout(initTimeout);
       console.log("⚙️  [STATE] initStateMachine() completed");
 
       // Store in global for API access
@@ -316,9 +323,11 @@ async function startEngine() {
       console.log(`   Event logging: enabled`);
       console.log("=============================");
     } catch (err) {
+      clearTimeout(initTimeout);
       console.error(`❌ [STATE] FATAL ERROR in initStateMachine: ${err.message}`);
       console.error(err.stack);
-      throw err;
+      console.log("⚠️  [STATE] Continuing without StateMachine...");
+      // Don't throw - continue execution
     };
 
     // =====================================================
