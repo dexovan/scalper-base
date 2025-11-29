@@ -84,18 +84,26 @@ async function startEngine() {
       console.log("✅ [ENGINE] initUniverse() completed successfully!");
     } catch (universeErr) {
       console.error("❌ [ENGINE] initUniverse failed or timed out:", universeErr.message);
-      console.warn("⚠️ [ENGINE] Skipping universe init - will use cached snapshot in getUniverseSnapshot()");
+      console.warn("⚠️ [ENGINE] Skipping universe init - will use cached snapshot");
     }
 
-    console.log("⏰ [ENGINE] About to call getUniverseSnapshot()...");
-    // Verify universe loaded
-    const universeCheck = await getUniverseSnapshot();
-    console.log("✅ [ENGINE] getUniverseSnapshot() returned");
-    console.log("🌍 [ENGINE] Universe verification:", {
-        totalSymbols: universeCheck?.stats?.totalSymbols || 0,
-        fetchedAt: universeCheck?.fetchedAt || 'N/A',
-        symbolCount: Object.keys(universeCheck?.symbols || {}).length
-    });
+    console.log("⏰ [ENGINE] About to call getUniverseSnapshot() with 5s timeout...");
+    try {
+      const snapshotTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("getUniverseSnapshot timeout (5s exceeded)")), 5000);
+      });
+
+      const universeCheck = await Promise.race([getUniverseSnapshot(), snapshotTimeoutPromise]);
+      console.log("✅ [ENGINE] getUniverseSnapshot() returned");
+      console.log("🌍 [ENGINE] Universe verification:", {
+          totalSymbols: universeCheck?.stats?.totalSymbols || 0,
+          fetchedAt: universeCheck?.fetchedAt || 'N/A',
+          symbolCount: Object.keys(universeCheck?.symbols || {}).length
+      });
+    } catch (snapErr) {
+      console.error("❌ [ENGINE] getUniverseSnapshot failed:", snapErr.message);
+      console.warn("⚠️ [ENGINE] Continuing without snapshot verification");
+    }
 
     console.log("🔍 DEBUG: Initializing EventHub...");
     initEventHub();
@@ -105,16 +113,25 @@ async function startEngine() {
     console.log("⚠️ [ENGINE] Universe periodic refresh DISABLED - preventing disk fill");
 
     // KORAK 2: Display storage stats
-    console.log("⏰ [INDEX] About to get storage stats...");
-    const storageStats = await getStorageStats();
-    console.log("⏰ [INDEX] Storage stats retrieved");
-    if (storageStats) {
-        console.log("📁 Data Storage Stats:");
-        console.log(`   Date: ${storageStats.date}`);
-        console.log(`   Ticker files: ${storageStats.todayFiles?.tickers || 0}`);
-        console.log(`   Trade files: ${storageStats.todayFiles?.trades || 0}`);
-        console.log(`   Ticker size: ${(storageStats.todaySizes?.tickers / 1024).toFixed(1)} KB`);
-        console.log(`   Trade size: ${(storageStats.todaySizes?.trades / 1024).toFixed(1)} KB`);
+    console.log("⏰ [INDEX] About to get storage stats with 5s timeout...");
+    try {
+      const storageTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("getStorageStats timeout (5s exceeded)")), 5000);
+      });
+
+      const storageStats = await Promise.race([getStorageStats(), storageTimeoutPromise]);
+      console.log("✅ [INDEX] Storage stats retrieved");
+      if (storageStats) {
+          console.log("📁 Data Storage Stats:");
+          console.log(`   Date: ${storageStats.date}`);
+          console.log(`   Ticker files: ${storageStats.todayFiles?.tickers || 0}`);
+          console.log(`   Trade files: ${storageStats.todayFiles?.trades || 0}`);
+          console.log(`   Ticker size: ${(storageStats.todaySizes?.tickers / 1024).toFixed(1)} KB`);
+          console.log(`   Trade size: ${(storageStats.todaySizes?.trades / 1024).toFixed(1)} KB`);
+      }
+    } catch (statsErr) {
+      console.error("❌ [INDEX] getStorageStats failed:", statsErr.message);
+      console.warn("⚠️ [INDEX] Continuing without storage stats");
     }
 
     console.log("=====================================================");
