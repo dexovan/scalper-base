@@ -287,11 +287,11 @@ const CONFIG = {
   // Scan interval - Balance between responsiveness and resource usage
   scanInterval: 30000, // 30 seconds (candles update every 60s, so 30s is reasonable)
 
-  // Historical filters (from candles) - REDUCED FOR HIGHER SIGNAL GENERATION
-  minVolatility: 0.08,       // 0.08% minimum range (reduced from 0.15% to catch more moves)
-  minVolumeSpike: 1.2,       // 1.2x average volume (reduced from 1.5x to be less strict)
-  minVelocity: 0.01,         // 0.01%/min price change speed (reduced from 0.03% - allows slower moves)
-  minPriceChange1m: 0.05,    // 0.05% momentum in last minute (reduced from 0.1% - tighter tolerance)
+  // Historical filters (from candles) - EXTREMELY RELAXED FOR QUIET MARKET
+  minVolatility: 0.02,       // 0.02% minimum range (was 0.08% - allow extreme lows)
+  minVolumeSpike: 1.0,       // 1.0x = NO SPIKE REQUIRED (was 1.2x)
+  minVelocity: 0.005,        // 0.005%/min (was 0.01% - allow ANY movement)
+  minPriceChange1m: 0.01,    // 0.01% momentum (was 0.05% - very lenient)
 
   // Live filters (from Engine API)
   minImbalance: 1.3,         // 1.3x bid/ask ratio (reduced from 1.5 to be less strict)
@@ -551,9 +551,11 @@ function evaluateSignal(candle, liveData, debugSymbol = null) {
   const isSpoofPattern = isFallingHard && hasLargeBidWall;
 
   const checks = {
-    // Historical checks
+    // Historical checks - RELAXED FOR QUIET MARKETS
     volatility: volatility >= CONFIG.minVolatility,
-    volumeSpike: volumeSpike >= CONFIG.minVolumeSpike,
+    // Volume spike: Allow signals with good velocity/imbalance even if volume is low
+    // In quiet markets, volume will be low but that doesn't mean no trades exist
+    volumeSpike: volumeSpike >= CONFIG.minVolumeSpike || (velocity > 0.01 && imbalance > 1.5), // Allow if strong velocity + imbalance
     velocity: Math.abs(velocity) >= CONFIG.minVelocity,
     momentum: Math.abs(priceChange1m) >= CONFIG.minPriceChange1m,
 
