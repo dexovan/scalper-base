@@ -60,15 +60,15 @@ const signalStates = new Map(); // symbol -> { entryZone, direction, firstSeen, 
 const executionHistory = new Map(); // symbol -> { lastExecution, attempts }
 
 const PERSISTENCE_CONFIG = {
-  minCycles: 2,           // Default: 2 cycles (60s for normal signals)
+  minCycles: 1,           // REDUCED: 1 cycle (30s) - faster signal generation for quieter market
   maxAge: 120000,         // Clear old signals after 2 minutes
   resetOnDirectionChange: true,  // Reset counter if direction flips
 
   // Score-based persistence (for micro-scalping 0.22% TP)
   scoreThresholds: {
     instant: 90,   // Score > 90: 1 cycle (30s) - A+ obvious signal
-    fast: 75,      // Score > 75: 2 cycles (60s) - Strong signal
-    normal: 0      // Score <= 75: 3 cycles (90s) - Standard signal
+    fast: 75,      // Score > 75: 1 cycle (30s) - Strong signal (reduced from 2)
+    normal: 0      // Score <= 75: 1 cycle (30s) - Standard signal (reduced from 3)
   }
 };
 
