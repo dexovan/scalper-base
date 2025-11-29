@@ -510,12 +510,21 @@ export async function fetchInstrumentsUSDTPerp() {
   const fetchedAt = nowISO();
 
   try {
-    const res = await fetch(url, {
+    console.log("🌍 [FETCH] Starting fetchInstrumentsUSDTPerp() with 15s timeout...");
+
+    // ADD TIMEOUT: fetch must complete within 15s
+    const fetchTimeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("fetchInstrumentsUSDTPerp timeout (15s exceeded)")), 15000);
+    });
+
+    const fetchPromise = fetch(url, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
     });
+
+    const res = await Promise.race([fetchPromise, fetchTimeoutPromise]);
 
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
@@ -528,6 +537,7 @@ export async function fetchInstrumentsUSDTPerp() {
     }
 
     const list = json.result?.list ?? [];
+    console.log(`🌍 [FETCH] fetchInstrumentsUSDTPerp SUCCESS - got ${list.length} instruments`);
 
     const symbols = list.map((item) => {
       const symbol = item.symbol;
@@ -574,6 +584,9 @@ export async function fetchInstrumentsUSDTPerp() {
     };
   } catch (err) {
     console.error("❌ [BYBIT-REST] fetchInstrumentsUSDTPerp failed:", err.message);
+    if (err.message.includes("timeout")) {
+      console.error("❌ [BYBIT-REST] TIMEOUT - Bybit API not responding in time");
+    }
     return {
       success: false,
       fetchedAt,
