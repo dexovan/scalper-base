@@ -29,6 +29,8 @@ export class BybitPublicWS {
     this.connected = false;
     this._messageCount = 0;       // lokalni counter za debug
 
+    this.connectPromise = null;   // 🔥 Promise da čeka na full connection
+
     // 🔥 ORDERBOOK STORAGE (added for AI Market Hub compatibility)
     this.orderbooks = new Map();  // symbol -> { bids: [[price,qty]], asks: [[price,qty]], lastUpdate: timestamp }
   }
@@ -39,6 +41,7 @@ export class BybitPublicWS {
    *  - symbols: ["BTCUSDT","ETHUSDT", ...]
    *  - channels: ["tickers","publicTrade","orderbook.50"]
    *  - onEvent: (eventObj) => void
+   * @returns {Promise<void>} Resolves when WS opens and first subscription sent
    */
   connect({
     symbols = ["BTCUSDT", "ETHUSDT"],
@@ -49,7 +52,14 @@ export class BybitPublicWS {
     this.onEvent = onEvent || (() => {});
 
     console.log("📡 [METRICS-WS] connect() → topics:", this.subscriptions);
-    this._open();
+
+    // 🔥 Return promise that resolves when WS fully opens
+    this.connectPromise = new Promise((resolve) => {
+      this._openPromise = resolve; // Store resolve for use in _open()
+      this._open();
+    });
+
+    return this.connectPromise;
   }
 
   _buildTopics(symbols, channels) {
@@ -83,6 +93,11 @@ export class BybitPublicWS {
 
         this._sendSubscribe();
         this._startHeartbeat();
+
+        // 🔥 RESOLVE CONNECT PROMISE
+        if (this._openPromise) {
+          this._openPromise();
+        }
       });
 
       // ----------- MESSAGE ------------
