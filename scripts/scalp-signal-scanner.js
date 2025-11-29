@@ -615,8 +615,8 @@ async function scanSymbol(symbol) {
 
     // 4. If signal passes all checks, UPDATE PERSISTENCE
     if (evaluation.passed) {
-      // Determine direction based on velocity and imbalance
-      const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
+      // Determine direction based on imbalance (> 1.0 = more bids = LONG, <= 1.0 = more asks = SHORT)
+      const direction = liveData.imbalance > 1.0 ? 'LONG' : 'SHORT';
 
       // Update persistence tracker
       const cycleCount = updateSignalPersistence(symbol, direction);
@@ -1147,7 +1147,7 @@ async function scanAllSymbols() {
 
         // Only consider symbols that pass basic checks
         if (evaluation.passed) {
-          const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
+          const direction = liveData.imbalance > 1.0 ? 'LONG' : 'SHORT';  // imbalance > 1 = more bids (bullish) = LONG
           candidates.push({
             symbol,
             score,
