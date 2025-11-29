@@ -755,23 +755,23 @@ export async function antiTopFinalCheck(symbol, direction) {
     //     };
     // }
 
-    // Breaker detection
-    const br = detectBreaker(symbol, direction, price);
-    if (br.breaker) {
-        return {
-            passed: false,
-            reason: `Breaker detected: slope ${(br.slope * 100).toFixed(3)}%`
-        };
-    }
+    // Breaker detection DISABLED - allow execution in volatile markets
+    // const br = detectBreaker(symbol, direction, price);
+    // if (br.breaker) {
+    //     return {
+    //         passed: false,
+    //         reason: `Breaker detected: slope ${(br.slope * 100).toFixed(3)}%`
+    //     };
+    // }
 
-    // Delay entry after micro-high movement
-    const delay = await microEntryDelay(symbol, direction, price);
-    if (delay.wait) {
-        return {
-            passed: false,
-            reason: `Micro cooldown needed (${delay.elapsed}ms)`
-        };
-    }
+    // Micro cooldown DISABLED - allow rapid execution attempts
+    // const delay = await microEntryDelay(symbol, direction, price);
+    // if (delay.wait) {
+    //     return {
+    //         passed: false,
+    //         reason: `Micro cooldown needed (${delay.elapsed}ms)`
+    //     };
+    // }
 
     return { passed: true };
 }
