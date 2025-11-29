@@ -101,7 +101,10 @@ async function startEngine() {
     console.log("📡 METRICS: Creating WS...");
     console.log("=============================");
 
+    console.log("🔥 [INDEX] Creating new BybitPublicWS()...");
     const metricsWS = new BybitPublicWS();
+    console.log("✅ [INDEX] BybitPublicWS instance created successfully");
+    console.log(`✅ [INDEX] metricsWS object:`, metricsWS ? "EXISTS" : "NULL");
 
     console.log("📡 METRICS: Calling connect() now...");
 
@@ -111,44 +114,57 @@ async function startEngine() {
     // - Scanner will dynamically subscribe publicTrade.* for top 20-30 candidates
     // - This avoids Bybit 1006 error from too many subscriptions (limit ~100 topics)
 
-    console.log(`⏳ [INDEX] Fetching Prime symbols...`);
+    console.log(`\n⏳ [INDEX] ============ PRIME SYMBOLS FETCH START ============`);
     let primeSymbolsForWS = [];
     try {
-      console.log(`⏳ [INDEX] About to call getSymbolsByCategory("Prime")...`);
+      console.log(`⏳ [INDEX] Step 1: About to call getSymbolsByCategory("Prime")...`);
 
       // ADD TIMEOUT: If getSymbolsByCategory takes > 5s, skip and use fallback
       const timeoutPromise = new Promise((resolve) => {
         setTimeout(() => {
-          console.warn(`⚠️ [INDEX] getSymbolsByCategory timeout (5s exceeded), using fallback`);
+          console.warn(`⚠️ [INDEX] Step 2a: getSymbolsByCategory timeout (5s exceeded), using fallback`);
           resolve({ timeout: true, data: [] });
         }, 5000);
       });
 
-      const resultPromise = getSymbolsByCategory("Prime").then(data => ({ timeout: false, data }));
+      const resultPromise = getSymbolsByCategory("Prime").then(data => {
+        console.log(`⏳ [INDEX] Step 2b: getSymbolsByCategory returned, not timed out`);
+        return { timeout: false, data };
+      });
+
       const result = await Promise.race([resultPromise, timeoutPromise]);
 
       if (result.timeout) {
-        console.warn(`⚠️ [INDEX] Using fallback Prime symbols due to timeout`);
+        console.warn(`⚠️ [INDEX] Step 3a: TIMEOUT - Using fallback Prime symbols`);
         primeSymbolsForWS = [];
       } else {
-        console.log(`✅ [INDEX] getSymbolsByCategory("Prime") returned:`, result.data?.length || 0, "items");
+        console.log(`✅ [INDEX] Step 3b: SUCCESS - getSymbolsByCategory returned:`, result.data?.length || 0, "items");
         primeSymbolsForWS = result.data.map(m => m.symbol);
-        console.log(`✅ [INDEX] Got ${primeSymbolsForWS.length} Prime symbols:`, primeSymbolsForWS.slice(0, 5).join(", "), primeSymbolsForWS.length > 5 ? "..." : "");
+        console.log(`✅ [INDEX] Step 3c: Mapped to symbols, count:`, primeSymbolsForWS.length);
+        console.log(`✅ [INDEX] Step 3d: First 5 symbols:`, primeSymbolsForWS.slice(0, 5).join(", "), primeSymbolsForWS.length > 5 ? "..." : "");
       }
+      console.log(`\n✅ [INDEX] ============ PRIME SYMBOLS FETCH COMPLETE ============`);
     } catch (symbolErr) {
-      console.error(`❌ [INDEX] Failed to get Prime symbols - ERROR:`, symbolErr.message);
-      console.error(`❌ [INDEX] Error details:`, symbolErr.stack);
-      console.log(`⚠️ [INDEX] Continuing with empty Prime symbols list...`);
+      console.error(`❌ [INDEX] Step 3e: EXCEPTION in symbol fetch:`, symbolErr.message);
+      console.error(`❌ [INDEX] Step 3f: Error stack:`, symbolErr.stack?.split('\n')[0]);
+      console.log(`⚠️ [INDEX] Step 4: Continuing with empty Prime symbols list...`);
       primeSymbolsForWS = []; // Empty list, will use default tickers
+      console.log(`\n⚠️ [INDEX] ============ PRIME SYMBOLS FETCH FAILED (using fallback) ============`);
     }
 
     console.log(`📡 [WS] Subscribing to TICKERS + ORDERBOOK for ${primeSymbolsForWS.length} Prime symbols...`);
     console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
 
     // 🔥 AWAIT WebSocket connection before continuing - WITH ERROR HANDLING
-    console.log(`\n⏳ [INDEX] ABOUT TO CALL metricsWS.connect()...`);
+    console.log(`\n⏳ [INDEX] ============ WEBSOCKET CONNECTION START ============`);
+    console.log(`⏳ [INDEX] Step 5: ABOUT TO CALL metricsWS.connect()...`);
+    console.log(`⏳ [INDEX] Step 5a: metricsWS object check:`, metricsWS ? "EXISTS" : "NULL");
+    console.log(`⏳ [INDEX] Step 5b: metricsWS.connect function check:`, typeof metricsWS.connect);
+
     try {
-      console.log(`⏳ [INDEX] Calling metricsWS.connect() NOW...`);
+      console.log(`⏳ [INDEX] Step 6: Calling metricsWS.connect() NOW...`);
+      console.log(`⏳ [INDEX] Step 6a: Symbols for WS:`, primeSymbolsForWS.length > 0 ? primeSymbolsForWS.slice(0, 3).join(",") + "..." : "FALLBACK");
+
       const connectPromise = metricsWS.connect({
         symbols: primeSymbolsForWS.length > 0 ? primeSymbolsForWS : ["BTCUSDT", "ETHUSDT"], // Fallback symbols
         channels: ["tickers", "orderbook.50"], // ✅ Prime symbols only to stay under 1006 limit
@@ -250,10 +266,16 @@ async function startEngine() {
         }
       });
 
-      console.log(`⏳ [INDEX] metricsWS.connect() returned, now AWAITING promise...`);
+      console.log(`⏳ [INDEX] Step 7: metricsWS.connect() returned, now AWAITING promise...`);
+      console.log(`⏳ [INDEX] Step 7a: connectPromise object exists:`, connectPromise ? "YES" : "NO");
+
       await connectPromise;
+
+      console.log(`✅ [INDEX] Step 8: connectPromise RESOLVED!`);
       console.log("✅ [WS-METRICS] WebSocket connected and subscribed!");
+      console.log(`\n✅ [INDEX] ============ WEBSOCKET CONNECTION COMPLETE ============`);
     } catch (wsErr) {
+      console.error("❌ [INDEX] Step 8e: connectPromise REJECTED!");
       console.error("❌ [WS-METRICS] Failed to connect WebSocket:", wsErr.message);
       console.warn("⚠️ [WS-METRICS] Continuing anyway (manual reconnect will attempt)...");
       // Engine continues - WS will try to reconnect automatically
