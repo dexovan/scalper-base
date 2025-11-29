@@ -1780,6 +1780,181 @@ export function startMonitorApiServer(port = 8090) {
     }
   });
 
+  // GET /api/scalp-scanner - Get scalp scanner signals and stats (dashboard format)
+  app.get("/api/scalp-scanner", async (req, res) => {
+    try {
+      const rootDir = path.resolve(__dirname, '../../');  // Go up from /src/http to root
+      const signalsFile = path.join(rootDir, 'data', 'signals.json');
+
+      // Check if signals file exists
+      if (!fs.existsSync(signalsFile)) {
+        return res.json({
+          ok: true,
+          signals: [],
+          topCandidates: [],
+          stats: {
+            totalScanned: 0,
+            signalsFound: 0
+          },
+          filterStats: {},
+          lastScan: null,
+          message: "No signals file found - scanner hasn't run yet"
+        });
+      }
+
+      // Read signals file
+      const data = fs.readFileSync(signalsFile, 'utf-8');
+      let signals = [];
+
+      try {
+        // Try parsing as single JSON object first (new format)
+        const parsed = JSON.parse(data);
+        if (parsed.signals && Array.isArray(parsed.signals)) {
+          signals = parsed.signals;
+        }
+      } catch (e) {
+        // Fallback: try parsing as newline-delimited JSON (old format)
+        const lines = data.trim().split('\n').filter(line => line.trim());
+        signals = lines.map(line => {
+          try {
+            return JSON.parse(line);
+          } catch (err) {
+            return null;
+          }
+        }).filter(Boolean);
+      }
+
+      if (signals.length === 0) {
+        return res.json({
+          ok: true,
+          signals: [],
+          topCandidates: [],
+          stats: {
+            totalScanned: 0,
+            signalsFound: 0
+          },
+          filterStats: {},
+          lastScan: null,
+          message: "No signals detected yet"
+        });
+      }
+
+      // Normalize signal format and extract metrics
+      signals = signals.map(signal => {
+        // Extract nested candle and live data if present
+        const volatility = signal.candle?.volatility ?? signal.volatility ?? 0;
+        const volumeSpike = signal.candle?.volumeSpike ?? signal.volumeSpike ?? 0;
+        const velocity = Math.abs(signal.candle?.velocity ?? signal.velocity ?? 0); // Use absolute value!
+        const momentum = Math.abs(signal.candle?.priceChange1m ?? signal.momentum ?? 0);
+        const imbalance = signal.live?.imbalance ?? signal.imbalance ?? 1.0;
+        const spread = signal.live?.spread ?? signal.spread ?? 0;
+
+        return {
+          symbol: signal.symbol,
+          side: signal.direction || signal.side || 'LONG',
+          confidence: parseFloat(signal.confidence) || 0,
+          timestamp: signal.timestamp,
+          entry: signal.entry || signal.live?.price || 0,
+
+          // Entry Zone (NEW)
+          entryZone: signal.entryZone ? {
+            min: signal.entryZone.min,
+            ideal: signal.entryZone.ideal,
+            max: signal.entryZone.max,
+            display: signal.entryZone.display
+          } : null,
+
+          // Entry Status (NEW)
+          entryStatus: signal.entryStatus ? {
+            inZone: signal.entryStatus.inZone,
+            distancePercent: signal.entryStatus.distancePercent || 0,
+            direction: signal.entryStatus.direction || 'UNKNOWN'
+          } : null,
+
+          takeProfit: parseFloat(signal.tp) || 0,
+          stopLoss: parseFloat(signal.sl) || 0,
+          expectedProfit: signal.expectedProfit || 0,
+          volatility,
+          volumeSpike,
+          velocity,
+          momentum,
+          imbalance,
+          spread,
+
+          // Live data for display
+          live: signal.live ? {
+            price: signal.live.price,
+            bid: signal.live.bid,
+            ask: signal.live.ask,
+            orderFlowNet60s: signal.live.orderFlowNet60s
+          } : null
+        };
+      }).reverse(); // Most recent first
+
+      // Get latest scan metadata
+      const lastSignal = signals[0];
+      const lastScan = lastSignal?.timestamp || null;
+
+      // Calculate stats from recent signals (last hour)
+      const oneHourAgo = Date.now() - 3600000;
+      const recentSignals = signals.filter(s => new Date(s.timestamp).getTime() > oneHourAgo);
+
+      // Filter stats - count symbols passing each filter (use absolute values for directional metrics)
+      const filterStats = {
+        volatility: 0,
+        volumeSpike: 0,
+        velocity: 0,
+        momentum: 0,
+        imbalance: 0,
+        spread: 0
+      };
+
+      recentSignals.forEach(signal => {
+        if (signal.volatility >= 0.15) filterStats.volatility++;
+        if (signal.volumeSpike >= 1.5) filterStats.volumeSpike++;
+        if (signal.velocity >= 0.03) filterStats.velocity++; // Already absolute from normalization
+        if (signal.momentum >= 0.1) filterStats.momentum++;
+        if (signal.imbalance >= 1.5) filterStats.imbalance++;
+        if (signal.spread <= 0.1) filterStats.spread++;
+      });
+
+      // Get top candidates (4-5 filters passing)
+      const topCandidates = recentSignals.filter(signal => {
+        const passCount = [
+          signal.volatility >= 0.15,
+          signal.volumeSpike >= 1.5,
+          signal.velocity >= 0.03,
+          signal.momentum >= 0.1,
+          signal.imbalance >= 1.5,
+          signal.spread <= 0.1
+        ].filter(Boolean).length;
+        return passCount >= 4 && passCount < 6;
+      }).slice(0, 10);
+
+      // Stats
+      const stats = {
+        totalScanned: 300, // From tracked symbols
+        signalsFound: recentSignals.length
+      };
+
+      return res.json({
+        ok: true,
+        signals: recentSignals,  // Show all detected signals (not just those passing all filters)
+        topCandidates,
+        stats,
+        filterStats,
+        lastScan
+      });
+
+    } catch (error) {
+      console.error('[API] Error reading scalp-scanner data:', error);
+      return res.status(500).json({
+        ok: false,
+        error: error.message
+      });
+    }
+  });
+
   // ============================================================
   // STATE MACHINE API
   // ============================================================
