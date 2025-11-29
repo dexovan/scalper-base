@@ -140,16 +140,21 @@ export async function initUniverse(options = {}) {
 
   // Ako prvi put radimo, pokušaj da učitaš postojeći snapshot v2 (ako postoji)
   if (!UniverseState.fetchedAt) {
+    console.log("🌍 [UNIVERSE] Loading existing universe snapshot...");
     await loadExistingUniverse();
+    console.log("🌍 [UNIVERSE] Existing snapshot load complete");
   }
 
-  console.log("🌍 [UNIVERSE] Fetching instruments from Bybit...");
+  console.log("🌍 [UNIVERSE] About to call fetchInstrumentsUSDTPerp()...");
   const result = await fetchInstrumentsUSDTPerp();
+  console.log("🌍 [UNIVERSE] fetchInstrumentsUSDTPerp() returned");
 
   if (!result || !result.success) {
+    console.error("❌ [UNIVERSE] fetchInstrumentsUSDTPerp failed:", result?.error || "unknown error");
     throw new Error("Universe init failed: fetchInstrumentsUSDTPerp() not successful");
   }
 
+  console.log("🌍 [UNIVERSE] Processing symbols...");
   const nowIso = new Date().toISOString();
   UniverseState.fetchedAt = result.fetchedAt || nowIso;
 

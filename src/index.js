@@ -103,7 +103,9 @@ async function startEngine() {
     console.log("⚠️ [ENGINE] Universe periodic refresh DISABLED - preventing disk fill");
 
     // KORAK 2: Display storage stats
+    console.log("⏰ [INDEX] About to get storage stats...");
     const storageStats = await getStorageStats();
+    console.log("⏰ [INDEX] Storage stats retrieved");
     if (storageStats) {
         console.log("📁 Data Storage Stats:");
         console.log(`   Date: ${storageStats.date}`);
@@ -132,6 +134,7 @@ async function startEngine() {
     console.log("✅ [INDEX] BybitPublicWS instance created successfully");
     console.log(`✅ [INDEX] metricsWS object:`, metricsWS ? "EXISTS" : "NULL");
     console.log("✅ [INDEX] metricsWS CREATION COMPLETE - about to fetch symbols");
+    console.log("⏰ [INDEX] TIMESTAMP before prime symbols:", new Date().toISOString());
 
     console.log("📡 METRICS: Calling connect() now...");
 
