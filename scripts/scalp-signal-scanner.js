@@ -110,9 +110,9 @@ const SMART_ENTRY_CONFIG = {
 
   // Momentum requirements for entry
   momentum: {
-    minImbalanceLong: 1.3,     // LONG needs imbalance > 1.3
-    maxImbalanceShort: 0.77,   // SHORT needs imbalance < 0.77 (1/1.3)
-    maxSpread: 0.15            // Max 0.15% spread to execute
+    minImbalanceLong: 1.05,    // LONG needs imbalance > 1.05 (very lenient - was 1.3)
+    maxImbalanceShort: 0.95,   // SHORT needs imbalance < 0.95 (very lenient - was 0.77)
+    maxSpread: 1.0             // Max 1% spread to execute (was 0.15%)
   }
 };
 
