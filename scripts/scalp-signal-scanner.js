@@ -110,8 +110,8 @@ const SMART_ENTRY_CONFIG = {
 
   // Momentum requirements for entry
   momentum: {
-    minImbalanceLong: 1.05,    // LONG needs imbalance > 1.05 (very lenient - was 1.3)
-    maxImbalanceShort: 0.95,   // SHORT needs imbalance < 0.95 (very lenient - was 0.77)
+    minImbalanceLong: 1.01,    // LONG needs imbalance > 1.01 (bullish, buyers stronger)
+    minImbalanceShort: 1.01,   // SHORT needs imbalance > 1.01 (bearish indicator, high imbalance shows sell pressure)
     maxSpread: 1.0             // Max 1% spread to execute (was 0.15%)
   }
 };
@@ -253,7 +253,7 @@ function isInSweetSpot(currentPrice, idealEntry, direction) {
  * Check if momentum is sufficient for entry
  */
 function checkMomentum(liveData, direction) {
-  const { minImbalanceLong, maxImbalanceShort, maxSpread } = SMART_ENTRY_CONFIG.momentum;
+  const { minImbalanceLong, minImbalanceShort, maxSpread } = SMART_ENTRY_CONFIG.momentum;
   const imbalance = liveData.imbalance || 1.0;
   const spreadPercent = parseFloat(liveData.spreadPercent) || 0;
 
@@ -268,7 +268,7 @@ function checkMomentum(liveData, direction) {
       return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}` };
     }
   } else if (direction === 'SHORT') {
-    if (imbalance > maxImbalanceShort) {
+    if (imbalance < minImbalanceShort) {
       return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}` };
     }
   }
