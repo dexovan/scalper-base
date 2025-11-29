@@ -22,7 +22,7 @@ const SAFETY_CONFIG = {
     enabled: false             // i dalje isključeno
   },
   antiLowLiquidity: {
-    enabled: true,
+    enabled: false,            // DISABLED - scalping s tiny positions, likvidnost nije problem
     minBidDepth: 800,          // ostaje (dovoljno loose)
     minAskDepth: 800
   },
