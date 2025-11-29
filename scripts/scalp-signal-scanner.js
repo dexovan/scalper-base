@@ -294,8 +294,8 @@ const CONFIG = {
   minPriceChange1m: 0.01,    // 0.01% momentum (was 0.05% - very lenient)
 
   // Live filters (from Engine API)
-  minImbalance: 1.3,         // 1.3x bid/ask ratio (reduced from 1.5 to be less strict)
-  maxSpread: 0.2,            // 0.2% max spread (increased from 0.1% - allow wider spreads)
+  minImbalance: 1.0,         // 1.0x = NO IMBALANCE REQUIREMENT (was 1.3 - allows ANY distribution)
+  maxSpread: 0.5,            // 0.5% max spread (increased from 0.2% - very lenient)
   minOrderFlow: 0,           // Positive order flow (more buys than sells)
 
   // Debug mode: show rejection reasons
@@ -557,7 +557,8 @@ function evaluateSignal(candle, liveData, debugSymbol = null) {
     // In quiet markets, volume will be low but that doesn't mean no trades exist
     volumeSpike: volumeSpike >= CONFIG.minVolumeSpike || (velocity > 0.01 && imbalance > 1.5), // Allow if strong velocity + imbalance
     velocity: Math.abs(velocity) >= CONFIG.minVelocity,
-    momentum: Math.abs(priceChange1m) >= CONFIG.minPriceChange1m,
+    // Momentum: OPTIONAL - allow if velocity is present OR momentum meets threshold
+    momentum: Math.abs(velocity) > 0.005 || Math.abs(priceChange1m) >= CONFIG.minPriceChange1m,
 
     // Live checks - Modified imbalance rule for spoof pattern
     imbalance: imbalance >= CONFIG.minImbalance || isSpoofPattern, // Allow high imbalance for falling price (spoof detection)
