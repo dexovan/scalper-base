@@ -61,6 +61,9 @@ module.exports = {
       max_memory_restart: "512M",
       node_args: "--max-old-space-size=512"
     },
+    // ⚠️ DISABLED: Signal scanner now runs INSIDE engine process (see src/market/scannerIntegration.js)
+    // This eliminates HTTP overhead and improves signal timing
+    /*
     {
       name: "signal-scanner",
       script: "/home/aiuser/scalper-base/scripts/scalp-signal-scanner.js",
@@ -81,5 +84,6 @@ module.exports = {
       max_memory_restart: "256M",
       node_args: "--max-old-space-size=256"
     }
+    */
   ]
 };
