@@ -124,9 +124,14 @@ function determineSymbolRegime(symbol, featureState, symbolHealth, previousRegim
   const initGraceEndsAt = new Date(newState.createdAt).getTime() + THRESHOLDS.INIT_GRACE_PERIOD_MS;
   const isInGracePeriod = now < initGraceEndsAt;
 
-  if (symbolHealth && !symbolHealth.isActive && !isInGracePeriod) {
+  // Check if data is stale using THIS module's thresholds (not OrderbookManager's)
+  const isDataStale = symbolHealth &&
+                      symbolHealth.timeSinceLastTick != null &&
+                      symbolHealth.timeSinceLastTick > THRESHOLDS.STALE_ORDERBOOK_MS;
+
+  if (isDataStale && !isInGracePeriod) {
     if (prev.current !== 'STALE') {
-      logger.info(`[REGIME] ${symbol}: ${prev.current} → STALE (staleness: ${symbolHealth.staleness})`);
+      logger.info(`[REGIME] ${symbol}: ${prev.current} → STALE (timeSinceTick: ${symbolHealth.timeSinceLastTick}ms, threshold: ${THRESHOLDS.STALE_ORDERBOOK_MS}ms)`);
       logStaleSymbol(symbol, symbolHealth.timeSinceLastTick);
       newState.previous = prev.current;
       newState.transitionedAt = new Date().toISOString();
