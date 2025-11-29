@@ -68,7 +68,7 @@ function ensureDirExists(dir) {
   }
 }
 
-async function loadExistingUniverse() {
+export async function loadExistingUniverse() {
   try {
     if (!fs.existsSync(UNIVERSE_FILE)) return;
     const raw = await fs.promises.readFile(UNIVERSE_FILE, "utf8");

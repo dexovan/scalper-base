@@ -26,7 +26,8 @@ import {
     initUniverse,
     refreshUniversePeriodically,
     getSymbolsByCategory,
-    getUniverseSnapshot
+    getUniverseSnapshot,
+    loadExistingUniverse
 } from "./market/universe_v2.js";
 
 import { initEventHub } from "./ws/eventHub.js";
@@ -75,16 +76,18 @@ async function startEngine() {
     // --------------------------
     console.log("🌍 [ENGINE] About to call initUniverse()...");
     try {
-      // ADD TIMEOUT: initUniverse should complete within 20s (Bybit fetch has 15s timeout)
+      // ADD TIMEOUT: initUniverse should complete within 10s (quick fail)
       const universeTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("initUniverse timeout (20s exceeded)")), 20000);
+        setTimeout(() => reject(new Error("initUniverse timeout (10s exceeded)")), 10000);
       });
 
       await Promise.race([initUniverse(), universeTimeoutPromise]);
       console.log("✅ [ENGINE] initUniverse() completed successfully!");
     } catch (universeErr) {
-      console.error("❌ [ENGINE] initUniverse failed:", universeErr.message);
-      console.warn("⚠️ [ENGINE] Will use cached universe or continue with empty state...");
+      console.error("❌ [ENGINE] initUniverse failed or timed out:", universeErr.message);
+      console.warn("⚠️ [ENGINE] Skipping universe init - using cached snapshot only");
+      // Load from cache if available, otherwise continue with empty
+      await loadExistingUniverse();
     }
 
     // Verify universe loaded
