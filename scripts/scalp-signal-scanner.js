@@ -287,11 +287,11 @@ const CONFIG = {
   // Scan interval - Balance between responsiveness and resource usage
   scanInterval: 30000, // 30 seconds (candles update every 60s, so 30s is reasonable)
 
-  // Historical filters (from candles) - EXTREMELY RELAXED FOR QUIET MARKET
-  minVolatility: 0.02,       // 0.02% minimum range (was 0.08% - allow extreme lows)
-  minVolumeSpike: 1.0,       // 1.0x = NO SPIKE REQUIRED (was 1.2x)
-  minVelocity: 0.005,        // 0.005%/min (was 0.01% - allow ANY movement)
-  minPriceChange1m: 0.01,    // 0.01% momentum (was 0.05% - very lenient)
+  // Historical filters (from candles) - ZERO REQUIREMENTS FOR QUIET MARKET
+  minVolatility: 0.0,        // 0.0% = NO VOLATILITY REQUIREMENT (accept flat market)
+  minVolumeSpike: 0.0,       // 0.0x = NO SPIKE REQUIRED (accept any volume)
+  minVelocity: 0.001,        // 0.001%/min (accept ANY movement)
+  minPriceChange1m: 0.0,     // 0.0% = NO MOMENTUM REQUIREMENT
 
   // Live filters (from Engine API)
   minImbalance: 1.0,         // 1.0x = NO IMBALANCE REQUIREMENT (was 1.3 - allows ANY distribution)
