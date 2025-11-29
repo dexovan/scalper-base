@@ -103,26 +103,20 @@ async function startEngine() {
     console.log("📡 METRICS: Calling connect() now...");
 
     // 🚀 HOT LIST ARCHITECTURE:
-    // - Subscribe TICKERS for ALL Prime symbols (cheap, always needed)
-    // - Subscribe ORDERBOOK for Prime + Normal symbols (regime monitoring)
+    // - Subscribe TICKERS + ORDERBOOK for Prime symbols (cheap, always needed)
+    // - Normal symbols monitored via regime engine only (no WS subscriptions to avoid 1006 limit)
     // - Scanner will dynamically subscribe publicTrade.* for top 20-30 candidates
-    // - This avoids Bybit 1006 error from 600+ topic subscriptions
+    // - This avoids Bybit 1006 error from too many subscriptions (limit ~100 topics)
 
     const primeMetadata = await getSymbolsByCategory("Prime");
-    const normalMetadata = await getSymbolsByCategory("Normal");
     const primeSymbolsForWS = primeMetadata.map(m => m.symbol);
-    const normalSymbolsForWS = normalMetadata.map(m => m.symbol);
 
-    // Combine Prime + Normal for orderbook (regime needs complete picture)
-    const allOrderbookSymbols = [...primeSymbolsForWS, ...normalSymbolsForWS];
-
-    console.log(`📡 [WS] Subscribing to TICKERS for ${primeSymbolsForWS.length} Prime symbols...`);
-    console.log(`📡 [WS] Subscribing to ORDERBOOK for ${allOrderbookSymbols.length} Prime+Normal symbols (regime monitoring)...`);
+    console.log(`📡 [WS] Subscribing to TICKERS + ORDERBOOK for ${primeSymbolsForWS.length} Prime symbols...`);
     console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
 
     metricsWS.connect({
-        symbols: allOrderbookSymbols,
-        channels: ["tickers", "orderbook.50"], // ✅ orderbook for imbalance; publicTrade managed separately by flowHotlistManager
+        symbols: primeSymbolsForWS,
+        channels: ["tickers", "orderbook.50"], // ✅ Prime symbols only to stay under 1006 limit
 
         // MUST HAVE THE RAW MESSAGE
         onEvent: (msg) => {
