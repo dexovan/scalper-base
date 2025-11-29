@@ -54,9 +54,23 @@ export class BybitPublicWS {
     console.log("📡 [METRICS-WS] connect() → topics:", this.subscriptions);
 
     // 🔥 Return promise that resolves when WS fully opens or rejects on error
+    // BUT: Add 15s timeout as fallback (WS may reconnect in background)
     this.connectPromise = new Promise((resolve, reject) => {
       this._openPromise = resolve;     // Store resolve for use in _open()
       this._rejectPromise = reject;    // Store reject for use on error
+
+      // Timeout: If WS doesn't connect in 15s, resolve anyway (WS will keep trying)
+      const timeout = setTimeout(() => {
+        if (!this.connected) {
+          console.warn(`⏳ [METRICS-WS] Connect timeout (15s) - WebSocket may still be connecting in background`);
+          // Resolve anyway to let engine continue
+          // WebSocket will keep trying to reconnect automatically
+          resolve();
+        }
+        clearTimeout(timeout);
+      }, 15000);
+
+      this._openTimeout = timeout;
       this._open();
     });
 
@@ -94,6 +108,11 @@ export class BybitPublicWS {
         this.connected = true;
         this._messageCount = 0;
         wsMetrics.wsMarkConnected();
+
+        // Clear timeout since WS connected
+        if (this._openTimeout) {
+          clearTimeout(this._openTimeout);
+        }
 
         this._sendSubscribe();
         this._startHeartbeat();

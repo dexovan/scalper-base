@@ -1065,6 +1065,17 @@ export function startMonitorApiServer(port = 8090) {
         });
       }
 
+      // 🔥 CHECK: WebSocket must be connected first
+      if (!global.metricsWS || !global.metricsWS.connected) {
+        console.warn('⏳ [FLOW/HOTLIST] WebSocket not ready yet, queuing symbols for retry...');
+        return res.status(503).json({
+          ok: false,
+          error: "metricsWS not connected yet",
+          retry: true,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       // Update flow subscriptions (adds/removes publicTrade.* topics) - NOW AWAITS ASYNC
       const result = await updateFlowSymbols(symbols);
 
