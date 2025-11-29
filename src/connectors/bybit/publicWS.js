@@ -77,12 +77,15 @@ export class BybitPublicWS {
     // ako je već otvoren, ne otvaraj opet
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
-    console.log("📡 [METRICS-WS] _open() → URL:", this.url);
+    console.log("📡 [METRICS-WS] _open() START → Attempting connection to:", this.url);
+    console.log(`📡 [METRICS-WS] Current state: ws=${this.ws ? `exists(${this.ws.readyState})` : 'null'}, connected=${this.connected}`);
     wsMetrics.wsMarkConnecting();
     this.connected = false;
 
     try {
+      console.log("📡 [METRICS-WS] Creating new WebSocket...");
       this.ws = new WebSocket(this.url);
+      console.log("📡 [METRICS-WS] WebSocket object created successfully");
 
       // ------------- OPEN -------------
       this.ws.on("open", () => {
@@ -363,13 +366,16 @@ export class BybitPublicWS {
    * @param {string[]} options.remove - Symbols to remove
    */
   async updateTradeSubscriptions({ add = [], remove = [] } = {}) {
-    // ⏳ RETRY LOGIC: Wait up to 30s for WS to be ready
+    // ⏳ RETRY LOGIC: Wait up to 60s for WS to be ready
     let attempts = 0;
-    const MAX_ATTEMPTS = 30;
+    const MAX_ATTEMPTS = 60;  // 60 seconds for WS to open (can be slow on startup)
 
     while ((!this.ws || this.ws.readyState !== WebSocket.OPEN) && attempts < MAX_ATTEMPTS) {
       if (attempts === 0) {
         console.warn(`⏳ [METRICS-WS] WS not ready yet, waiting for connection (add: ${add.length}, remove: ${remove.length})...`);
+      }
+      if (attempts % 10 === 0 && attempts > 0) {
+        console.warn(`⏳ [METRICS-WS] Still waiting... (${attempts}/${MAX_ATTEMPTS}s)`);
       }
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
       attempts++;
@@ -377,6 +383,7 @@ export class BybitPublicWS {
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.error(`❌ [METRICS-WS] Failed to update trade subs after ${MAX_ATTEMPTS}s - WS still not open`);
+      console.warn(`⚠️ [METRICS-WS] Check: ws exists=${!!this.ws}, readyState=${this.ws?.readyState} (OPEN=${WebSocket.OPEN})`);
       return;
     }
 
