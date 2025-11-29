@@ -725,6 +725,10 @@ async function updateFastTrack(topCandidates) {
 
   if (fastTrackSymbols.length > 0) {
     console.log(`⚡ Fast Track: Monitoring ${fastTrackSymbols.length} hot candidates (${fastTrackSymbols.map(f => f.symbol).join(', ')})`);
+  } else {
+    // Debug: show why no candidates passed filter
+    const topByScore = topCandidates.slice(0, 5).map(c => `${c.symbol}:${c.score.toFixed(0)}`).join(', ');
+    console.log(`⚠️  Fast Track: No candidates passed minScore filter (${FAST_TRACK_CONFIG.minScore}). Top 5: ${topByScore}`);
   }
 }
 
