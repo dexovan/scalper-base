@@ -97,8 +97,8 @@ const EXECUTION_CONFIG = {
     longTopPercentThreshold: 0.90,   // 90% instead of 85% (more aggressive)
     shortBottomPercentThreshold: 0.10,
     recheckDelayMs: 6000,            // 6s instead of 12s (faster)
-    minInitialMomentum: 0.50,        // 50% instead of 55% (more trades)
-    minRecheckMomentum: 0.50
+    minInitialMomentum: 0.15,        // 15% for scalping (was 50% - too strict for quiet markets)
+    minRecheckMomentum: 0.15         // 15% (was 50%)
   },
 
   // Phase 3: Risk management
