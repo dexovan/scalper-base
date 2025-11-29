@@ -34,13 +34,18 @@ const DEFAULT_PRIME_SYMBOLS = [
   // High-volume movers - VERIFIED
   "DOGEUSDT", "SHIBUSDT",
 
-  // Additional high-volume - VERIFIED
-  "OPUSDT",    // Optimism (not OPTIMUSDT)
-  "ARBUSDT",   // Arbitrum (not ARBITUSDT)
-  "MATICUSDT", // Polygon (not POLYUSDT)
+  // Layer-2 & Emerging - VERIFIED on Bybit
+  "OPUSDT",    // Optimism
+  "ARBUSDT",   // Arbitrum
   "SANDUSDT",  // Sandbox
   "ORDIUSDT",  // Ordinals
-  "INJUSDT"    // Injective
+  "INJUSDT",   // Injective
+
+  // Additional popular altcoins
+  "ATOMUSDT",  // Cosmos
+  "NEARUSDT",  // NEAR Protocol
+  "APUSDT",    // ApeCoin
+  "SUSUSDT"    // Sui
 ];
 
 const UniverseState = {
