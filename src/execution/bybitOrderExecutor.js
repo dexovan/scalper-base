@@ -87,7 +87,7 @@ const EXECUTION_CONFIG = {
     pollIntervalMs: 2000,            // Poll every 2s
     maxPriceDriftPercent: 0.15,      // Relaxed to 0.15% (was 0.10%)
     maxSpreadPercent: 10,            // Relaxed to 10% to allow trades in volatile markets (was 0.20%)
-    minMomentumPercent: 50           // Relaxed to 50% (was 55%)
+    minMomentumPercent: 15           // Relaxed to 15% - scalping needs lower momentum (was 50%)
   },
 
   // Phase 2: Entry timing – BALANCED parameters
