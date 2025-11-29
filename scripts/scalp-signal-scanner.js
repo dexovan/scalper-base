@@ -1172,7 +1172,23 @@ async function scanAllSymbols() {
 
         // Only consider symbols that pass basic checks
         if (evaluation.passed) {
-          const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
+          // Determine direction based on momentum alignment
+          // LONG: bullish (velocity rising AND more buy orders)
+          // SHORT: bearish (velocity falling AND more sell orders)
+          // Skip if momentum is weak/mixed
+          let direction = null;
+
+          if (latestCandle.velocity > 0 && liveData.imbalance > 1) {
+            direction = 'LONG';   // Bullish: price rising + more buys
+          } else if (latestCandle.velocity < 0 && liveData.imbalance < 1) {
+            direction = 'SHORT';  // Bearish: price falling + more sells
+          }
+
+          // Skip candidate if momentum is not clear (mixed signals)
+          if (!direction) {
+            continue;
+          }
+
           candidates.push({
             symbol,
             score,
