@@ -39,6 +39,9 @@ import RegimeEngine from "./regime/regimeEngine.js";
 import * as OrderbookManager from "./microstructure/OrderbookManager.js";
 import { logEngineStartup } from "./regime/regimeLogger.js";
 
+// 🔍 SIGNAL SCANNER INTEGRATION - Run scanner inside engine
+import { initializeScannerIntegration, startScannerLoops } from "./market/scannerIntegration.js";
+
 async function startEngine() {
     console.log("🔥🔥🔥 [INDEX.JS] startEngine() CALLED 🔥🔥🔥");
     console.log("====================================================");
@@ -448,6 +451,31 @@ async function startEngine() {
     console.log("=============================");
 
     metrics.heartbeat();
+
+    // =====================================================
+    // 🔍 PHASE 6: SIGNAL SCANNER INTEGRATION
+    // =====================================================
+    console.log("\n=============================");
+    console.log("🔍 SCANNER: Initializing Signal Scanner (inside engine)...");
+    console.log("=============================");
+
+    const scannerReady = await initializeScannerIntegration();
+    if (scannerReady) {
+      const scannerControl = await startScannerLoops();
+      if (scannerControl) {
+        console.log("✅ [SCANNER] Signal scanner is ACTIVE!");
+        // Store for potential cleanup
+        global.scannerControl = scannerControl;
+      } else {
+        console.warn("⚠️ [SCANNER] Failed to start scanner loops, continuing anyway...");
+      }
+    } else {
+      console.warn("⚠️ [SCANNER] Could not load scanner module, continuing anyway...");
+    }
+
+    console.log("\n🎉 ====================================================");
+    console.log("✅ ENGINE FULLY INITIALIZED AND READY");
+    console.log("🎉 ====================================================\n");
 }
 
 startEngine().catch((err) => {
