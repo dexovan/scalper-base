@@ -77,7 +77,7 @@ const FAST_TRACK_CONFIG = {
   enabled: true,
   interval: 2000,        // 2s rapid checks for hot candidates
   maxSymbols: 30,        // Monitor top 30 candidates in fast lane (was 8)
-  minScore: 20,          // Only candidates with score > 20 enter fast track (was 70 - too strict!)
+  minScore: 1,           // Lower threshold - monitor ALL candidates with minimal score
   minOrderFlowVolume: 5000,  // Minimum $5k total volume in 60s to trust orderFlow
 
   // Auto-execution settings
