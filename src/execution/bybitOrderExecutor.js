@@ -746,14 +746,14 @@ export async function antiTopFinalCheck(symbol, direction) {
     // Update micro-high tracker
     updateMicroHigh(symbol, price);
 
-    // Pump detection
-    const pump = detectMicroPump(symbol, price);
-    if (pump.pump) {
-        return {
-            passed: false,
-            reason: `Price at ${(pump.positionPercent * 100).toFixed(1)}% of micro-range (pump detected)`
-        };
-    }
+    // Pump detection - DISABLED for scalping (too strict in volatile markets)
+    // const pump = detectMicroPump(symbol, price);
+    // if (pump.pump) {
+    //     return {
+    //         passed: false,
+    //         reason: `Price at ${(pump.positionPercent * 100).toFixed(1)}% of micro-range (pump detected)`
+    //     };
+    // }
 
     // Breaker detection
     const br = detectBreaker(symbol, direction, price);
