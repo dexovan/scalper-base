@@ -831,6 +831,7 @@ async function attemptExecution(symbol, signalState, liveData) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(executionRequest)
   }).then(async response => {
+    console.log(`📡 [API RESPONSE] ${symbol}: Status ${response.status}`);
     try {
       const result = await response.json();
 
@@ -884,7 +885,7 @@ async function attemptExecution(symbol, signalState, liveData) {
         });
       }
     } catch (error) {
-      console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
+      console.error(`❌ [EXECUTE ERROR] ${symbol}: JSON parse error -`, error.message);
       signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
       signalState.executionInProgress = false;
 
@@ -901,7 +902,7 @@ async function attemptExecution(symbol, signalState, liveData) {
       });
     }
   }).catch(error => {
-    console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
+    console.error(`❌ [EXECUTE ERROR] ${symbol}: Fetch failed -`, error.message);
     signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
     signalState.executionInProgress = false;
 
