@@ -217,7 +217,9 @@ export class BybitPublicWS {
 
       // ------------- ERROR -------------
       this.ws.on("error", (err) => {
-        console.error("❌ [METRICS-WS] Error:", err.message);
+        console.error("❌ [METRICS-WS] WebSocket Error Event Fired:", err.message);
+        console.error("   Error code:", err.code);
+        console.error("   Error details:", JSON.stringify(err, null, 2));
         wsMetrics.wsMarkError();
 
         // 🔥 REJECT CONNECT PROMISE
@@ -229,7 +231,8 @@ export class BybitPublicWS {
         this._scheduleReconnect();
       });
     } catch (err) {
-      console.error("❌ [METRICS-WS] Open exception:", err);
+      console.error("❌ [METRICS-WS] Open exception (try/catch):", err.message);
+      console.error("   Exception details:", JSON.stringify(err, null, 2));
       wsMetrics.wsMarkError();
 
       // 🔥 REJECT CONNECT PROMISE ON EXCEPTION
