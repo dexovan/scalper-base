@@ -74,8 +74,18 @@ async function startEngine() {
     // UNIVERSE INIT
     // --------------------------
     console.log("🌍 [ENGINE] About to call initUniverse()...");
-    await initUniverse();
-    console.log("🌍 [ENGINE] initUniverse() completed!");
+    try {
+      // ADD TIMEOUT: initUniverse should complete within 30s
+      const universeTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("initUniverse timeout (30s exceeded)")), 30000);
+      });
+
+      await Promise.race([initUniverse(), universeTimeoutPromise]);
+      console.log("🌍 [ENGINE] initUniverse() completed!");
+    } catch (universeErr) {
+      console.error("❌ [ENGINE] initUniverse failed:", universeErr.message);
+      console.warn("⚠️ [ENGINE] Continuing anyway with empty universe...");
+    }
 
     // Verify universe loaded
     const universeCheck = await getUniverseSnapshot();
@@ -121,6 +131,7 @@ async function startEngine() {
     const metricsWS = new BybitPublicWS();
     console.log("✅ [INDEX] BybitPublicWS instance created successfully");
     console.log(`✅ [INDEX] metricsWS object:`, metricsWS ? "EXISTS" : "NULL");
+    console.log("✅ [INDEX] metricsWS CREATION COMPLETE - about to fetch symbols");
 
     console.log("📡 METRICS: Calling connect() now...");
 
@@ -131,14 +142,16 @@ async function startEngine() {
     // - This avoids Bybit 1006 error from too many subscriptions (limit ~100 topics)
 
     console.log(`\n⏳ [INDEX] ============ PRIME SYMBOLS FETCH START ============`);
-    let primeSymbolsForWS = [];
+    const HARDCODED_FALLBACK_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "DOTUSDT"];
+    let primeSymbolsForWS = HARDCODED_FALLBACK_SYMBOLS.slice(); // Start with hardcoded fallback
+
     try {
       console.log(`⏳ [INDEX] Step 1: About to call getSymbolsByCategory("Prime")...`);
 
       // ADD TIMEOUT: If getSymbolsByCategory takes > 5s, skip and use fallback
       const timeoutPromise = new Promise((resolve) => {
         setTimeout(() => {
-          console.warn(`⚠️ [INDEX] Step 2a: getSymbolsByCategory timeout (5s exceeded), using fallback`);
+          console.warn(`⚠️ [INDEX] Step 2a: getSymbolsByCategory timeout (5s exceeded), using hardcoded fallback`);
           resolve({ timeout: true, data: [] });
         }, 5000);
       });
@@ -151,8 +164,8 @@ async function startEngine() {
       const result = await Promise.race([resultPromise, timeoutPromise]);
 
       if (result.timeout) {
-        console.warn(`⚠️ [INDEX] Step 3a: TIMEOUT - Using fallback Prime symbols`);
-        primeSymbolsForWS = [];
+        console.warn(`⚠️ [INDEX] Step 3a: TIMEOUT - Using hardcoded fallback Prime symbols`);
+        primeSymbolsForWS = HARDCODED_FALLBACK_SYMBOLS.slice();
       } else {
         console.log(`✅ [INDEX] Step 3b: SUCCESS - getSymbolsByCategory returned:`, result.data?.length || 0, "items");
         primeSymbolsForWS = result.data.map(m => m.symbol);
@@ -160,14 +173,17 @@ async function startEngine() {
         console.log(`✅ [INDEX] Step 3d: First 5 symbols:`, primeSymbolsForWS.slice(0, 5).join(", "), primeSymbolsForWS.length > 5 ? "..." : "");
       }
       console.log(`\n✅ [INDEX] ============ PRIME SYMBOLS FETCH COMPLETE ============`);
+      console.log(`✅ [INDEX] FINAL SYMBOLS FOR WS: ${primeSymbolsForWS.length} symbols`);
     } catch (symbolErr) {
       console.error(`❌ [INDEX] Step 3e: EXCEPTION in symbol fetch:`, symbolErr.message);
       console.error(`❌ [INDEX] Step 3f: Error stack:`, symbolErr.stack?.split('\n')[0]);
-      console.log(`⚠️ [INDEX] Step 4: Continuing with empty Prime symbols list...`);
-      primeSymbolsForWS = []; // Empty list, will use default tickers
-      console.log(`\n⚠️ [INDEX] ============ PRIME SYMBOLS FETCH FAILED (using fallback) ============`);
+      console.log(`⚠️ [INDEX] Step 4: Using hardcoded fallback symbols...`);
+      primeSymbolsForWS = HARDCODED_FALLBACK_SYMBOLS.slice();
+      console.log(`\n⚠️ [INDEX] ============ PRIME SYMBOLS FETCH FAILED (using hardcoded fallback) ============`);
+      console.log(`⚠️ [INDEX] FINAL FALLBACK SYMBOLS: ${primeSymbolsForWS.join(", ")}`);
     }
 
+    console.log(`\n⏳ [INDEX] ============ READY TO CONNECT WEBSOCKET ============`);
     console.log(`📡 [WS] Subscribing to TICKERS + ORDERBOOK for ${primeSymbolsForWS.length} Prime symbols...`);
     console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
 
