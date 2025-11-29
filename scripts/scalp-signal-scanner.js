@@ -834,6 +834,7 @@ async function attemptExecution(symbol, signalState, liveData) {
     console.log(`📡 [API RESPONSE] ${symbol}: Status ${response.status}`);
     try {
       const result = await response.json();
+      console.log(`📡 [API BODY] ${symbol}: ${JSON.stringify(result).substring(0, 200)}`);
 
       if (result.ok) {
         console.log(`✅ [EXECUTED] ${symbol} - Order ID: ${result.orderId || 'DRY-RUN'}`);
