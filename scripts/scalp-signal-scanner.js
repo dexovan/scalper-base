@@ -960,6 +960,11 @@ async function fastTrackLoop() {
       signalState.inZone = inZone;
       signalState.lastChecked = now;
 
+      // DEBUG: Log if price NOT in zone
+      if (!inZone && Math.random() < 0.03) {
+        console.log(`❌ [NOT IN ZONE] ${ft.symbol}: price=${currentPrice.toFixed(4)}, zone=[${signalState.entryZone.min.toFixed(4)}-${signalState.entryZone.max.toFixed(4)}], distance=${distanceInfo.distancePercent.toFixed(3)}%`);
+      }
+
       // === SMART ENTRY TIMING LOGIC (HYBRID APPROACH) ===
 
       // 1. Calculate range position (0-100% of recent price range)
@@ -1002,6 +1007,11 @@ async function fastTrackLoop() {
             shouldEnter = true;
             entryReason = 'at_upper_boundary';
           }
+        }
+
+        // DEBUG: Log entry zone and price relationship
+        if (Math.random() < 0.05) { // 5% sample to avoid spam
+          console.log(`⚡ [ENTRY CHECK] ${ft.symbol}: price=${currentPrice.toFixed(4)}, ideal=${idealEntry.toFixed(4)}, inSweetSpot=${inSweetSpot}, shouldEnter=${shouldEnter}`);
         }
 
         // 3b. If position looks good, validate momentum
