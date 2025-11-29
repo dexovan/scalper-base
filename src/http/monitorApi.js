@@ -1695,17 +1695,10 @@ export function startMonitorApiServer(port = 8090) {
       const rootDir = path.resolve(__dirname, '../../');  // Go up from /src/http to root
       const signalsFile = path.join(rootDir, 'data', 'signals.json');
 
-      // Debug: Log file path resolution
-      console.log(`[HOTLIST-DEBUG] __dirname: ${__dirname}`);
-      console.log(`[HOTLIST-DEBUG] signalsFile path: ${signalsFile}`);
-      console.log(`[HOTLIST-DEBUG] file exists: ${fs.existsSync(signalsFile)}`);
-
       try {
         if (fs.existsSync(signalsFile)) {
           const content = fs.readFileSync(signalsFile, 'utf-8');
           const data = JSON.parse(content);
-
-          console.log(`[HOTLIST-DEBUG] signals loaded: ${data.signals?.length || 0}`);
 
           if (data.signals && Array.isArray(data.signals)) {
             // Convert signals to hotlist format
