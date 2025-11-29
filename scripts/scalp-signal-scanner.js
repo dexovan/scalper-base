@@ -76,8 +76,8 @@ const PERSISTENCE_CONFIG = {
 const FAST_TRACK_CONFIG = {
   enabled: true,
   interval: 2000,        // 2s rapid checks for hot candidates
-  maxSymbols: 8,         // Monitor top 8 candidates in fast lane
-  minScore: 70,          // Only candidates with score > 70 enter fast track
+  maxSymbols: 30,        // Monitor top 30 candidates in fast lane (was 8)
+  minScore: 20,          // Only candidates with score > 20 enter fast track (was 70 - too strict!)
   minOrderFlowVolume: 5000,  // Minimum $5k total volume in 60s to trust orderFlow
 
   // Auto-execution settings
