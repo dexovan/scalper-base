@@ -553,9 +553,8 @@ function evaluateSignal(candle, liveData, debugSymbol = null) {
   const checks = {
     // Historical checks - RELAXED FOR QUIET MARKETS
     volatility: volatility >= CONFIG.minVolatility,
-    // Volume spike: Allow signals with good velocity/imbalance even if volume is low
-    // In quiet markets, volume will be low but that doesn't mean no trades exist
-    volumeSpike: volumeSpike >= CONFIG.minVolumeSpike || (velocity > 0.01 && imbalance > 1.5), // Allow if strong velocity + imbalance
+    // Volume spike: OPTIONAL - allow if velocity exists or ANY movement detected
+    volumeSpike: volumeSpike >= CONFIG.minVolumeSpike || Math.abs(velocity) > 0.003 || imbalance > 1.0, // Allow with ANY movement
     velocity: Math.abs(velocity) >= CONFIG.minVelocity,
     // Momentum: OPTIONAL - allow if velocity is present OR momentum meets threshold
     momentum: Math.abs(velocity) > 0.005 || Math.abs(priceChange1m) >= CONFIG.minPriceChange1m,
