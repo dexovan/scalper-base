@@ -86,19 +86,19 @@ const EXECUTION_CONFIG = {
     maxWaitMs: 7000,                 // Max 7s total
     pollIntervalMs: 2000,            // Poll every 2s
     maxPriceDriftPercent: 0.15,      // Relaxed to 0.15% (was 0.10%)
-    maxSpreadPercent: 10,            // Relaxed to 10% to allow trades in volatile markets (was 0.20%)
-    minMomentumPercent: 15           // Relaxed to 15% - scalping needs lower momentum (was 50%)
+    maxSpreadPercent: 0.20,          // Relaxed to 0.20% (was 0.15%)
+    minMomentumPercent: 50           // Relaxed to 50% (was 55%)
   },
 
   // Phase 2: Entry timing – BALANCED parameters
   pullbackCheck: {
-    enabled: false,                  // Disable 6s recheck - initial momentum check is sufficient
+    enabled: true,
     pullbackWindowMinutes: 5,
     longTopPercentThreshold: 0.90,   // 90% instead of 85% (more aggressive)
     shortBottomPercentThreshold: 0.10,
     recheckDelayMs: 6000,            // 6s instead of 12s (faster)
-    minInitialMomentum: 0.15,        // 15% for scalping (was 50% - too strict for quiet markets)
-    minRecheckMomentum: 0.15         // 15% (was 50%)
+    minInitialMomentum: 0.50,        // 50% instead of 55% (more trades)
+    minRecheckMomentum: 0.50
   },
 
   // Phase 3: Risk management
@@ -746,32 +746,32 @@ export async function antiTopFinalCheck(symbol, direction) {
     // Update micro-high tracker
     updateMicroHigh(symbol, price);
 
-    // Pump detection - DISABLED for scalping (too strict in volatile markets)
-    // const pump = detectMicroPump(symbol, price);
-    // if (pump.pump) {
-    //     return {
-    //         passed: false,
-    //         reason: `Price at ${(pump.positionPercent * 100).toFixed(1)}% of micro-range (pump detected)`
-    //     };
-    // }
+    // Pump detection
+    const pump = detectMicroPump(symbol, price);
+    if (pump.pump) {
+        return {
+            passed: false,
+            reason: `Price at ${(pump.positionPercent * 100).toFixed(1)}% of micro-range (pump detected)`
+        };
+    }
 
-    // Breaker detection DISABLED - allow execution in volatile markets
-    // const br = detectBreaker(symbol, direction, price);
-    // if (br.breaker) {
-    //     return {
-    //         passed: false,
-    //         reason: `Breaker detected: slope ${(br.slope * 100).toFixed(3)}%`
-    //     };
-    // }
+    // Breaker detection
+    const br = detectBreaker(symbol, direction, price);
+    if (br.breaker) {
+        return {
+            passed: false,
+            reason: `Breaker detected: slope ${(br.slope * 100).toFixed(3)}%`
+        };
+    }
 
-    // Micro cooldown DISABLED - allow rapid execution attempts
-    // const delay = await microEntryDelay(symbol, direction, price);
-    // if (delay.wait) {
-    //     return {
-    //         passed: false,
-    //         reason: `Micro cooldown needed (${delay.elapsed}ms)`
-    //     };
-    // }
+    // Delay entry after micro-high movement
+    const delay = await microEntryDelay(symbol, direction, price);
+    if (delay.wait) {
+        return {
+            passed: false,
+            reason: `Micro cooldown needed (${delay.elapsed}ms)`
+        };
+    }
 
     return { passed: true };
 }
@@ -1078,22 +1078,21 @@ export function analyzeFakePump(symbol, direction, marketState) {
     // Ako engine još uvek ne računa ove skorove → koristimo fallback logiku
     const hasRiskSignals = pumpScore > 0 || spoofScore > 0 || wallScore > 0;
     if (!hasRiskSignals) {
-        // FALLBACK CHECKS DISABLED - Allow execution in volatile markets with spread/imbalance
-        // Code kept for reference but not executed
-        /*
+        // FALLBACK: Detektuj pump preko spread + imbalance kombinacije
         if (spread > 0.005 && Math.abs(imbalance - 1.0) > 0.15) {
             return {
                 ok: false,
                 reason: `High spread (${(spread * 100).toFixed(2)}%) + imbalance (${imbalance.toFixed(3)}) suggests pump/trap`
             };
         }
+
+        // FALLBACK: Ekstremno širok spread
         if (spread > 0.008) {
             return {
                 ok: false,
                 reason: `Extreme spread ${(spread * 100).toFixed(2)}% detected`
             };
         }
-        */
 
         return { ok: true, reason: "No risk scores yet (fallback passed)" };
     }

@@ -76,8 +76,8 @@ const PERSISTENCE_CONFIG = {
 const FAST_TRACK_CONFIG = {
   enabled: true,
   interval: 2000,        // 2s rapid checks for hot candidates
-  maxSymbols: 30,        // Monitor top 30 candidates in fast lane (was 8)
-  minScore: 1,           // Lower threshold - monitor ALL candidates with minimal score
+  maxSymbols: 8,         // Monitor top 8 candidates in fast lane
+  minScore: 70,          // Only candidates with score > 70 enter fast track
   minOrderFlowVolume: 5000,  // Minimum $5k total volume in 60s to trust orderFlow
 
   // Auto-execution settings
@@ -110,8 +110,8 @@ const SMART_ENTRY_CONFIG = {
 
   // Momentum requirements for entry
   momentum: {
-    minImbalanceLong: 1.01,    // LONG needs imbalance > 1.01 (bullish, buyers stronger)
-    maxImbalanceShort: 3.0,    // SHORT rejects only when EXTREMELY bullish (imbalance > 3.0x)
+    minImbalanceLong: 1.05,    // LONG needs imbalance > 1.05 (very lenient - was 1.3)
+    maxImbalanceShort: 0.95,   // SHORT needs imbalance < 0.95 (very lenient - was 0.77)
     maxSpread: 1.0             // Max 1% spread to execute (was 0.15%)
   }
 };
@@ -269,7 +269,7 @@ function checkMomentum(liveData, direction) {
     }
   } else if (direction === 'SHORT') {
     if (imbalance > maxImbalanceShort) {
-      return { passed: false, reason: `too_bullish_imb_${imbalance.toFixed(2)}` };
+      return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}` };
     }
   }
 
@@ -725,10 +725,6 @@ async function updateFastTrack(topCandidates) {
 
   if (fastTrackSymbols.length > 0) {
     console.log(`⚡ Fast Track: Monitoring ${fastTrackSymbols.length} hot candidates (${fastTrackSymbols.map(f => f.symbol).join(', ')})`);
-  } else {
-    // Debug: show why no candidates passed filter
-    const topByScore = topCandidates.slice(0, 5).map(c => `${c.symbol}:${c.score.toFixed(0)}`).join(', ');
-    console.log(`⚠️  Fast Track: No candidates passed minScore filter (${FAST_TRACK_CONFIG.minScore}). Top 5: ${topByScore}`);
   }
 }
 
@@ -806,15 +802,6 @@ async function attemptExecution(symbol, signalState, liveData) {
 
   console.log(`✅ [SAFETY PASSED] ${symbol} - All checks OK`);
 
-  // Calculate FRESH momentum from current liveData (not from stale signalState)
-  let freshMomentum = 0;
-  const currentImbalance = liveData.imbalance || 1.0;
-  if (signalState.direction === 'LONG') {
-    freshMomentum = Math.max(0, (currentImbalance - 1.0));
-  } else if (signalState.direction === 'SHORT') {
-    freshMomentum = currentImbalance < 1.0 ? Math.max(0, (1.0 - currentImbalance)) : 0;
-  }
-
   // Prepare execution request
   const executionRequest = {
     symbol,
@@ -823,7 +810,7 @@ async function attemptExecution(symbol, signalState, liveData) {
     tp: signalState.tp,
     sl: signalState.sl,
     confidence: signalState.confidence || 0,
-    initialMomentum: freshMomentum,  // Use FRESH momentum from current liveData
+    initialMomentum: signalState.initialMomentum || 0,  // Include momentum for executor
     entryZone: signalState.entryZone
   };
 
@@ -831,7 +818,7 @@ async function attemptExecution(symbol, signalState, liveData) {
   console.log(`\n🚀 [EXECUTING] ${symbol} ${signalState.direction} @ ${formatPriceByTick(executionRequest.entry, ts)}`);
   console.log(`   TP: ${formatPriceByTick(executionRequest.tp, ts)} | SL: ${formatPriceByTick(executionRequest.sl, ts)}`);
   console.log(`   Entry Zone: [${signalState.entryZone.min} — ${signalState.entryZone.ideal} — ${signalState.entryZone.max}]`);
-  console.log(`   Current Momentum: ${(freshMomentum * 100).toFixed(1)}% (imbalance=${currentImbalance.toFixed(2)})`);
+  console.log(`   Initial Momentum: ${(executionRequest.initialMomentum * 100).toFixed(1)}% (from signalState)`);
 
   // Fire-and-forget: Send execution request WITHOUT waiting for response
   // This prevents execution from blocking Stage 1 refresh
@@ -840,10 +827,8 @@ async function attemptExecution(symbol, signalState, liveData) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(executionRequest)
   }).then(async response => {
-    console.log(`📡 [API RESPONSE] ${symbol}: Status ${response.status}`);
     try {
       const result = await response.json();
-      console.log(`📡 [API BODY] ${symbol}: ${JSON.stringify(result).substring(0, 200)}`);
 
       if (result.ok) {
         console.log(`✅ [EXECUTED] ${symbol} - Order ID: ${result.orderId || 'DRY-RUN'}`);
@@ -895,7 +880,7 @@ async function attemptExecution(symbol, signalState, liveData) {
         });
       }
     } catch (error) {
-      console.error(`❌ [EXECUTE ERROR] ${symbol}: JSON parse error -`, error.message);
+      console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
       signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
       signalState.executionInProgress = false;
 
@@ -912,7 +897,7 @@ async function attemptExecution(symbol, signalState, liveData) {
       });
     }
   }).catch(error => {
-    console.error(`❌ [EXECUTE ERROR] ${symbol}: Fetch failed -`, error.message);
+    console.error(`❌ [EXECUTE ERROR] ${symbol}:`, error.message);
     signalState.executionAttempts = (signalState.executionAttempts || 0) + 1;
     signalState.executionInProgress = false;
 
@@ -975,11 +960,6 @@ async function fastTrackLoop() {
       signalState.inZone = inZone;
       signalState.lastChecked = now;
 
-      // DEBUG: Log if price NOT in zone
-      if (!inZone && Math.random() < 0.03) {
-        console.log(`❌ [NOT IN ZONE] ${ft.symbol}: price=${currentPrice.toFixed(4)}, zone=[${signalState.entryZone.min.toFixed(4)}-${signalState.entryZone.max.toFixed(4)}], distance=${distanceInfo.distancePercent.toFixed(3)}%`);
-      }
-
       // === SMART ENTRY TIMING LOGIC (HYBRID APPROACH) ===
 
       // 1. Calculate range position (0-100% of recent price range)
@@ -1022,11 +1002,6 @@ async function fastTrackLoop() {
             shouldEnter = true;
             entryReason = 'at_upper_boundary';
           }
-        }
-
-        // DEBUG: Log entry zone and price relationship
-        if (Math.random() < 0.05) { // 5% sample to avoid spam
-          console.log(`⚡ [ENTRY CHECK] ${ft.symbol}: price=${currentPrice.toFixed(4)}, ideal=${idealEntry.toFixed(4)}, inSweetSpot=${inSweetSpot}, shouldEnter=${shouldEnter}`);
         }
 
         // 3b. If position looks good, validate momentum
@@ -1172,23 +1147,7 @@ async function scanAllSymbols() {
 
         // Only consider symbols that pass basic checks
         if (evaluation.passed) {
-          // Determine direction based on momentum alignment
-          // LONG: bullish (velocity rising AND more buy orders)
-          // SHORT: bearish (velocity falling AND more sell orders)
-          // Skip if momentum is weak/mixed
-          let direction = null;
-
-          if (latestCandle.velocity > 0 && liveData.imbalance > 1) {
-            direction = 'LONG';   // Bullish: price rising + more buys
-          } else if (latestCandle.velocity < 0 && liveData.imbalance < 1) {
-            direction = 'SHORT';  // Bearish: price falling + more sells
-          }
-
-          // Skip candidate if momentum is not clear (mixed signals)
-          if (!direction) {
-            continue;
-          }
-
+          const direction = latestCandle.velocity > 0 && liveData.imbalance > 1 ? 'LONG' : 'SHORT';
           candidates.push({
             symbol,
             score,

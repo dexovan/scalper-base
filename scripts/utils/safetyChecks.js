@@ -13,7 +13,7 @@ const SAFETY_CONFIG = {
   minFeesCovered: 0.02,        // buffer smanjen 0.04 → 0.02
   maxHeat: -30000,             // isto – dozvoljavamo jaku prodaju
   maxVolatility: 4.0,          // i dalje tolerantno
-  minLiquidity: 0,             // 0 - scalping doesn't need depth validation
+  minLiquidity: 1000,          // ostavljamo low cap coins
 
   antiPump: {
     enabled: false             // i dalje isključeno
@@ -22,7 +22,7 @@ const SAFETY_CONFIG = {
     enabled: false             // i dalje isključeno
   },
   antiLowLiquidity: {
-    enabled: false,            // DISABLED - scalping s tiny positions, likvidnost nije problem
+    enabled: true,
     minBidDepth: 800,          // ostaje (dovoljno loose)
     minAskDepth: 800
   },
