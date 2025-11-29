@@ -565,9 +565,7 @@ function evaluateSignal(candle, liveData, debugSymbol = null) {
 
     // Order flow: RELAXED for low-volume periods
     // Allow signals if we can't evaluate order flow (no volume)
-    orderFlow: !orderFlowReliable || // Not enough volume - allow signal to pass
-               (velocity > 0 && orderFlow >= 2000) ||   // LONG: need positive flow ($2k+ instead of $5k)
-               (velocity < 0 && orderFlow <= -2000),    // SHORT: need negative flow
+    orderFlow: !orderFlowReliable, // Not enough volume - allow signal to pass (ignore orderFlow check)
   };
 
   // Count how many checks passed
