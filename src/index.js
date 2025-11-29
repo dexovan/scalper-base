@@ -301,18 +301,25 @@ async function startEngine() {
     ];
 
     console.log(`⚙️  [STATE] Initializing for ${allSymbols.length} symbols...`);
-    const smStats = stateMachine.initStateMachine(allSymbols);
-    console.log("⚙️  [STATE] initStateMachine() completed");
+    console.log(`⚙️  [STATE] About to call initStateMachine()...`);
+    try {
+      const smStats = stateMachine.initStateMachine(allSymbols);
+      console.log("⚙️  [STATE] initStateMachine() completed");
 
-    // Store in global for API access
-    global.stateMachine = stateMachine;
-    console.log("⚙️  [STATE] Stored in global");
+      // Store in global for API access
+      global.stateMachine = stateMachine;
+      console.log("⚙️  [STATE] Stored in global");
 
-    console.log("⚙️  [STATE] State Machine started successfully:");
-    console.log(`   Symbols tracked: ${smStats.symbolCount}`);
-    console.log(`   Tick interval: ${smStats.tickInterval}ms`);
-    console.log(`   Event logging: enabled`);
-    console.log("=============================");
+      console.log("⚙️  [STATE] State Machine started successfully:");
+      console.log(`   Symbols tracked: ${smStats.symbolCount}`);
+      console.log(`   Tick interval: ${smStats.tickInterval}ms`);
+      console.log(`   Event logging: enabled`);
+      console.log("=============================");
+    } catch (err) {
+      console.error(`❌ [STATE] FATAL ERROR in initStateMachine: ${err.message}`);
+      console.error(err.stack);
+      throw err;
+    };
 
     // =====================================================
     // PHASE 8: RISK ENGINE INITIALIZATION
