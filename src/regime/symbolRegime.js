@@ -125,9 +125,13 @@ function determineSymbolRegime(symbol, featureState, symbolHealth, previousRegim
   const isInGracePeriod = now < initGraceEndsAt;
 
   // Check if data is stale using THIS module's thresholds (not OrderbookManager's)
-  const isDataStale = symbolHealth &&
-                      symbolHealth.timeSinceLastTick != null &&
-                      symbolHealth.timeSinceLastTick > THRESHOLDS.STALE_ORDERBOOK_MS;
+  // Symbol is STALE if:
+  // 1. timeSinceLastTick is null (no data ever received), OR
+  // 2. timeSinceLastTick > 2000ms (data update gap exceeds threshold)
+  const isDataStale = symbolHealth && (
+    symbolHealth.timeSinceLastTick == null ||
+    symbolHealth.timeSinceLastTick > THRESHOLDS.STALE_ORDERBOOK_MS
+  );
 
   if (isDataStale && !isInGracePeriod) {
     if (prev.current !== 'STALE') {
