@@ -124,6 +124,16 @@ function determineSymbolRegime(symbol, featureState, symbolHealth, previousRegim
   const initGraceEndsAt = new Date(newState.createdAt).getTime() + THRESHOLDS.INIT_GRACE_PERIOD_MS;
   const isInGracePeriod = now < initGraceEndsAt;
 
+  // EARLY RETURN: No orderbook data available
+  // If timeSinceLastTick is null (no orderbook ever received) and outside grace period,
+  // skip all feature evaluations to prevent false positives. Return NORMAL.
+  if (symbolHealth && symbolHealth.timeSinceLastTick == null && !isInGracePeriod) {
+    newState.current = 'NORMAL';
+    newState.allowLong = true;
+    newState.allowShort = true;
+    return newState;
+  }
+
   // Check if data is stale using THIS module's thresholds (not OrderbookManager's)
   // NOTE: If timeSinceLastTick is null, symbol has never received data
   // Don't mark as STALE if null - that's an initialization state (INIT)
