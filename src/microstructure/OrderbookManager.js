@@ -49,6 +49,7 @@ function ensureSymbolState(symbol) {
   if (!state.symbols[symbol]) {
     state.symbols[symbol] = {
       symbol,
+      createdAt: new Date().toISOString(), // CRITICAL: Track creation time for regime grace period
       lastUpdateAt: null,
       lastTickAt: Date.now(), // Activity heartbeat - INITIALIZE with current time to allow grace period for orderbook collection
       priceInfo: {
