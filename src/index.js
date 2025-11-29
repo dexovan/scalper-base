@@ -118,8 +118,10 @@ async function startEngine() {
     console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
 
     // 🔥 AWAIT WebSocket connection before continuing - WITH ERROR HANDLING
+    console.log(`\n⏳ [INDEX] ABOUT TO CALL metricsWS.connect()...`);
     try {
-      await metricsWS.connect({
+      console.log(`⏳ [INDEX] Calling metricsWS.connect() NOW...`);
+      const connectPromise = metricsWS.connect({
         symbols: primeSymbolsForWS,
         channels: ["tickers", "orderbook.50"], // ✅ Prime symbols only to stay under 1006 limit
 
@@ -220,6 +222,8 @@ async function startEngine() {
         }
       });
 
+      console.log(`⏳ [INDEX] metricsWS.connect() returned, now AWAITING promise...`);
+      await connectPromise;
       console.log("✅ [WS-METRICS] WebSocket connected and subscribed!");
     } catch (wsErr) {
       console.error("❌ [WS-METRICS] Failed to connect WebSocket:", wsErr.message);
