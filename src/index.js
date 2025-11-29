@@ -125,59 +125,60 @@ async function startEngine() {
 
         // MUST HAVE THE RAW MESSAGE
         onEvent: (msg) => {
-            wsMetrics.wsMarkMessage();
+            try {
+                wsMetrics.wsMarkMessage();
 
-            // DEBUG: Log ALL message topics (sample 0.1%)
-            if (Math.random() < 0.001) {
-                console.log(`📨 [WS MESSAGE] Topic: ${msg.topic}, Type: ${msg.type}, HasData: ${!!msg.data}`);
-            }
+                // DEBUG: Log ALL message topics (sample 0.1%)
+                if (Math.random() < 0.001) {
+                    console.log(`📨 [WS MESSAGE] Topic: ${msg.topic}, Type: ${msg.type}, HasData: ${!!msg.data}`);
+                }
 
-            // 🚀 EMIT EVENTS TO publicEmitter FOR monitorApi.js
-            if (msg.topic) {
-                const parts = msg.topic.split(".");
-                const channelType = parts[0];
-                const symbol = parts.length === 3 ? parts[2] : parts[1]; // orderbook.50.SYMBOL vs tickers.SYMBOL
+                // 🚀 EMIT EVENTS TO publicEmitter FOR monitorApi.js
+                if (msg.topic) {
+                    const parts = msg.topic.split(".");
+                    const channelType = parts[0];
+                    const symbol = parts.length === 3 ? parts[2] : parts[1]; // orderbook.50.SYMBOL vs tickers.SYMBOL
 
-                // Removed debug log - was generating 600+ logs/sec for orderbook events
+                    // Removed debug log - was generating 600+ logs/sec for orderbook events
 
-                if (channelType === "tickers" && msg.data) {
-                    publicEmitter.emit("event", {
-                        type: "ticker",
-                        symbol,
-                        payload: msg.data,
-                        timestamp: new Date().toISOString()
-                    });
-                } else if (channelType === "publicTrade" && msg.data) {
-                    const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
-
-                    // DEBUG: Log first trade event for each symbol (track up to 10 symbols)
-                    if (!global._tradeFirstLogs) global._tradeFirstLogs = new Set();
-                    if (!global._tradeFirstLogs.has(symbol) && global._tradeFirstLogs.size < 10) {
-                        global._tradeFirstLogs.add(symbol);
-                        console.log(`🔥 [TRADE FIRST] ${symbol}: ${trades.length} trades received`);
-                    }
-
-                    for (const trade of trades) {
-                        // 📊 SEND TRADE DATA TO OrderbookManager
-                        const tradeEvent = {
-                            price: parseFloat(trade.p || trade.price || 0),
-                            qty: parseFloat(trade.v || trade.qty || trade.size || 0),
-                            side: (trade.S || trade.side || 'Buy').toUpperCase() === 'BUY' ? 'BUY' : 'SELL',
-                            tradeId: trade.i || trade.tradeId || trade.id,
-                            ts: parseInt(trade.T || trade.timestamp || Date.now())
-                        };
-
-                        OrderbookManager.onTradeEvent(symbol, tradeEvent);
-
-                        // Emit to publicEmitter for dashboard
+                    if (channelType === "tickers" && msg.data) {
                         publicEmitter.emit("event", {
-                            type: "trade",
+                            type: "ticker",
                             symbol,
-                            payload: trade,
+                            payload: msg.data,
                             timestamp: new Date().toISOString()
                         });
-                    }
-                } else if (channelType === "orderbook" && msg.data) {
+                    } else if (channelType === "publicTrade" && msg.data) {
+                        const trades = Array.isArray(msg.data) ? msg.data : [msg.data];
+
+                        // DEBUG: Log first trade event for each symbol (track up to 10 symbols)
+                        if (!global._tradeFirstLogs) global._tradeFirstLogs = new Set();
+                        if (!global._tradeFirstLogs.has(symbol) && global._tradeFirstLogs.size < 10) {
+                            global._tradeFirstLogs.add(symbol);
+                            console.log(`🔥 [TRADE FIRST] ${symbol}: ${trades.length} trades received`);
+                        }
+
+                        for (const trade of trades) {
+                            // 📊 SEND TRADE DATA TO OrderbookManager
+                            const tradeEvent = {
+                                price: parseFloat(trade.p || trade.price || 0),
+                                qty: parseFloat(trade.v || trade.qty || trade.size || 0),
+                                side: (trade.S || trade.side || 'Buy').toUpperCase() === 'BUY' ? 'BUY' : 'SELL',
+                                tradeId: trade.i || trade.tradeId || trade.id,
+                                ts: parseInt(trade.T || trade.timestamp || Date.now())
+                            };
+
+                            OrderbookManager.onTradeEvent(symbol, tradeEvent);
+
+                            // Emit to publicEmitter for dashboard
+                            publicEmitter.emit("event", {
+                                type: "trade",
+                                symbol,
+                                payload: trade,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                    } else if (channelType === "orderbook" && msg.data) {
                     // 📊 SEND ORDERBOOK DATA TO OrderbookManager
                     const orderbookData = Array.isArray(msg.data) ? msg.data[0] : msg.data;
 
@@ -210,8 +211,12 @@ async function startEngine() {
                 }
             }
 
-            // OPTIONAL DEBUG
-            // console.log("[METRICS-WS] EVENT:", msg.topic);
+                // OPTIONAL DEBUG
+                // console.log("[METRICS-WS] EVENT:", msg.topic);
+            } catch (onEventErr) {
+                console.error("❌ [WS-METRICS] Error in onEvent callback:", onEventErr.message);
+                // Don't rethrow - callback errors shouldn't kill WebSocket
+            }
         }
       });
 
