@@ -133,10 +133,7 @@ async function startEngine() {
                 const channelType = parts[0];
                 const symbol = parts.length === 3 ? parts[2] : parts[1]; // orderbook.50.SYMBOL vs tickers.SYMBOL
 
-                // DEBUG: Log EVERY orderbook topic for troubleshooting
-                if (channelType === "orderbook") {
-                    console.log(`🔵 [DEBUG] Orderbook matched! topic=${msg.topic}, parts=${JSON.stringify(parts)}, symbol=${symbol}, hasData=${!!msg.data}`);
-                }
+                // Removed debug log - was generating 600+ logs/sec for orderbook events
 
                 if (channelType === "tickers" && msg.data) {
                     publicEmitter.emit("event", {
@@ -182,7 +179,7 @@ async function startEngine() {
                     if (orderbookData && symbol) {
                         const isSnapshot = msg.type === 'snapshot';
 
-                        console.log(`🟢 [HANDLER-CALL] About to call onOrderbookEvent for ${symbol}, isSnapshot=${isSnapshot}`);
+                        // Removed: debug log for every orderbook event (600+ logs/sec)
 
                         const orderbookEvent = {
                             bids: (orderbookData.b || orderbookData.bids || []).map(level => ({
@@ -198,17 +195,12 @@ async function startEngine() {
                             isSnapshot: isSnapshot
                         };
 
-                        console.log(`[ORDERBOOK EVENT ROUTE] ${symbol}: ${orderbookEvent.bids.length} bids, ${orderbookEvent.asks.length} asks, snapshot=${isSnapshot}`);
+                        // Removed: debug log for every orderbook event (600+ logs/sec)
 
                         // Send to OrderbookManager
                         OrderbookManager.onOrderbookEvent(symbol, orderbookEvent);
 
-                        // DEBUG: Log first orderbook event for each symbol (track up to 10 symbols)
-                        if (!global._orderbookFirstLogs) global._orderbookFirstLogs = new Set();
-                        if (!global._orderbookFirstLogs.has(symbol) && global._orderbookFirstLogs.size < 10) {
-                            global._orderbookFirstLogs.add(symbol);
-                            console.log(`📊 [ORDERBOOK FIRST] ${symbol}: ${orderbookEvent.bids.length} bids, ${orderbookEvent.asks.length} asks, type: ${msg.type}`);
-                        }
+                        // Removed: ORDERBOOK FIRST debug log - redundant after cleanup
                     }
                 }
             }
