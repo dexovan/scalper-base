@@ -1078,21 +1078,22 @@ export function analyzeFakePump(symbol, direction, marketState) {
     // Ako engine još uvek ne računa ove skorove → koristimo fallback logiku
     const hasRiskSignals = pumpScore > 0 || spoofScore > 0 || wallScore > 0;
     if (!hasRiskSignals) {
-        // FALLBACK: Detektuj pump preko spread + imbalance kombinacije
+        // FALLBACK CHECKS DISABLED - Allow execution in volatile markets with spread/imbalance
+        // Code kept for reference but not executed
+        /*
         if (spread > 0.005 && Math.abs(imbalance - 1.0) > 0.15) {
             return {
                 ok: false,
                 reason: `High spread (${(spread * 100).toFixed(2)}%) + imbalance (${imbalance.toFixed(3)}) suggests pump/trap`
             };
         }
-
-        // FALLBACK: Ekstremno širok spread
         if (spread > 0.008) {
             return {
                 ok: false,
                 reason: `Extreme spread ${(spread * 100).toFixed(2)}% detected`
             };
         }
+        */
 
         return { ok: true, reason: "No risk scores yet (fallback passed)" };
     }
