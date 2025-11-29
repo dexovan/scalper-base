@@ -6,6 +6,22 @@
 console.log("🔥🔥🔥 [INDEX.JS] FILE LOADED - TOP OF FILE 🔥🔥🔥");
 console.log("🔥🔥🔥 [INDEX.JS] TIMESTAMP:", new Date().toISOString(), "🔥🔥🔥");
 
+// 🔥 GLOBAL ERROR HANDLERS - CATCH HIDDEN ERRORS
+process.on('uncaughtException', (err) => {
+  console.error("\n❌❌❌ [FATAL] UNCAUGHT EXCEPTION ❌❌❌");
+  console.error("Error:", err.message);
+  console.error("Stack:", err.stack);
+  console.error("Code:", err.code);
+  console.error("❌❌❌ Process will continue but may be unstable ❌❌❌\n");
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error("\n❌❌❌ [FATAL] UNHANDLED PROMISE REJECTION ❌❌❌");
+  console.error("Reason:", reason);
+  console.error("Promise:", promise);
+  console.error("❌❌❌ Process will continue but may be unstable ❌❌❌\n");
+});
+
 import {
     initUniverse,
     refreshUniversePeriodically,
