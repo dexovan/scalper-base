@@ -104,17 +104,24 @@ async function startEngine() {
 
     // 🚀 HOT LIST ARCHITECTURE:
     // - Subscribe TICKERS for ALL Prime symbols (cheap, always needed)
+    // - Subscribe ORDERBOOK for Prime + Normal symbols (regime monitoring)
     // - Scanner will dynamically subscribe publicTrade.* for top 20-30 candidates
     // - This avoids Bybit 1006 error from 600+ topic subscriptions
 
     const primeMetadata = await getSymbolsByCategory("Prime");
+    const normalMetadata = await getSymbolsByCategory("Normal");
     const primeSymbolsForWS = primeMetadata.map(m => m.symbol);
+    const normalSymbolsForWS = normalMetadata.map(m => m.symbol);
+
+    // Combine Prime + Normal for orderbook (regime needs complete picture)
+    const allOrderbookSymbols = [...primeSymbolsForWS, ...normalSymbolsForWS];
 
     console.log(`📡 [WS] Subscribing to TICKERS for ${primeSymbolsForWS.length} Prime symbols...`);
+    console.log(`📡 [WS] Subscribing to ORDERBOOK for ${allOrderbookSymbols.length} Prime+Normal symbols (regime monitoring)...`);
     console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
 
     metricsWS.connect({
-        symbols: primeSymbolsForWS,
+        symbols: allOrderbookSymbols,
         channels: ["tickers", "orderbook.50"], // ✅ orderbook for imbalance; publicTrade managed separately by flowHotlistManager
 
         // MUST HAVE THE RAW MESSAGE
