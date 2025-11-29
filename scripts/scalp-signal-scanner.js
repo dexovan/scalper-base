@@ -1232,6 +1232,13 @@ async function scanAllSymbols() {
       const evaluation = evaluateSignal(candle, currentLiveData);
       if (!evaluation.passed) continue;
 
+      // ✅ VALIDATION: Check momentum constraints for this direction
+      // This ensures LONG signals have sufficient bid pressure and SHORT signals have sufficient ask pressure
+      const momentumCheck = checkMomentum(currentLiveData, direction);
+      if (!momentumCheck.passed) {
+        continue;  // Signal direction doesn't have sufficient momentum, skip it
+      }
+
       // ===== ENTRY ZONE CALCULATION (DEO) =====
       const entryPrice = currentLiveData.price || 0;
       const bid = currentLiveData.bid || entryPrice;
