@@ -230,6 +230,8 @@ export function getUniverseSymbols(filterActive = false) {
 }
 
 export async function getSymbolsByCategory(category) {
+  console.log(`🌍 [UNIVERSE] getSymbolsByCategory("${category}") START`);
+
   // Ako je state prazan, pokušaj da učitaš postojeći snapshot
   if (!UniverseState.fetchedAt || Object.keys(UniverseState.symbols || {}).length === 0) {
     console.log("🌍 [UNIVERSE] State prazan, učitavam postojeći snapshot...");
@@ -241,6 +243,7 @@ export async function getSymbolsByCategory(category) {
 
   // Special case for "All" - return all symbol metadata
   if (target === "all") {
+    console.log(`🌍 [UNIVERSE] Category 'all' → returning all ${Object.values(UniverseState.symbols || {}).length} symbols`);
     return Object.values(UniverseState.symbols || {});
   }
 

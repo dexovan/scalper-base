@@ -48,14 +48,18 @@ export class BybitPublicWS {
     channels = ["tickers"],
     onEvent = null,
   } = {}) {
+    console.log("🔥 [METRICS-WS] connect() START - symbols:", symbols, "channels:", channels);
+
     this.subscriptions = this._buildTopics(symbols, channels);
     this.onEvent = onEvent || (() => {});
 
-    console.log("📡 [METRICS-WS] connect() → topics:", this.subscriptions);
+    console.log("📡 [METRICS-WS] connect() → topics built:", this.subscriptions);
 
     // 🔥 Return promise that resolves when WS fully opens or rejects on error
     // BUT: Add 15s timeout as fallback (WS may reconnect in background)
     this.connectPromise = new Promise((resolve, reject) => {
+      console.log("🔥 [METRICS-WS] Promise created, about to call _open()...");
+
       this._openPromise = resolve;     // Store resolve for use in _open()
       this._rejectPromise = reject;    // Store reject for use on error
 
@@ -71,7 +75,9 @@ export class BybitPublicWS {
       }, 15000);
 
       this._openTimeout = timeout;
+      console.log("🔥 [METRICS-WS] NOW CALLING _open()...");
       this._open();
+      console.log("🔥 [METRICS-WS] _open() returned");
     });
 
     return this.connectPromise;
@@ -89,9 +95,15 @@ export class BybitPublicWS {
 
   _open() {
     // ako je već otvoren, ne otvaraj opet
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    console.log("🔥 [_OPEN] START - checking if ws already open...");
 
-    console.log("📡 [METRICS-WS] _open() START → Attempting connection to:", this.url);
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log("🔥 [_OPEN] WS already open, returning early");
+      return;
+    }
+
+    console.log("🔥 [_OPEN] Will attempt new connection");
+    console.log(`📡 [METRICS-WS] _open() START → Attempting connection to: ${this.url}`);
     console.log(`📡 [METRICS-WS] Current state: ws=${this.ws ? `exists(${this.ws.readyState})` : 'null'}, connected=${this.connected}`);
     wsMetrics.wsMarkConnecting();
     this.connected = false;
@@ -99,7 +111,7 @@ export class BybitPublicWS {
     try {
       console.log("📡 [METRICS-WS] Creating new WebSocket...");
       this.ws = new WebSocket(this.url);
-      console.log("📡 [METRICS-WS] WebSocket object created successfully");
+      console.log("✅ [METRICS-WS] WebSocket object created successfully");
 
       // ------------- OPEN -------------
       this.ws.on("open", () => {
@@ -119,6 +131,7 @@ export class BybitPublicWS {
 
         // 🔥 RESOLVE CONNECT PROMISE
         if (this._openPromise) {
+          console.log("🟢 [METRICS-WS] Resolving connectPromise");
           this._openPromise();
         }
       });
@@ -224,6 +237,7 @@ export class BybitPublicWS {
 
         // 🔥 REJECT CONNECT PROMISE
         if (this._rejectPromise) {
+          console.error("❌ [METRICS-WS] Rejecting connectPromise due to error");
           this._rejectPromise(err);
         }
 
@@ -237,6 +251,7 @@ export class BybitPublicWS {
 
       // 🔥 REJECT CONNECT PROMISE ON EXCEPTION
       if (this._rejectPromise) {
+        console.error("❌ [METRICS-WS] Rejecting connectPromise due to exception");
         this._rejectPromise(err);
       }
 

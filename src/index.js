@@ -114,11 +114,30 @@ async function startEngine() {
     console.log(`⏳ [INDEX] Fetching Prime symbols...`);
     let primeSymbolsForWS = [];
     try {
-      const primeMetadata = await getSymbolsByCategory("Prime");
-      primeSymbolsForWS = primeMetadata.map(m => m.symbol);
-      console.log(`✅ [INDEX] Got ${primeSymbolsForWS.length} Prime symbols`);
+      console.log(`⏳ [INDEX] About to call getSymbolsByCategory("Prime")...`);
+
+      // ADD TIMEOUT: If getSymbolsByCategory takes > 5s, skip and use fallback
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          console.warn(`⚠️ [INDEX] getSymbolsByCategory timeout (5s exceeded), using fallback`);
+          resolve({ timeout: true, data: [] });
+        }, 5000);
+      });
+
+      const resultPromise = getSymbolsByCategory("Prime").then(data => ({ timeout: false, data }));
+      const result = await Promise.race([resultPromise, timeoutPromise]);
+
+      if (result.timeout) {
+        console.warn(`⚠️ [INDEX] Using fallback Prime symbols due to timeout`);
+        primeSymbolsForWS = [];
+      } else {
+        console.log(`✅ [INDEX] getSymbolsByCategory("Prime") returned:`, result.data?.length || 0, "items");
+        primeSymbolsForWS = result.data.map(m => m.symbol);
+        console.log(`✅ [INDEX] Got ${primeSymbolsForWS.length} Prime symbols:`, primeSymbolsForWS.slice(0, 5).join(", "), primeSymbolsForWS.length > 5 ? "..." : "");
+      }
     } catch (symbolErr) {
-      console.error(`❌ [INDEX] Failed to get Prime symbols:`, symbolErr.message);
+      console.error(`❌ [INDEX] Failed to get Prime symbols - ERROR:`, symbolErr.message);
+      console.error(`❌ [INDEX] Error details:`, symbolErr.stack);
       console.log(`⚠️ [INDEX] Continuing with empty Prime symbols list...`);
       primeSymbolsForWS = []; // Empty list, will use default tickers
     }
