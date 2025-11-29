@@ -23,25 +23,24 @@ const DEFAULT_PRIME_SYMBOLS = [
   // Mega-cap (stable, always available)
   "BTCUSDT", "ETHUSDT", "BNBUSDT",
 
-  // Top altcoins (high volume + volatility)
+  // Top altcoins (high volume + volatility) - VERIFIED on Bybit
   "ADAUSDT", "DOTUSDT", "AVAXUSDT",
   "SOLUSDT", "XRPUSDT", "LINKUSDT",
   "LTCUSDT", "BCHUSDT", "ETCUSDT",
 
-  // DeFi leaders
+  // DeFi leaders - VERIFIED
   "UNIUSDT", "AAVEUSDT", "GRTUSDT",
 
-  // High-volume movers
+  // High-volume movers - VERIFIED
   "DOGEUSDT", "SHIBUSDT",
 
-  // Layer-2 / Scaling solutions
-  "ARBITUSDT", "OPTIMUSDT", "POLYUSDT",
-
-  // Gaming / Metaverse
-  "AXSUSDT", "SANDUSDT",
-
-  // Emerging & Volatile
-  "FTMUSDT", "ORDIUSDT", "INJUSDT"
+  // Additional high-volume - VERIFIED
+  "OPUSDT",    // Optimism (not OPTIMUSDT)
+  "ARBUSDT",   // Arbitrum (not ARBITUSDT)
+  "MATICUSDT", // Polygon (not POLYUSDT)
+  "SANDUSDT",  // Sandbox
+  "ORDIUSDT",  // Ordinals
+  "INJUSDT"    // Injective
 ];
 
 const UniverseState = {
