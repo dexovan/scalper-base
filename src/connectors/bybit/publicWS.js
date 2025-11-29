@@ -117,8 +117,12 @@ export class BybitPublicWS {
     try {
       console.log("📡 [METRICS-WS] Creating new WebSocket...");
       console.log("📡 [METRICS-WS] URL:", this.url);
+      console.log("📡 [METRICS-WS] About to call: new WebSocket(url)");
+
       this.ws = new WebSocket(this.url);
+
       console.log("✅ [METRICS-WS] WebSocket object created successfully");
+      console.log(`📡 [METRICS-WS] WebSocket type: ${typeof this.ws}`);
       console.log(`📡 [METRICS-WS] WebSocket readyState after creation: ${this.ws.readyState}`);
 
       // 🔥 EMERGENCY TIMEOUT: If WS doesn't connect within 3 seconds, assume it's dead
@@ -293,11 +297,15 @@ export class BybitPublicWS {
         this._scheduleReconnect();
       });
     } catch (err) {
-      console.error("❌ [METRICS-WS] Open exception (try/catch):", err.message);
-      console.error("   Exception details:", JSON.stringify(err, null, 2));
+      console.error("❌ [METRICS-WS] EXCEPTION in _open():");
+      console.error("   Message:", err.message);
+      console.error("   Code:", err.code);
+      console.error("   Name:", err.name);
+      console.error("   Full error:", JSON.stringify(err, null, 2));
+      console.error("   Stack:", err.stack);
       wsMetrics.wsMarkError();
 
-      // 🔥 REJECT CONNECT PROMISE ON EXCEPTION
+      // 🔥 REJECT CONNECT PROMISE
       if (this._rejectPromise) {
         console.error("❌ [METRICS-WS] Rejecting connectPromise due to exception");
         this._rejectPromise(err);
