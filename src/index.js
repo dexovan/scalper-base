@@ -132,6 +132,11 @@ async function startEngine() {
                 const channelType = parts[0];
                 const symbol = parts.length === 3 ? parts[2] : parts[1]; // orderbook.50.SYMBOL vs tickers.SYMBOL
 
+                // DEBUG: Log EVERY orderbook topic for troubleshooting
+                if (channelType === "orderbook") {
+                    console.log(`🔵 [DEBUG] Orderbook matched! topic=${msg.topic}, parts=${JSON.stringify(parts)}, symbol=${symbol}, hasData=${!!msg.data}`);
+                }
+
                 if (channelType === "tickers" && msg.data) {
                     publicEmitter.emit("event", {
                         type: "ticker",
@@ -176,6 +181,8 @@ async function startEngine() {
                     if (orderbookData && symbol) {
                         const isSnapshot = msg.type === 'snapshot';
 
+                        console.log(`🟢 [HANDLER-CALL] About to call onOrderbookEvent for ${symbol}, isSnapshot=${isSnapshot}`);
+
                         const orderbookEvent = {
                             bids: (orderbookData.b || orderbookData.bids || []).map(level => ({
                                 price: parseFloat(level[0] || level.price || 0),
@@ -189,6 +196,8 @@ async function startEngine() {
                             ts: parseInt(orderbookData.ts || orderbookData.timestamp || Date.now()),
                             isSnapshot: isSnapshot
                         };
+
+                        console.log(`[ORDERBOOK EVENT ROUTE] ${symbol}: ${orderbookEvent.bids.length} bids, ${orderbookEvent.asks.length} asks, snapshot=${isSnapshot}`);
 
                         // Send to OrderbookManager
                         OrderbookManager.onOrderbookEvent(symbol, orderbookEvent);

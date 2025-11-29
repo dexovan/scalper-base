@@ -85,13 +85,17 @@ function ensureSymbolState(symbol) {
 /**
  * Obrađuje orderbook događaj
  * eventData format: { bids: [{price, qty}], asks: [{price, qty}], lastUpdateId, ts }
+ * EXPORTED to be called from index.js WebSocket handler
  */
-function onOrderbookEvent(symbol, eventData) {
+export function onOrderbookEvent(symbol, eventData) {
   try {
+    console.log(`[ORDERBOOK HANDLER] ${symbol}: Received event, bids=${eventData.bids?.length || 0}, asks=${eventData.asks?.length || 0}, snapshot=${eventData.isSnapshot}`);
+
     // Track WebSocket event for adaptive feature engine intervals
     if (wsEventCallback) wsEventCallback();
 
     const s = ensureSymbolState(symbol);
+    const oldLastTickAt = s.lastTickAt;
     const now = new Date().toISOString();
 
     // Determiniši depth limit na osnovu kategorije simbola
@@ -108,6 +112,8 @@ function onOrderbookEvent(symbol, eventData) {
     s.lastUpdateAt = now;
     s.lastTickAt = Date.now(); // Activity heartbeat
 
+    console.log(`[ORDERBOOK HANDLER] ${symbol}: Updated lastTickAt from ${oldLastTickAt} to ${s.lastTickAt} (elapsed: ${s.lastTickAt - oldLastTickAt}ms)`);
+
     // DISABLED: Orderbook snapshots fill disk too fast (400k+ files in hours)
     // Async store to disk (ne čekamo)
     // storeOrderbookSnapshot(symbol, s.orderbook).catch(err =>
@@ -115,7 +121,7 @@ function onOrderbookEvent(symbol, eventData) {
     // );
 
   } catch (error) {
-    console.error(`Error processing orderbook event for ${symbol}:`, error);
+    console.error(`[ORDERBOOK HANDLER] Error in onOrderbookEvent for ${symbol}:`, error);
   }
 }
 
