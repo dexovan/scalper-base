@@ -87,7 +87,7 @@ function ensureSymbolState(symbol) {
  * eventData format: { bids: [{price, qty}], asks: [{price, qty}], lastUpdateId, ts }
  * EXPORTED to be called from index.js WebSocket handler
  */
-export function onOrderbookEvent(symbol, eventData) {
+function onOrderbookEvent(symbol, eventData) {
   try {
     console.log(`[ORDERBOOK HANDLER] ${symbol}: Received event, bids=${eventData.bids?.length || 0}, asks=${eventData.asks?.length || 0}, snapshot=${eventData.isSnapshot}`);
 
