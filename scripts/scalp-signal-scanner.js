@@ -265,11 +265,11 @@ function checkMomentum(liveData, direction) {
   // Direction-specific imbalance check
   if (direction === 'LONG') {
     if (imbalance < minImbalanceLong) {
-      return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}` };
+      return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}_need_${minImbalanceLong}` };
     }
   } else if (direction === 'SHORT') {
     if (imbalance > maxImbalanceShort) {
-      return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}` };
+      return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}_need_max_${maxImbalanceShort}` };
     }
   }
 
@@ -554,13 +554,14 @@ function evaluateSignal(candle, liveData, debugSymbol = null) {
     // Historical checks - RELAXED FOR QUIET MARKETS
     volatility: volatility >= CONFIG.minVolatility,
     // Volume spike: OPTIONAL - allow if velocity exists or ANY movement detected
-    volumeSpike: volumeSpike >= CONFIG.minVolumeSpike || Math.abs(velocity) > 0.003 || imbalance > 1.0, // Allow with ANY movement
+    volumeSpike: volumeSpike >= CONFIG.minVolumeSpike || Math.abs(velocity) > 0.003 || Math.abs(imbalance - 1.0) > 0.05, // Allow with ANY movement or significant imbalance
     velocity: Math.abs(velocity) >= CONFIG.minVelocity,
     // Momentum: OPTIONAL - allow if velocity is present OR momentum meets threshold
     momentum: Math.abs(velocity) > 0.005 || Math.abs(priceChange1m) >= CONFIG.minPriceChange1m,
 
-    // Live checks - Modified imbalance rule for spoof pattern
-    imbalance: imbalance >= CONFIG.minImbalance || isSpoofPattern, // Allow high imbalance for falling price (spoof detection)
+    // Live checks - REMOVED imbalance check here (it depends on direction which we don't know yet)
+    // Imbalance is checked in checkMomentum() after direction is determined
+    // Just check spread here
     spread: spreadPercent <= CONFIG.maxSpread,
 
     // Order flow: RELAXED for low-volume periods
