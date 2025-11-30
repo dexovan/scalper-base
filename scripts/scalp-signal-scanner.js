@@ -521,8 +521,8 @@ async function fetchLiveMarketBatch(symbols) {
 
 async function fetchOrderBook(symbol) {
   try {
-    // Try to fetch from Engine API (if available)
-    const url = `${CONFIG.engineApiUrl}/api/orderbook/${symbol}`;
+    // Fetch from Engine API orderbook endpoint
+    const url = `${CONFIG.engineApiUrl}/api/symbol/${symbol}/orderbook?depth=20`;
     const response = await fetch(url, { timeout: 2000 }); // Quick timeout - optional fetch
 
     if (!response.ok) {
@@ -531,21 +531,23 @@ async function fetchOrderBook(symbol) {
 
     const data = await response.json();
 
-    // Expected format: { bids: [[price, size], ...], asks: [[price, size], ...] }
-    if (data.bids && data.asks) {
-      return {
-        b: data.bids,  // bids
-        a: data.asks   // asks
-      };
+    // Check if response is ok and has orderbook data
+    if (!data.ok || !data.orderbook) {
+      return null;
     }
 
-    return null;
+    // Convert format to what wall analysis expects
+    // Engine returns { bids: [[price, qty], ...], asks: [[price, qty], ...] }
+    // We need { b: bids, a: asks }
+    return {
+      b: data.orderbook.bids || [],  // bids
+      a: data.orderbook.asks || []   // asks
+    };
   } catch (error) {
     // Order book fetch is optional - fail silently
     return null;
   }
 }
-
 // ============================================================
 // CALCULATE CANDIDATE SCORE (for hotlist ranking)
 // ============================================================
