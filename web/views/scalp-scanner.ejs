@@ -11,31 +11,41 @@
 
 /* Advanced Table Styles */
 .signals-table {
-  @apply w-full border-collapse text-sm;
+  @apply w-full border-collapse text-sm table-fixed;
 }
 .signals-table thead {
-  @apply bg-slate-800/50 border-b border-slate-700;
+  @apply bg-slate-800 border-b border-slate-700;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .signals-table th {
-  @apply px-3 py-2 text-left text-xs font-semibold text-slate-300 cursor-pointer hover:bg-slate-700/50 transition;
+  @apply px-3 py-3 text-left text-xs font-bold text-slate-100 cursor-pointer hover:bg-slate-700 transition;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .signals-table th.sortable::after {
   content: ' ↕';
-  @apply text-slate-500;
+  @apply text-slate-400;
+  font-weight: bold;
 }
 .signals-table th.sorted-asc::after {
   content: ' ↑';
-  @apply text-blue-400;
+  @apply text-blue-300;
+  font-weight: bold;
 }
 .signals-table th.sorted-desc::after {
   content: ' ↓';
-  @apply text-blue-400;
+  @apply text-blue-300;
+  font-weight: bold;
 }
 .signals-table tbody tr {
-  @apply border-b border-slate-700/50 hover:bg-slate-800/30 transition;
+  @apply border-b border-slate-700/50 hover:bg-slate-700/40 transition;
 }
 .signals-table td {
-  @apply px-3 py-2;
+  @apply px-3 py-2.5 text-slate-200;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Signal Quality Badge */
@@ -49,22 +59,28 @@
 
 /* Filter Controls */
 .filter-controls {
-  @apply bg-slate-900/60 rounded-lg border border-slate-800 p-4 space-y-3;
+  @apply bg-slate-950/80 rounded-lg border border-slate-700 p-4 space-y-3;
 }
 .filter-group {
   @apply flex flex-col gap-2;
 }
 .filter-group label {
-  @apply text-xs font-semibold text-slate-300;
+  @apply text-xs font-bold text-slate-200 uppercase tracking-wide;
 }
 .filter-input {
-  @apply w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition;
+  @apply w-full bg-slate-800 border border-slate-600 rounded px-3 py-2.5 text-sm text-slate-100 placeholder-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition;
+}
+.filter-input option {
+  @apply bg-slate-800 text-slate-100;
+}
+.filter-input:disabled {
+  @apply bg-slate-900 text-slate-500 cursor-not-allowed;
 }
 .filter-range {
   @apply flex items-center gap-2;
 }
 .filter-range input {
-  @apply flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 focus:border-blue-500 focus:outline-none;
+  @apply flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-xs text-slate-100 placeholder-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition;
 }
 </style>
 
@@ -283,23 +299,23 @@
     </div>
 
     <!-- Signals Table -->
-    <div class="overflow-x-auto">
-      <table class="signals-table" id="signals-table">
+    <div class="overflow-x-auto border border-slate-700 rounded-lg">
+      <table class="signals-table w-full" id="signals-table">
         <thead>
           <tr>
-            <th class="sortable w-20" onclick="sortTable('symbol')">Simbol</th>
-            <th class="sortable w-16" onclick="sortTable('side')">Tip</th>
-            <th class="sortable w-20" onclick="sortTable('confidence')">Confidence</th>
-            <th class="sortable w-20" onclick="sortTable('entry')">Entry</th>
-            <th class="sortable w-20" onclick="sortTable('tp')">TP</th>
-            <th class="sortable w-20" onclick="sortTable('sl')">SL</th>
-            <th class="sortable w-24" onclick="sortTable('volatility')">Vol (%)</th>
-            <th class="sortable w-20" onclick="sortTable('volumeSpike')">Spike (x)</th>
-            <th class="sortable w-20" onclick="sortTable('velocity')">Vel (%)</th>
-            <th class="sortable w-20" onclick="sortTable('momentum')">Mom (%)</th>
-            <th class="sortable w-24" onclick="sortTable('imbalance')">Imbalance</th>
-            <th class="sortable w-20" onclick="sortTable('spread')">Spread (%)</th>
-            <th class="sortable w-24" onclick="sortTable('quality')">Kvalitet</th>
+            <th class="sortable" onclick="sortTable('symbol')" style="width: 100px;">Simbol</th>
+            <th class="sortable" onclick="sortTable('side')" style="width: 70px;">Tip</th>
+            <th class="sortable" onclick="sortTable('confidence')" style="width: 90px;">Conf %</th>
+            <th class="sortable" onclick="sortTable('entry')" style="width: 90px;">Entry</th>
+            <th class="sortable" onclick="sortTable('tp')" style="width: 90px;">TP</th>
+            <th class="sortable" onclick="sortTable('sl')" style="width: 90px;">SL</th>
+            <th class="sortable" onclick="sortTable('volatility')" style="width: 80px;">Vol %</th>
+            <th class="sortable" onclick="sortTable('volumeSpike')" style="width: 80px;">Spike x</th>
+            <th class="sortable" onclick="sortTable('velocity')" style="width: 80px;">Vel %</th>
+            <th class="sortable" onclick="sortTable('momentum')" style="width: 80px;">Mom %</th>
+            <th class="sortable" onclick="sortTable('imbalance')" style="width: 90px;">Imbalance</th>
+            <th class="sortable" onclick="sortTable('spread')" style="width: 80px;">Spread %</th>
+            <th class="sortable" onclick="sortTable('quality')" style="width: 100px;">Kvalitet</th>
           </tr>
         </thead>
         <tbody id="signals-tbody">
