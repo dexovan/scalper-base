@@ -1116,6 +1116,9 @@ async function loadMarketData(symbol) {
     const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`);
     const data = await response.json();
 
+    console.log('🔍 Bybit API Response:', data);
+    console.log('📊 Ticker Data:', data.result?.list[0]);
+
     if (data.retCode !== 0 || !data.result || !data.result.list || data.result.list.length === 0) {
       document.getElementById('modal-market-data').innerHTML = `
         <div class="text-center py-4 text-slate-500">
@@ -1127,16 +1130,37 @@ async function loadMarketData(symbol) {
 
     const ticker = data.result.list[0];
 
-    // Determine decimal places based on price
-    const price = parseFloat(ticker.lastPrice);
-    let decimals = 2;
-    if (price < 0.01) decimals = 8;
-    else if (price < 0.1) decimals = 6;
-    else if (price < 1) decimals = 4;
+    // Keep Bybit's native precision - don't modify
+    // But ensure minimum decimals for consistency
+    const formatPrice = (p) => {
+      const str = String(p);
+      const num = parseFloat(p);
 
-    const formatPrice = (p) => parseFloat(p).toFixed(decimals);
+      console.log(`💰 Formatting ${symbol} price: input="${str}" | parsed="${num}"`);
 
-    const marketHTML = `
+      // If string already has good precision, use it
+      if (str.includes('.')) {
+        const parts = str.split('.');
+        if (parts[1].length >= 2) {
+          const result = num.toFixed(Math.min(8, parts[1].length));
+          console.log(`   → Using native precision: ${result}`);
+          return result;
+        }
+      }
+
+      // Fallback: determine based on price value
+      let result;
+      if (num < 0.001) result = num.toFixed(8);
+      else if (num < 0.01) result = num.toFixed(8);
+      else if (num < 0.1) result = num.toFixed(6);
+      else if (num < 1) result = num.toFixed(4);
+      else if (num < 10) result = num.toFixed(3);
+      else if (num < 100) result = num.toFixed(2);
+      else result = num.toFixed(2);
+
+      console.log(`   → Using fallback: ${result}`);
+      return result;
+    };    const marketHTML = `
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
         <!-- Current Price -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
