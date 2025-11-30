@@ -1338,8 +1338,12 @@ async function executeManualTrade(ctx) {
 
   // KORAK 1: Set leverage
   console.log(`[1/5] Setting leverage ${leverage}x...`);
-  await setLeverage(symbol, leverage);
-  console.log(`✅ Leverage set!\n`);
+  try {
+    await setLeverage(symbol, leverage);
+    console.log(`✅ Leverage set!\n`);
+  } catch (e) {
+    console.warn(`⚠️ Leverage error: ${e.message}, nastavljam bez promene\n`);
+  }
 
   // KORAK 2: Calculate quantity
   console.log(`[2/5] Calculating quantity...`);
