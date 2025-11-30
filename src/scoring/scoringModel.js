@@ -309,7 +309,18 @@ function computeNewsPenalty(symbol, features) {
  * @param {object} weights - Scoring weights from config
  * @returns {object} { baseLong, baseShort, components }
  */
-export function computeBaseScores(symbol, features, weights) {
+export function computeBaseScores(symbol, features, wallAnalysis, weights) {
+  // Handle legacy calls (wallAnalysis might be weights if called with old signature)
+  if (wallAnalysis && typeof wallAnalysis === 'object' && wallAnalysis.orderbook) {
+    weights = wallAnalysis;
+    wallAnalysis = { status: "NO_DATA" };
+  }
+
+  // Default wall analysis if not provided
+  if (!wallAnalysis) {
+    wallAnalysis = { status: "NO_DATA" };
+  }
+
   // Default weights (can be overridden by config)
   const w = weights || {
     orderbook: 0.20,
@@ -353,6 +364,18 @@ export function computeBaseScores(symbol, features, weights) {
     spoofPenalty * w.spoof -
     pumpPenalty.penaltyShort * w.pump -
     newsPenalty * w.news;
+
+  // WALL ANALYSIS PENALTIES
+  // Apply penalties based on wall status quality
+  if (wallAnalysis && wallAnalysis.status === "NO_DATA") {
+    // No orderbook data available - high risk
+    rawLong -= 10;
+    rawShort -= 10;
+  } else if (wallAnalysis && wallAnalysis.status === "DEGRADED") {
+    // Partial orderbook data - moderate risk
+    rawLong -= 5;
+    rawShort -= 5;
+  }
 
   // Clamp to 0-100
   const baseLong = clamp(rawLong, 0, 100);
