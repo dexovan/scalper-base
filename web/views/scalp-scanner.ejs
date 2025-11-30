@@ -119,6 +119,75 @@ select.filter-input option {
   padding: 8px 10px;
   border: none;
 }
+
+/* Modal Styles */
+.modal {
+  @apply fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center hidden;
+}
+.modal.active {
+  @apply flex;
+}
+.modal-content {
+  @apply bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto;
+}
+.modal-header {
+  @apply sticky top-0 bg-gradient-to-r from-slate-800 to-slate-700 border-b border-slate-700 p-6 flex items-center justify-between;
+}
+.modal-close {
+  @apply text-slate-400 hover:text-slate-100 text-2xl cursor-pointer transition;
+}
+.modal-body {
+  @apply p-6;
+}
+.modal-section {
+  @apply mb-6 pb-6 border-b border-slate-700 last:border-b-0;
+}
+.modal-section h3 {
+  @apply text-lg font-semibold text-slate-100 mb-4;
+}
+.modal-grid {
+  @apply grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4;
+}
+.modal-stat {
+  @apply bg-slate-800/50 rounded-lg p-4;
+}
+.modal-stat-label {
+  @apply text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2;
+}
+.modal-stat-value {
+  @apply text-lg font-bold text-slate-100;
+}
+.modal-stat.warning {
+  @apply border border-yellow-500/30 bg-yellow-500/5;
+}
+.modal-stat.success {
+  @apply border border-emerald-500/30 bg-emerald-500/5;
+}
+.modal-stat.danger {
+  @apply border border-red-500/30 bg-red-500/5;
+}
+
+/* Candle Chart Styles */
+.candle-chart {
+  @apply bg-slate-800/50 rounded-lg p-4 border border-slate-700;
+  overflow-x: auto;
+}
+.candle-row {
+  @apply flex items-center gap-1 py-1 text-xs border-b border-slate-700/30 last:border-b-0 hover:bg-slate-700/30 transition;
+}
+.candle-time {
+  @apply font-mono text-slate-400 w-20;
+}
+.candle-bar {
+  @apply flex items-center justify-center relative h-8;
+  width: 80px;
+}
+.candle-bar-bg {
+  @apply absolute left-0 right-0 h-full rounded transition;
+}
+.candle-value {
+  @apply relative z-10 font-mono text-slate-200 text-xs font-semibold;
+}
 .filter-input option:hover,
 select.filter-input option:hover {
   background-color: #334155 !important;
@@ -648,7 +717,7 @@ function renderSignalsTable(signals) {
     }[qualityLevel];
 
     return `
-      <tr>
+      <tr onclick="openSignalModal('${signal.symbol}')" style="cursor: pointer;">
         <td class="font-semibold text-blue-400 px-6 py-4" style="text-align: left;">${signal.symbol}</td>
         <td class="px-6 py-4" style="text-align: center;">
           <span class="px-2 py-1 rounded text-xs font-semibold ${
@@ -979,6 +1048,193 @@ async function fetchExecutionStats() {
   }
 }
 
+// Close modal on ESC key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSignalModal();
+});
+
+// Modal Functions
+function openSignalModal(symbol) {
+  const modal = document.getElementById('signal-modal');
+  modal.classList.add('active');
+  loadSignalDetails(symbol);
+}
+
+function closeSignalModal() {
+  const modal = document.getElementById('signal-modal');
+  modal.classList.remove('active');
+}
+
+async function loadSignalDetails(symbol) {
+  try {
+    // Get current signals
+    const response = await fetch('/api/scalp-scanner');
+    const data = await response.json();
+    const signal = data.signals.find(s => s.symbol === symbol);
+
+    if (!signal) {
+      console.error('Signal not found:', symbol);
+      return;
+    }
+
+    // Update modal header
+    document.getElementById('modal-symbol').textContent = symbol;
+    const timestamp = new Date().toLocaleString('sr-RS');
+    document.getElementById('modal-timestamp').textContent = timestamp;
+
+    // Update modal stats
+    const sideClass = signal.side === 'LONG' ? 'success' : 'danger';
+    document.getElementById('modal-side-stat').className = `modal-stat ${sideClass}`;
+    document.getElementById('modal-side-value').textContent = signal.side;
+    document.getElementById('modal-confidence-value').textContent = `${signal.confidence}%`;
+    document.getElementById('modal-entry-value').textContent = `$${fmt(signal.entry)}`;
+    document.getElementById('modal-tp-value').textContent = `$${fmt(signal.takeProfit)}`;
+    document.getElementById('modal-sl-value').textContent = `$${fmt(signal.stopLoss)}`;
+
+    // Calculate Risk/Reward
+    const riskDist = Math.abs(signal.entry - signal.stopLoss);
+    const rewardDist = Math.abs(signal.takeProfit - signal.entry);
+    const rr = riskDist > 0 ? (rewardDist / riskDist).toFixed(2) : 0;
+    document.getElementById('modal-rr-value').textContent = `1:${rr}`;
+
+    document.getElementById('modal-volatility-value').textContent = `${fmt(signal.volatility)}%`;
+    document.getElementById('modal-volume-value').textContent = `${fmt(signal.volumeSpike)}x`;
+    document.getElementById('modal-velocity-value').textContent = `${fmt(signal.velocity)}%`;
+    document.getElementById('modal-momentum-value').textContent = `${fmt(signal.momentum)}%`;
+    document.getElementById('modal-imbalance-value').textContent = fmt(signal.imbalance);
+    document.getElementById('modal-spread-value').textContent = `${fmt(signal.spread)}%`;
+
+    // Load candle data
+    await loadCandleData(symbol);
+
+    // Load quality assessment
+    loadQualityAssessment(signal);
+
+  } catch (error) {
+    console.error('Error loading signal details:', error);
+    document.getElementById('modal-candles').innerHTML = `
+      <div class="text-center py-8 text-red-400">
+        ❌ Greška pri učitavanju podataka
+      </div>
+    `;
+  }
+}
+
+async function loadCandleData(symbol) {
+  try {
+    const response = await fetch(`/api/symbol/${symbol}/candles/1m?limit=360`);
+    const data = await response.json();
+
+    if (!data.success || !data.candles || data.candles.length === 0) {
+      document.getElementById('modal-candles').innerHTML = `
+        <div class="text-center py-8 text-slate-500">
+          Nema dostupnih candle podataka za ovaj simbol
+        </div>
+      `;
+      return;
+    }
+
+    const candles = data.candles;
+
+    // Create candle chart
+    const candleHTML = candles.slice(-60).map((candle, idx) => {
+      const time = new Date(candle.timestamp).toLocaleTimeString('sr-RS', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const change = candle.close - candle.open;
+      const percentChange = (change / candle.open) * 100;
+      const color = change >= 0 ? 'bg-emerald-500/40' : 'bg-red-500/40';
+      const textColor = change >= 0 ? 'text-emerald-300' : 'text-red-300';
+      const barHeight = Math.min(Math.abs(percentChange) * 50, 100);
+
+      return `
+        <div class="candle-row" title="${time} | O:${candle.open.toFixed(8)} H:${candle.high.toFixed(8)} L:${candle.low.toFixed(8)} C:${candle.close.toFixed(8)}">
+          <div class="candle-time">${time}</div>
+          <div class="candle-bar">
+            <div class="candle-bar-bg ${color}" style="height: ${barHeight}%;"></div>
+            <div class="candle-value ${textColor}">${percentChange.toFixed(3)}%</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('modal-candles').innerHTML = `
+      <div class="text-xs text-slate-400 mb-3">Prikazani zadnjih 60 candle-a (1h)</div>
+      ${candleHTML}
+    `;
+
+  } catch (error) {
+    console.error('Error loading candle data:', error);
+    document.getElementById('modal-candles').innerHTML = `
+      <div class="text-center py-8 text-red-400">
+        ❌ Greška pri učitavanju candle podataka
+      </div>
+    `;
+  }
+}
+
+function loadQualityAssessment(signal) {
+  const checks = [
+    {
+      name: 'Volatilnost',
+      check: signal.volatility >= 0.15,
+      value: `${fmt(signal.volatility)}%`,
+      threshold: '>= 0.15%'
+    },
+    {
+      name: 'Volume Spike',
+      check: signal.volumeSpike >= 1.5,
+      value: `${fmt(signal.volumeSpike)}x`,
+      threshold: '>= 1.5x'
+    },
+    {
+      name: 'Velocity',
+      check: signal.velocity >= 0.05,
+      value: `${fmt(signal.velocity)}%`,
+      threshold: '>= 0.05%'
+    },
+    {
+      name: 'Momentum',
+      check: signal.momentum >= 0.1,
+      value: `${fmt(signal.momentum)}%`,
+      threshold: '>= 0.1%'
+    },
+    {
+      name: signal.side === 'LONG' ? 'Imbalance (LONG)' : 'Imbalance (SHORT)',
+      check: signal.side === 'LONG' ? signal.imbalance >= 1.05 : signal.imbalance <= 0.95,
+      value: fmt(signal.imbalance),
+      threshold: signal.side === 'LONG' ? '>= 1.05' : '<= 0.95'
+    },
+    {
+      name: 'Spread',
+      check: signal.spread <= 0.1,
+      value: `${fmt(signal.spread)}%`,
+      threshold: '<= 0.1%'
+    }
+  ];
+
+  const assessment = checks.map(check => {
+    const icon = check.check ? '✅' : '❌';
+    const color = check.check ? 'text-emerald-300' : 'text-red-300';
+    return `
+      <div class="flex items-center justify-between py-2 px-3 bg-slate-700/20 rounded">
+        <div class="flex items-center gap-2">
+          <span class="${color}">${icon}</span>
+          <span class="text-sm font-semibold text-slate-200">${check.name}</span>
+        </div>
+        <div class="text-right">
+          <div class="text-sm text-slate-100 font-mono">${check.value}</div>
+          <div class="text-xs text-slate-400">${check.threshold}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('modal-quality-assessment').innerHTML = assessment;
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   fetchScannerData();
@@ -991,3 +1247,93 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 10000);
 });
 </script>
+
+<!-- Signal Details Modal -->
+<div id="signal-modal" class="modal" onclick="if(event.target === this) closeSignalModal()">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div>
+        <h2 class="text-2xl font-bold text-slate-100" id="modal-symbol">BTCUSDT</h2>
+        <p class="text-sm text-slate-400 mt-1" id="modal-timestamp">Timestamp</p>
+      </div>
+      <button onclick="closeSignalModal()" class="modal-close">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Signal Metrics Section -->
+      <div class="modal-section">
+        <h3>📊 Signal Metrici</h3>
+        <div class="modal-grid">
+          <div class="modal-stat" id="modal-side-stat">
+            <div class="modal-stat-label">Tip Signala</div>
+            <div class="modal-stat-value" id="modal-side-value">LONG</div>
+          </div>
+          <div class="modal-stat">
+            <div class="modal-stat-label">Confidence</div>
+            <div class="modal-stat-value" id="modal-confidence-value">100%</div>
+          </div>
+          <div class="modal-stat">
+            <div class="modal-stat-label">Entry Price</div>
+            <div class="modal-stat-value text-emerald-400" id="modal-entry-value">$0.00</div>
+          </div>
+          <div class="modal-stat">
+            <div class="modal-stat-label">Take Profit</div>
+            <div class="modal-stat-value text-emerald-400" id="modal-tp-value">$0.00</div>
+          </div>
+          <div class="modal-stat">
+            <div class="modal-stat-label">Stop Loss</div>
+            <div class="modal-stat-value text-red-400" id="modal-sl-value">$0.00</div>
+          </div>
+          <div class="modal-stat">
+            <div class="modal-stat-label">Risk/Reward</div>
+            <div class="modal-stat-value" id="modal-rr-value">1:2</div>
+          </div>
+          <div class="modal-stat success">
+            <div class="modal-stat-label">Volatilnost</div>
+            <div class="modal-stat-value text-emerald-300" id="modal-volatility-value">0%</div>
+          </div>
+          <div class="modal-stat">
+            <div class="modal-stat-label">Volume Spike</div>
+            <div class="modal-stat-value" id="modal-volume-value">0x</div>
+          </div>
+          <div class="modal-stat success">
+            <div class="modal-stat-label">Velocity</div>
+            <div class="modal-stat-value text-emerald-300" id="modal-velocity-value">0%</div>
+          </div>
+          <div class="modal-stat">
+            <div class="modal-stat-label">Momentum</div>
+            <div class="modal-stat-value" id="modal-momentum-value">0%</div>
+          </div>
+          <div class="modal-stat success">
+            <div class="modal-stat-label">Imbalance</div>
+            <div class="modal-stat-value text-emerald-300" id="modal-imbalance-value">0</div>
+          </div>
+          <div class="modal-stat">
+            <div class="modal-stat-label">Spread</div>
+            <div class="modal-stat-value" id="modal-spread-value">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Candle Data Section (Last 6 Hours) -->
+      <div class="modal-section">
+        <h3>🕯️ Candle Podaci (Zadnjih 6 Sati)</h3>
+        <div class="candle-chart" id="modal-candles">
+          <div class="text-center py-8 text-slate-500">
+            ⏳ Učitavanje candle podataka...
+          </div>
+        </div>
+      </div>
+
+      <!-- Quality Assessment -->
+      <div class="modal-section">
+        <h3>✅ Procjena Kvalitete</h3>
+        <div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+          <div id="modal-quality-assessment" class="space-y-2">
+            <div class="text-sm text-slate-300">Učitavanje procjene...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
