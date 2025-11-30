@@ -1398,6 +1398,7 @@ function updateDynamicEntry() {
       : `$${priceDifference.toFixed(8)} (${priceDifferencePercent}%)`;
 
     updateElement('[data-dynamic="current-price"]', '$' + currentPrice.toFixed(8));
+    updateElement('[data-dynamic="current-price-trading"]', '$' + currentPrice.toFixed(8));
     updateElement('[data-dynamic="price-difference"]', differenceText);
     updateElement('[data-dynamic="entry"]', '$' + entry.toFixed(8));
     updateElement('[data-dynamic="tp"]', '$' + tp.toFixed(8));
@@ -1611,6 +1612,13 @@ async function loadCandleData(symbol) {
             <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid ${analysis.tradeType === 'LONG 🔺' ? '#10b981' : analysis.tradeType === 'SHORT 🔻' ? '#ef4444' : '#f59e0b'}; border-radius: 0.25rem; padding: 1rem;">
               <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Tip Trgovanja</div>
               <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.tradeType === 'LONG 🔺' ? '#10b981' : analysis.tradeType === 'SHORT 🔻' ? '#ef4444' : '#f59e0b'};">${analysis.tradeType}</div>
+            </div>
+
+            <!-- Live Cijena (Real-time) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #06b6d4; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">💰 Live Cijena (SADA)</div>
+              <div data-dynamic="current-price-trading" style="font-size: 1.25rem; font-weight: bold; color: #06b6d4; font-family: monospace;">$${analysis.currentPrice}</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Osvježava se svako 500ms</div>
             </div>
 
             <!-- Entry Status (Dynamic) -->
