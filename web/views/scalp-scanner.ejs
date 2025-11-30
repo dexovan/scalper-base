@@ -1424,6 +1424,16 @@ function updateDynamicEntry() {
     updateElement('[data-dynamic="roi"]', profitPercent + '%');
     updateElement('[data-dynamic="status"]', entryStatus);
 
+    // Store values in window for later use in calculateTrendAnalysis
+    window.modalState.entry = entry;
+    window.modalState.tp = tp;
+    window.modalState.sl = sl;
+    window.modalState.profitPotential = profitPotential;
+    window.modalState.profitPercent = profitPercent;
+    window.modalState.isBearish = isBearish;
+    window.modalState.isBullish = isBullish;
+    window.modalState.tradeType = isBearish ? 'SHORT 🔻' : isBullish ? 'LONG 🔺' : 'ČEKAJ ➡️';
+
     // ========================================
     // WIN RATE CALCULATION
     // ========================================
@@ -2210,19 +2220,7 @@ function analyzeCandlesTrend(candles) {
   ];
 
   // Calculate trading recommendation
-  const trendIsBullish = finalTrendDirection === 'BULLISH ⬆️';
-  const trendIsBearish = finalTrendDirection === 'BEARISH ⬇️';
-
-  // Use values from updateDynamicEntry (entry, tp, sl already calculated correctly)
-  let tradeType;
-  if (trendIsBearish) {
-    tradeType = 'SHORT 🔻';
-  } else if (trendIsBullish) {
-    tradeType = 'LONG 🔺';
-  } else {
-    tradeType = 'ČEKAJ ➡️';
-  }
-
+  // (Values already calculated in updateDynamicEntry and stored in window.modalState)
   return {
     trendDirection: finalTrendDirection,
     trendEmoji: finalEmoji,
@@ -2237,13 +2235,13 @@ function analyzeCandlesTrend(candles) {
     momentum,
     volatilityLevel,
     predictions,
-    // Trading recommendation
-    entry: entry.toFixed(8),
-    tp: tp.toFixed(8),
-    sl: sl.toFixed(8),
-    tradeType,
-    profitPotential: profitPotential.toFixed(8),
-    profitPercent
+    // Trading recommendation (from updateDynamicEntry values stored in window.modalState)
+    entry: window.modalState.entry ? window.modalState.entry.toFixed(8) : currentPrice.toFixed(8),
+    tp: window.modalState.tp ? window.modalState.tp.toFixed(8) : resistance.toFixed(8),
+    sl: window.modalState.sl ? window.modalState.sl.toFixed(8) : support.toFixed(8),
+    tradeType: window.modalState.tradeType || 'ČEKAJ ➡️',
+    profitPotential: window.modalState.profitPotential ? window.modalState.profitPotential.toFixed(8) : '0',
+    profitPercent: window.modalState.profitPercent || '0'
   };
 }
 
