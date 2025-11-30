@@ -268,6 +268,126 @@ if (wallAnalysis && wallAnalysis.status === "NO_DATA") {
 
 ---
 
+## 🎯 FAZA 9: MANUAL TRADE EXECUTION FROM SCANNER (NOVEMBAR 30, 2025 - DODATNA FEATURE)
+
+### ⚠️ STATUS: IMPLEMENTED AND COMMITTED
+
+**Šta je urađeno:**
+
+- ✅ "Idi u Trejd" dugme u modal-u
+- ✅ Manualna trade izvršenja sa izračunatim podacima (TP, SL, ENTRY)
+- ✅ `/api/manual-trade` endpoint koji poziva executeTrade()
+- ✅ Kompletan validation prije izvršenja
+- ✅ Potvrda korisnika pre nego što se uđe u trejd
+- ✅ Sve logike iz orderExecuteBybit.js su dostupne
+
+**Files modified:**
+
+1. **[`web/views/scalp-scanner.ejs`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\web\views\scalp-scanner.ejs)** - Dodao dugme + JavaScript funkciju
+2. **[`src/http/monitorApi.js`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\src\http\monitorApi.js)** - Dodao `/api/manual-trade` endpoint
+
+### Frontend - Dugme i Funkcija
+
+**Dugme u modalu (nova sekcija):**
+
+```html
+<!-- Manual Trade Action Button -->
+<div style="margin-top: 1.5rem; text-align: center;">
+  <button id="manual-trade-btn" onclick="handleManualTrade()" style="...">
+    🚀 Idi u Trejd
+  </button>
+</div>
+```
+
+**JavaScript funkcija `handleManualTrade()`:**
+
+```javascript
+async function handleManualTrade() {
+  // 1. Prikupljanja podaci iz window.modalState
+  const tradeSignal = {
+    symbol: modalState.symbol,
+    direction: direction, // LONG ili SHORT
+    entry: modalState.entry, // Ulazna cena
+    tp: modalState.tp, // Take Profit
+    sl: modalState.sl, // Stop Loss
+    initialMomentum: modalState.momentum,
+    manualTrade: true,
+  };
+
+  // 2. Validacija (entry, tp, sl)
+  // 3. Potvrda od korisnika
+  // 4. POST na /api/manual-trade sa tradeSignal
+  // 5. executeTrade se poziva na backendu
+}
+```
+
+### Backend - API Endpoint
+
+**Endpoint: `POST /api/manual-trade`**
+
+```javascript
+app.post("/api/manual-trade", async (req, res) => {
+  // 1. Validacija parametara
+  const { symbol, direction, entry, tp, sl, initialMomentum } = req.body;
+
+  // 2. Provera da li postoji aktivna pozicija za taj symbol
+  const activePositions = await getActivePositions();
+  if (existingPosition) {
+    return error("Already in position for this symbol");
+  }
+
+  // 3. Kreiranje signal objekta kompatibilnog sa executeTrade()
+  const signal = {
+    symbol,
+    direction,
+    entry,
+    tp,
+    sl,
+    entryZone: { min, ideal, max },
+    initialMomentum,
+    manualTrade: true,
+  };
+
+  // 4. Pozivanje executeTrade() sa svom logikom
+  const result = await executeTrade(signal);
+
+  // 5. Vraćanje rezultata (success ili error)
+});
+```
+
+### Tok Izvršenja
+
+```
+1. Korisnik vidi signal u modalu
+2. Klika "🚀 Idi u Trejd"
+3. Sistem prikazuje potvrdu sa svim parametrima
+4. Korisnik potvrđuje (OK ili Cancel)
+5. Frontend POST -> /api/manual-trade
+6. Backend:
+   - Validira parametre
+   - Proverava duplikate
+   - Poziva executeTrade()
+   - executeTrade() izvršava sve proverike:
+     * tickSize formatting
+     * Pullback check
+     * Entry delay
+     * Anti-top check
+     * Position sizing
+     * Bybit order submission
+7. Rezultat ide nazad korisniku
+8. Modal se zatvara
+```
+
+### Prednosti
+
+✅ **Brza Akcija** - Korisnik ne mora ručno da kucajTp/SL, sve je izračunato
+✅ **Konzistentnost** - Koristi istu logiku kao auto trading (executeTrade)
+✅ **Sigurnost** - Potvrda prije nego što se uđe, validacija svih podataka
+✅ **Kontrola** - Korisnik ima punu kontrolu (može da odbije)
+✅ **Fleksibilnost** - Može da menja parametre nakon što vidi potvrdu
+
+---
+
 ## 📊 KOMPLETAN SCORING PIPELINE
 
 ```
@@ -436,22 +556,32 @@ const baseScores = computeBaseScores(
 
 ## 📁 FILES INVOLVED (TODAY)
 
-### Modified (3 files):
+### Modified (5 files total):
+
+**Wall Analysis Penalty (Commits a469151, e4fce41, f381ddf):**
 
 - **[`src/scoring/scoringModel.js`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\src\scoring\scoringModel.js)** - Backend scoring penalty logic (e4fce41)
 - **[`src/scoring/scoringEngine.js`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\src\scoring\scoringEngine.js)** - Wall analysis integration (f381ddf)
-- **[`web/views/scalp-scanner.ejs`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\web\views\scalp-scanner.ejs)** - Frontend win rate calculator update (a469151)
+- **[`web/views/scalp-scanner.ejs`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\web\views\scalp-scanner.ejs)** - Frontend win rate calculator update + Manual trade button (a469151 + 13698ad)
+
+**Manual Trade Execution (Commit 13698ad):**
+
+- **[`web/views/scalp-scanner.ejs`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\web\views\scalp-scanner.ejs)** - Added "Idi u Trejd" button + handleManualTrade() function
+- **[`src/http/monitorApi.js`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\src\http\monitorApi.js)** - Added POST /api/manual-trade endpoint
 
 ### Referenced but not modified:
 
 - **[`src/features/featureEngine.js`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\src\features\featureEngine.js)** - Provides feature data
 - **[`src/features/wallsSpoofing.js`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\src\features\wallsSpoofing.js)** - Detects wall data
+- **[`src/execution/bybitOrderExecutor.js`](vscode://file/c:\Users\DejanTrajkovic\Documents\dex\scalper-base\src\execution\bybitOrderExecutor.js)** - executeTrade() function called by API
 
 ---
 
-## ✅ COMPLETE COMMIT HISTORY (Last 11 commits)
+## ✅ COMPLETE COMMIT HISTORY (Last 12 commits)
 
 ```
+13698ad ✅ Add manual trade entry button and API endpoint (TODAY - 30 Nov - FEATURE 9)
+7b7c721 ✅ Update documentation with all 3 wall penalty commits (TODAY - 30 Nov)
 f381ddf ✅ Integrate wall analysis into scoring pipeline (TODAY - 30 Nov)
 e4fce41 ✅ Add wall analysis penalties to scoring model (TODAY - 30 Nov)
 a469151 ✅ Add penalty for NO_DATA wall status frontend (TODAY - 30 Nov - Commit 1)
@@ -462,7 +592,6 @@ c962ad2 Fix trendStrength availability in modal
 54fc7ae Fix Reward:Risk Ratio calculation
 405dfba Fix Risk/Reward Ratio calculation
 901ae90 Add Risk/Reward Ratio display element
-7d51c46 Add Win Rate Calculator with 7 factors
 ```
 
 ---
