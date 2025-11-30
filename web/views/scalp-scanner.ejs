@@ -1067,11 +1067,28 @@ function openSignalModal(symbol) {
   modal.style.justifyContent = 'center';
   console.log('✅ Modal opened, loading details...');
   loadSignalDetails(symbol);
+
+  // Start auto-refresh of market data every 1 second while modal is open
+  if (window.modalRefreshInterval) clearInterval(window.modalRefreshInterval);
+  window.modalRefreshInterval = setInterval(() => {
+    const modal = document.getElementById('signal-modal');
+    if (modal && modal.style.display === 'flex') {
+      loadMarketDataQuick(symbol);
+    } else {
+      clearInterval(window.modalRefreshInterval);
+    }
+  }, 1000);
 }
 
 function closeSignalModal() {
   const modal = document.getElementById('signal-modal');
   modal.style.display = 'none';
+
+  // Stop auto-refresh when modal closes
+  if (window.modalRefreshInterval) {
+    clearInterval(window.modalRefreshInterval);
+    window.modalRefreshInterval = null;
+  }
 }
 
 async function loadSignalDetails(symbol) {
@@ -1153,8 +1170,8 @@ async function loadMarketData(symbol) {
         <!-- Current Price -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Trenutna Cijena</div>
-          <div id="debug-price-display" style="font-size: 1.5rem; font-weight: bold; color: #f1f5f9; font-family: monospace; letter-spacing: 0.05em;">$${formatPrice(ticker.lastPrice)}</div>
-          <div style="font-size: 0.75rem; color: ${ticker.price24hPcnt > 0 ? '#10b981' : '#ef4444'}; margin-top: 0.25rem;">
+          <div id="debug-price-display" data-price-type="lastPrice" style="font-size: 1.5rem; font-weight: bold; color: #f1f5f9; font-family: monospace; letter-spacing: 0.05em;">$${formatPrice(ticker.lastPrice)}</div>
+          <div data-price-type="change24h" style="font-size: 0.75rem; color: ${ticker.price24hPcnt > 0 ? '#10b981' : '#ef4444'}; margin-top: 0.25rem;">
             ${ticker.price24hPcnt > 0 ? '📈' : '📉'} ${(ticker.price24hPcnt * 100).toFixed(2)}%
           </div>
           <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.lastPrice}</div>
@@ -1163,46 +1180,46 @@ async function loadMarketData(symbol) {
         <!-- 24H High -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">24H High</div>
-          <div style="font-size: 1.5rem; font-weight: bold; color: #10b981;">$${formatPrice(ticker.highPrice24h)}</div>
+          <div data-price-type="highPrice24h" style="font-size: 1.5rem; font-weight: bold; color: #10b981;">$${formatPrice(ticker.highPrice24h)}</div>
           <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.highPrice24h}</div>
         </div>
 
         <!-- 24H Low -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">24H Low</div>
-          <div style="font-size: 1.5rem; font-weight: bold; color: #ef4444;">$${formatPrice(ticker.lowPrice24h)}</div>
+          <div data-price-type="lowPrice24h" style="font-size: 1.5rem; font-weight: bold; color: #ef4444;">$${formatPrice(ticker.lowPrice24h)}</div>
           <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.lowPrice24h}</div>
         </div>
 
         <!-- Index Price -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Index Price</div>
-          <div style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9;">$${formatPrice(ticker.indexPrice)}</div>
+          <div data-price-type="indexPrice" style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9;">$${formatPrice(ticker.indexPrice)}</div>
           <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.indexPrice}</div>
         </div>
 
         <!-- 24H Volume -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">24H Turnover</div>
-          <div style="font-size: 1rem; font-weight: bold; color: #f1f5f9;">$${(parseFloat(ticker.turnover24h) / 1e6).toFixed(2)}M</div>
+          <div data-price-type="turnover24h" style="font-size: 1rem; font-weight: bold; color: #f1f5f9;">$${(parseFloat(ticker.turnover24h) / 1e6).toFixed(2)}M</div>
         </div>
 
         <!-- Funding Rate -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Funding Rate</div>
-          <div style="font-size: 1.5rem; font-weight: bold; color: ${ticker.fundingRate > 0 ? '#10b981' : '#ef4444'};">${(ticker.fundingRate * 100).toFixed(4)}%</div>
+          <div data-price-type="fundingRate" style="font-size: 1.5rem; font-weight: bold; color: ${ticker.fundingRate > 0 ? '#10b981' : '#ef4444'};">${(ticker.fundingRate * 100).toFixed(4)}%</div>
         </div>
 
         <!-- Open Interest -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Open Interest</div>
-          <div style="font-size: 1rem; font-weight: bold; color: #f1f5f9;">${(parseFloat(ticker.openInterest) / 1e6).toFixed(2)}M</div>
+          <div data-price-type="openInterest" style="font-size: 1rem; font-weight: bold; color: #f1f5f9;">${(parseFloat(ticker.openInterest) / 1e6).toFixed(2)}M</div>
         </div>
 
         <!-- Mark Price -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Mark Price</div>
-          <div style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9;">$${formatPrice(ticker.markPrice)}</div>
+          <div data-price-type="markPrice" style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9;">$${formatPrice(ticker.markPrice)}</div>
           <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.markPrice}</div>
         </div>
       </div>
@@ -1217,6 +1234,69 @@ async function loadMarketData(symbol) {
         ❌ Greška pri učitavanju tržišnih podataka
       </div>
     `;
+  }
+}
+
+// Quick market data refresh - updates only the price values without reloading entire HTML
+async function loadMarketDataQuick(symbol) {
+  try {
+    const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`);
+    const data = await response.json();
+
+    if (data.retCode !== 0 || !data.result || !data.result.list || data.result.list.length === 0) {
+      return; // Silent fail - don't break the display
+    }
+
+    const ticker = data.result.list[0];
+
+    // Update current price
+    const formatPrice = (priceValue) => {
+      if (priceValue === null || priceValue === undefined) return '0';
+      const str = String(priceValue);
+      return str;
+    };
+
+    // Update price elements if they exist
+    const priceElements = document.querySelectorAll('[data-price-type="lastPrice"]');
+    if (priceElements.length > 0) {
+      priceElements.forEach(el => {
+        el.textContent = '$' + formatPrice(ticker.lastPrice);
+      });
+    }
+
+    // Update 24h change
+    const changeElements = document.querySelectorAll('[data-price-type="change24h"]');
+    if (changeElements.length > 0) {
+      changeElements.forEach(el => {
+        const changePercent = (ticker.price24hPcnt * 100).toFixed(2);
+        const emoji = ticker.price24hPcnt > 0 ? '📈' : '📉';
+        const color = ticker.price24hPcnt > 0 ? '#10b981' : '#ef4444';
+        el.style.color = color;
+        el.textContent = `${emoji} ${changePercent}%`;
+      });
+    }
+
+    // Update high/low/index/mark prices
+    const updatePrice = (dataAttribute, newPrice) => {
+      const elements = document.querySelectorAll(`[data-price-type="${dataAttribute}"]`);
+      elements.forEach(el => {
+        el.textContent = '$' + formatPrice(newPrice);
+      });
+    };
+
+    updatePrice('highPrice24h', ticker.highPrice24h);
+    updatePrice('lowPrice24h', ticker.lowPrice24h);
+    updatePrice('indexPrice', ticker.indexPrice);
+    updatePrice('markPrice', ticker.markPrice);
+    updatePrice('fundingRate', ticker.fundingRate * 100);
+    updatePrice('turnover24h', (parseFloat(ticker.turnover24h) / 1e6).toFixed(2));
+    updatePrice('openInterest', (parseFloat(ticker.openInterest) / 1e6).toFixed(2));
+
+    console.log(`✅ Quick refresh for ${symbol}: ${formatPrice(ticker.lastPrice)}`);
+
+  } catch (error) {
+    console.warn('Quick refresh failed (silent):', error);
+    // Silent fail - don't break the modal
   }
 }
 
