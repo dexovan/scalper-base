@@ -223,34 +223,6 @@ async function getValidQuantity(symbol, usdValue, price) {
 // =====================================================
 
 /**
- * Place market order
- */
-async function placeMarketOrder(symbol, side, qty, tickSize) {
-  try {
-    const response = await bybitClient.submitOrder({
-      category: 'linear',
-      symbol,
-      side,
-      orderType: 'Market',
-      qty: String(qty),
-      timeInForce: 'IOC',
-      positionIdx: 0
-    });
-
-    if (response?.retCode !== 0) {
-      throw new Error(`Market order failed: ${response?.retMsg || 'Unknown error'}`);
-    }
-
-    console.log(`✅ [MARKET] ${side} ${qty} ${symbol} → OrderID: ${response.result?.orderId}`);
-    return response.result;
-
-  } catch (err) {
-    console.error(`❌ [MARKET] Failed: ${err.message}`);
-    throw err;
-  }
-}
-
-/**
  * Place limit order (post-only for maker rebate)
  */
 async function placeLimitOrder(symbol, side, qty, price, tickSize, postOnly = true) {
