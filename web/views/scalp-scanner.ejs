@@ -1137,7 +1137,6 @@ async function loadMarketData(symbol) {
       return;
     }
 
-    const ticker = data.result.list[0];
     console.log('📊 Raw ticker lastPrice:', ticker.lastPrice, typeof ticker.lastPrice);
 
     // Simply use the price string exactly as Bybit provides it
