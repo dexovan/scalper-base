@@ -283,6 +283,34 @@ async function placeLimitOrder(symbol, side, qty, price, tickSize, postOnly = tr
 }
 
 /**
+ * Place MARKET order - immediately executes at market price
+ * Used for manual trades that need instant execution
+ */
+async function placeMarketOrder(symbol, side, qty, tickSize = null) {
+  try {
+    const response = await bybitClient.submitOrder({
+      category: 'linear',
+      symbol,
+      side,
+      orderType: 'Market',
+      qty: String(qty),
+      positionIdx: 0
+    });
+
+    if (response?.retCode !== 0) {
+      throw new Error(`Market order failed: ${response?.retMsg || 'Unknown error'}`);
+    }
+
+    console.log(`✅ [MARKET] ${side} ${qty} ${symbol} (INSTANT EXECUTION) → OrderID: ${response.result?.orderId}`);
+    return response.result;
+
+  } catch (err) {
+    console.error(`❌ [MARKET] Failed: ${err.message}`);
+    throw err;
+  }
+}
+
+/**
  * Get order status
  */
 async function getOrderStatus(symbol, orderId) {
@@ -1320,6 +1348,90 @@ async function waitForMakerFill({ symbol, orderId, limitPrice, config }) {
 }
 
 // =====================================================
+// 10.5) MANUAL TRADE - Instant market order execution
+// =====================================================
+async function executeManualTrade(ctx) {
+  const { symbol, direction, entry, tp, sl, positionSize, leverage } = ctx;
+
+  console.log('\n🎯🎯🎯 [MANUAL TRADE] Starting instant market order execution 🎯🎯🎯');
+  console.log(`   Symbol: ${symbol}`);
+  console.log(`   Direction: ${direction}`);
+  console.log(`   Position: $${positionSize} @ ${leverage}x leverage`);
+  console.log(`   Entry Target: ${entry}, TP: ${tp}, SL: ${sl}`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+  try {
+    // Step 1: Set leverage
+    console.log(`📊 [MANUAL] Setting leverage to ${leverage}x...`);
+    await setLeverage(symbol, leverage);
+    console.log(`✅ [MANUAL] Leverage set to ${leverage}x`);
+
+    // Step 2: Calculate quantity
+    console.log(`📏 [MANUAL] Calculating quantity for $${positionSize}...`);
+    const qty = await getValidQuantity(symbol, positionSize, entry);
+    const side = direction === 'LONG' ? 'Buy' : 'Sell';
+    console.log(`✅ [MANUAL] Quantity: ${qty} ${symbol}`);
+
+    // Step 3: Place MARKET order - IMMEDIATE EXECUTION
+    console.log(`🚀 [MANUAL] Placing MARKET order (${side}) ${qty} ${symbol} - INSTANT EXECUTION`);
+    const orderResult = await placeMarketOrder(symbol, side, qty);
+
+    if (!orderResult || !orderResult.orderId) {
+      throw new Error('Market order failed - no orderId returned');
+    }
+
+    console.log(`✅ [MANUAL] MARKET ORDER PLACED! OrderID: ${orderResult.orderId}`);
+    console.log(`✅ [MANUAL] Order executed at market price INSTANTLY`);
+
+    // Step 4: Set TP/SL with retry
+    console.log(`🎯 [MANUAL] Setting TP/SL (TP=${tp}, SL=${sl})...`);
+    await setTakeProfitStopLoss(symbol, side, tp, sl, ctx.tickSize);
+    console.log(`✅ [MANUAL] TP/SL set successfully`);
+
+    // Step 5: Update position tracker
+    updatePosition(symbol, {
+      symbol,
+      side: direction,
+      entry,
+      tp,
+      sl,
+      qty,
+      positionSize,
+      leverage,
+      orderId: orderResult.orderId,
+      status: 'OPEN',
+      entryMode: 'MANUAL_MARKET',
+      tickSize: ctx.tickSize,
+      timestamp: new Date().toISOString()
+    }, ctx.tickSize);
+
+    console.log(`✅ [MANUAL] Position tracker updated`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`🎯🎯🎯 [MANUAL TRADE] ✅ EXECUTED SUCCESSFULLY 🎯🎯🎯\n`);
+
+    return {
+      success: true,
+      mode: 'MANUAL_MARKET',
+      orderId: orderResult.orderId,
+      entry,
+      tp,
+      sl
+    };
+
+  } catch (err) {
+    console.error(`\n❌❌❌ [MANUAL TRADE] FAILED: ${err.message} ❌❌❌`);
+    console.error(err.stack);
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+    return {
+      success: false,
+      mode: 'MANUAL_MARKET_FAILED',
+      reason: err.message
+    };
+  }
+}
+
+// =====================================================
 // 11) LEGACY: Market-only execution
 // =====================================================
 async function executeTradeMarketOnly(ctx) {
@@ -1818,7 +1930,15 @@ export async function executeTrade(signal) {
 
     // Execute based on mode
     let rawResult;
-    if (EXECUTION_CONFIG.entryMode === 'MAKER_FIRST_BALANCED' || EXECUTION_CONFIG.entryMode === 'MAKER_FIRST') {
+
+    // MANUAL TRADE PATH - Instant market order execution
+    if (signal.manualTrade) {
+      console.log('\n⚡⚡⚡ [MANUAL TRADE MODE ACTIVATED] ⚡⚡⚡');
+      console.log('Skipping all validation checks - executing IMMEDIATE market order\n');
+      rawResult = await executeManualTrade(ctx);
+    }
+    // AUTOMATED TRADE PATHS
+    else if (EXECUTION_CONFIG.entryMode === 'MAKER_FIRST_BALANCED' || EXECUTION_CONFIG.entryMode === 'MAKER_FIRST') {
       rawResult = await executeTradeMakerFirst(ctx);
     } else {
       rawResult = await executeTradeMarketOnly(ctx);
