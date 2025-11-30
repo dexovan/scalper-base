@@ -2786,6 +2786,8 @@ export function startMonitorApiServer(port = 8090) {
       console.log(`✅ [API/MANUAL-TRADE] Skipping duplicate check for manual trade`);
 
       // ===== CREATE SIGNAL AND EXECUTE =====
+      // Create signal object compatible with executeTrade function
+      const signal = {
         symbol,
         direction,
         entry: parseFloat(entry),
