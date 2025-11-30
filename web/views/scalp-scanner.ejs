@@ -70,8 +70,19 @@
 .filter-input {
   @apply w-full bg-slate-800 border border-slate-600 rounded px-3 py-2.5 text-sm text-slate-100 placeholder-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition;
 }
+.filter-input select,
+select.filter-input {
+  @apply bg-slate-800 text-slate-100 border-slate-600;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
 .filter-input option {
   @apply bg-slate-800 text-slate-100;
+  color: #e2e8f0;
 }
 .filter-input:disabled {
   @apply bg-slate-900 text-slate-500 cursor-not-allowed;
