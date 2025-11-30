@@ -1719,6 +1719,7 @@ export async function executeTrade(signal) {
     console.log(`   Entry: ${signal.entry}, TP: ${signal.tp}, SL: ${signal.sl}`);
     console.log(`   Initial momentum: ${(signal.initialMomentum * 100).toFixed(1)}%`);
     console.log(`   Mode: ${EXECUTION_CONFIG.entryMode}`);
+    console.log(`   ⚡ MANUAL TRADE: ${signal.manualTrade === true ? 'YES - DIREKTAN ULAZAK' : 'NO - automated'}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const ctx = {
@@ -1733,7 +1734,61 @@ export async function executeTrade(signal) {
     };
 
     // =====================================================
-    // PATCH 1 – FETCH TICKSIZE & FORMAT PRICES
+    // EARLY MANUAL TRADE CHECK - AKO JE MANUAL, PREPRAVI LOKALNO
+    // =====================================================
+    if (signal.manualTrade === true) {
+      console.log('\n\n✅✅✅ MANUAL TRADE AKTIVIRAN - DIREKTAN ULAZAK ✅✅✅\n');
+
+      // Fetch tickSize brzo
+      try {
+        const instruments = await fetchInstrumentsUSDTPerp();
+        if (instruments.success) {
+          const meta = instruments.symbols.find(x => x.symbol === ctx.symbol);
+          if (meta) {
+            ctx.tickSize = meta.tickSize;
+          } else {
+            ctx.tickSize = 0.0001;
+          }
+        } else {
+          ctx.tickSize = 0.0001;
+        }
+      } catch (err) {
+        ctx.tickSize = 0.0001;
+      }
+
+      console.log(`[MANUAL] Setting up ctx...`);
+      console.log(`  Symbol: ${ctx.symbol}`);
+      console.log(`  Direction: ${ctx.direction}`);
+      console.log(`  Entry: ${ctx.entry}`);
+      console.log(`  TP: ${ctx.tp}`);
+      console.log(`  SL: ${ctx.sl}`);
+      console.log(`  TickSize: ${ctx.tickSize}`);
+
+      // Direktno pozovi executeManualTrade
+      console.log(`\n[MANUAL] Calling executeManualTrade NOW...\n`);
+      const manualResult = await executeManualTrade(ctx);
+
+      console.log(`\n[MANUAL] Result:`, manualResult);
+
+      // Vrati odmah
+      return {
+        success: manualResult.success,
+        mode: manualResult.mode,
+        symbol: ctx.symbol,
+        direction: ctx.direction,
+        entry: manualResult.entry ?? ctx.entry,
+        tp: manualResult.tp ?? ctx.tp,
+        sl: manualResult.sl ?? ctx.sl,
+        orderId: manualResult.orderId ?? null,
+        leverage: ctx.leverage,
+        positionSize: ctx.positionSize,
+        tickSize: ctx.tickSize || null,
+        reason: manualResult.reason || null
+      };
+    }
+
+    // =====================================================
+    // PATCH 1 – FETCH TICKSIZE & FORMAT PRICES (SAMO ZA AUTOMATED)
     // =====================================================
 
     try {
@@ -1922,14 +1977,8 @@ export async function executeTrade(signal) {
     // Execute based on mode
     let rawResult;
 
-    // MANUAL TRADE PATH - Instant market order execution
-    if (signal.manualTrade) {
-      console.log('\n⚡⚡⚡ [MANUAL TRADE MODE ACTIVATED] ⚡⚡⚡');
-      console.log('Skipping all validation checks - executing IMMEDIATE market order\n');
-      rawResult = await executeManualTrade(ctx);
-    }
-    // AUTOMATED TRADE PATHS
-    else if (EXECUTION_CONFIG.entryMode === 'MAKER_FIRST_BALANCED' || EXECUTION_CONFIG.entryMode === 'MAKER_FIRST') {
+    // AUTOMATED TRADE PATHS (manual trade je već obrađen ranije sa return-om)
+    if (EXECUTION_CONFIG.entryMode === 'MAKER_FIRST_BALANCED' || EXECUTION_CONFIG.entryMode === 'MAKER_FIRST') {
       rawResult = await executeTradeMakerFirst(ctx);
     } else {
       rawResult = await executeTradeMarketOnly(ctx);
