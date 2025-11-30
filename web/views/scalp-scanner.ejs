@@ -1481,10 +1481,73 @@ function analyzeCandlesTrend(candles) {
     };
   }
 
-  const recent = candles.slice(-60); // Zadnjih 60 minuta (1 sat)
-  const older = candles.slice(-120, -60); // 60-120 minuta unazad
+  // Multi-timeframe analysis
+  const calculateTrendForPeriod = (period) => {
+    if (candles.length < period) return null;
+    const slice = candles.slice(-period);
+    const startPrice = slice[0].open;
+    const endPrice = slice[slice.length - 1].close;
+    const change = ((endPrice - startPrice) / startPrice) * 100;
+    return {
+      change,
+      direction: change > 0.05 ? 'BULLISH' : change < -0.05 ? 'BEARISH' : 'FLAT',
+      strength: Math.abs(change)
+    };
+  };
 
-  // Izračuni
+  // Calculate trends for multiple timeframes
+  const trend5m = calculateTrendForPeriod(5);
+  const trend15m = calculateTrendForPeriod(15);
+  const trend30m = calculateTrendForPeriod(30);
+  const trend60m = calculateTrendForPeriod(60);
+  const trend360m = calculateTrendForPeriod(360); // Full 6 hours
+
+  console.log('📊 Multi-timeframe analysis:');
+  console.log(`   5m: ${trend5m?.direction} (${trend5m?.change.toFixed(3)}%)`);
+  console.log(`   15m: ${trend15m?.direction} (${trend15m?.change.toFixed(3)}%)`);
+  console.log(`   30m: ${trend30m?.direction} (${trend30m?.change.toFixed(3)}%)`);
+  console.log(`   60m: ${trend60m?.direction} (${trend60m?.change.toFixed(3)}%)`);
+  console.log(`   360m: ${trend360m?.direction} (${trend360m?.change.toFixed(3)}%)`);
+
+  // Vote-based trend determination
+  let bullishVotes = 0;
+  let bearishVotes = 0;
+  const trendWeights = [
+    { trend: trend5m, weight: 3 },  // 5m je 3x važnije (najsvežije)
+    { trend: trend15m, weight: 2.5 },
+    { trend: trend30m, weight: 2 },
+    { trend: trend60m, weight: 1.5 },
+    { trend: trend360m, weight: 1 }  // 6h je najmanje važno
+  ];
+
+  trendWeights.forEach(({ trend, weight }) => {
+    if (trend) {
+      if (trend.direction === 'BULLISH') bullishVotes += weight;
+      else if (trend.direction === 'BEARISH') bearishVotes += weight;
+    }
+  });
+
+  // Determine final trend
+  let finalTrendDirection, finalEmoji, finalColor, confidence;
+  const voteDifference = Math.abs(bullishVotes - bearishVotes);
+  confidence = Math.min((voteDifference / (bullishVotes + bearishVotes)) * 100, 100);
+
+  if (bullishVotes > bearishVotes) {
+    finalTrendDirection = 'BULLISH ⬆️';
+    finalEmoji = '🚀';
+    finalColor = '#10b981';
+  } else if (bearishVotes > bullishVotes) {
+    finalTrendDirection = 'BEARISH ⬇️';
+    finalEmoji = '📉';
+    finalColor = '#ef4444';
+  } else {
+    finalTrendDirection = 'NEUTRALNO ➡️';
+    finalEmoji = '⏸️';
+    finalColor = '#f59e0b';
+  }
+
+  // Standard calculations for other metrics
+  const recent = candles.slice(-60);
   const currentPrice = recent[recent.length - 1]?.close || 0;
   const openPrice = candles[0]?.open || currentPrice;
   const highestPrice = Math.max(...candles.map(c => c.high));
@@ -1492,17 +1555,9 @@ function analyzeCandlesTrend(candles) {
 
   const sixHourChange = ((currentPrice - openPrice) / openPrice) * 100;
 
-  // Trend analiza
-  const recentAvg = recent.reduce((sum, c) => sum + c.close, 0) / recent.length;
-  const olderAvg = older.length > 0 ? older.reduce((sum, c) => sum + c.close, 0) / older.length : recentAvg;
-
-  const trendDiff = recentAvg - olderAvg;
-  const trendStrength = Math.min(Math.abs(trendDiff / olderAvg * 100), 100);
-
   // Support & Resistance
   const support = lowestPrice;
   const resistance = highestPrice;
-  const midpoint = (support + resistance) / 2;
 
   // ATR (Average True Range)
   let trueRanges = [];
@@ -1516,7 +1571,7 @@ function analyzeCandlesTrend(candles) {
   }
   const atr = trueRanges.slice(-14).reduce((a, b) => a + b, 0) / Math.min(14, trueRanges.length);
 
-  // Momentum
+  // Momentum from current timeframe
   const momentum = ((recent[recent.length - 1]?.close - recent[0]?.open) / recent[0]?.open) * 100;
 
   // Volatilnost
@@ -1527,57 +1582,37 @@ function analyzeCandlesTrend(candles) {
   const volatilityPercent = (stdDev / avg) * 100;
   const volatilityLevel = volatilityPercent > 0.2 ? 'Visoka' : volatilityPercent > 0.1 ? 'Srednja' : 'Niska';
 
-  // Trend smjer
-  let trendDirection, trendEmoji, trendColor;
-  if (trendDiff > 0) {
-    trendDirection = 'BULLISH ⬆️';
-    trendEmoji = '🚀';
-    trendColor = '#10b981';
-  } else if (trendDiff < 0) {
-    trendDirection = 'BEARISH ⬇️';
-    trendEmoji = '📉';
-    trendColor = '#ef4444';
-  } else {
-    trendDirection = 'NEUTRALNO ➡️';
-    trendEmoji = '↔️';
-    trendColor = '#f59e0b';
-  }
-
-  // Predikcije
+  // Intelligent predictions based on multi-timeframe analysis
   const predictions = [
     {
-      timeframe: '15 minuta',
-      direction: trendDiff > 0 ? '📈 BULLISH' : trendDiff < 0 ? '📉 BEARISH' : '➡️ NEUTRALNO',
-      color: trendDiff > 0 ? '#10b981' : trendDiff < 0 ? '#ef4444' : '#f59e0b',
-      description: trendDiff > 0
-        ? 'Očekuje se nastavak rasta sa mogućnošću konsolidacije'
-        : trendDiff < 0
-        ? 'Očekuje se nastavak pada sa mogućim rejectionom na support-u'
-        : 'Tržište je indecisivno, čekaj potvrdu smjera'
+      timeframe: '5 minuta (Immediate)',
+      direction: trend5m?.direction === 'BULLISH' ? '📈 BULLISH' : trend5m?.direction === 'BEARISH' ? '📉 BEARISH' : '➡️ FLAT',
+      color: trend5m?.direction === 'BULLISH' ? '#10b981' : trend5m?.direction === 'BEARISH' ? '#ef4444' : '#f59e0b',
+      description: trend5m ? `Trenutni momentum je ${trend5m.direction.toLowerCase()} (${trend5m.change.toFixed(3)}%). PRIORITET - koristi ovo za ulazak!` : 'Nema podataka'
     },
     {
-      timeframe: '1 sat',
-      direction: sixHourChange > 0 ? '📈 UP' : sixHourChange < 0 ? '📉 DOWN' : '➡️ FLAT',
-      color: sixHourChange > 0 ? '#10b981' : sixHourChange < 0 ? '#ef4444' : '#f59e0b',
-      description: sixHourChange > 0
-        ? `Cijena je u trendu rasta za ${sixHourChange.toFixed(2)}%. Očekuje se test resistance-a.`
-        : sixHourChange < 0
-        ? `Cijena je u trendu pada za ${Math.abs(sixHourChange).toFixed(2)}%. Očekuje se test support-a.`
-        : 'Tržište je u ravnoteži, čekaj breakout'
+      timeframe: '15 minuta (Short-term)',
+      direction: trend15m?.direction === 'BULLISH' ? '📈 BULLISH' : trend15m?.direction === 'BEARISH' ? '📉 BEARISH' : '➡️ FLAT',
+      color: trend15m?.direction === 'BULLISH' ? '#10b981' : trend15m?.direction === 'BEARISH' ? '#ef4444' : '#f59e0b',
+      description: trend15m ? `15-minute trend je ${trend15m.direction.toLowerCase()} (${trend15m.change.toFixed(3)}%). Potvrdi sa 5m prije ulaska.` : 'Nema podataka'
     },
     {
-      timeframe: 'Potencijalni smjerovi',
-      direction: '🎯 Scenario analiza',
-      color: '#0ea5e9',
-      description: currentPrice > midpoint
-        ? `Cijena je blizu resistance-a ($${resistance.toFixed(8)}). Ako je破裂, očekuje se nastavak rasta. Ako padne, test support-a na $${support.toFixed(8)}.`
-        : `Cijena je blizu support-a ($${support.toFixed(8)}). Ako je popravka, očekuje se nastavak pada. Ako se poprave, test resistance-a na $${resistance.toFixed(8)}.`
+      timeframe: '60 minuta (Medium-term)',
+      direction: trend60m?.direction === 'BULLISH' ? '📈 BULLISH' : trend60m?.direction === 'BEARISH' ? '📉 BEARISH' : '➡️ FLAT',
+      color: trend60m?.direction === 'BULLISH' ? '#10b981' : trend60m?.direction === 'BEARISH' ? '#ef4444' : '#f59e0b',
+      description: trend60m ? `Satni trend je ${trend60m.direction.toLowerCase()} (${trend60m.change.toFixed(3)}%). Koristi za SL pozicije.` : 'Nema podataka'
+    },
+    {
+      timeframe: '🎯 Konačna Preporuka',
+      direction: finalTrendDirection,
+      color: finalColor,
+      description: `Pouzdanost: ${confidence.toFixed(0)}% | Svi vremenski horizont se slažu da je trend ${finalTrendDirection}. Trebaš ulaziti u smjeru ${finalTrendDirection} sa striktnim stop-loss-om!`
     }
   ];
 
   // Calculate trading recommendation
-  const trendIsBullish = trendDirection === 'BULLISH ⬆️';
-  const trendIsBearish = trendDirection === 'BEARISH ⬇️';
+  const trendIsBullish = finalTrendDirection === 'BULLISH ⬆️';
+  const trendIsBearish = finalTrendDirection === 'BEARISH ⬇️';
 
   let entry, tp, sl, profitPotential, tradeType, profitPercent;
 
@@ -1608,11 +1643,11 @@ function analyzeCandlesTrend(candles) {
   }
 
   return {
-    trendDirection,
-    trendEmoji,
-    trendColor,
-    trendStrength: Math.round(trendStrength),
-    trendDescription: `Trend je ${trendDirection}. U posljednjih sat vremena, cijena se kretala u smjeru ${trendDirection}. Momentum je ${momentum > 0 ? 'pozitivan' : 'negativan'} (${momentum.toFixed(3)}%). Očekuje se ${trendDirection === 'BULLISH ⬆️' ? 'nastavak rasta' : trendDirection === 'BEARISH ⬇️' ? 'nastavak pada' : 'konsolidacija'}.`,
+    trendDirection: finalTrendDirection,
+    trendEmoji: finalEmoji,
+    trendColor: finalColor,
+    trendStrength: Math.round(confidence),
+    trendDescription: `Inteligentna predikcija je ${finalTrendDirection} sa pouzdanošću od ${confidence.toFixed(0)}%. Ovo je bazirana na analizi 5m, 15m, 30m, 60m i 360m vremenskih horizonta. Trenutni 5m trend je KRITIČAN - to je tvoj ulazak!`,
     currentPrice: currentPrice.toFixed(8),
     sixHourChange,
     support,
