@@ -269,6 +269,7 @@ function checkMomentum(liveData, direction) {
     }
   } else if (direction === 'SHORT') {
     if (imbalance > maxImbalanceShort) {
+      console.log(`❌ [MOMENTUM-REJECT] SHORT failed: imbalance=${imbalance.toFixed(4)} > max=${maxImbalanceShort}`);
       return { passed: false, reason: `weak_momentum_imb_${imbalance.toFixed(2)}_need_max_${maxImbalanceShort}` };
     }
   }
