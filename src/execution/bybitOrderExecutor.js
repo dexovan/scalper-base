@@ -1330,6 +1330,7 @@ async function executeManualTrade(ctx) {
   console.log(`   Direction: ${direction}`);
   console.log(`   Position: $${positionSize} @ ${leverage}x leverage`);
   console.log(`   Entry Target: ${entry}, TP: ${tp}, SL: ${sl}`);
+  console.log(`   TickSize: ${ctx.tickSize}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   try {
@@ -1339,45 +1340,70 @@ async function executeManualTrade(ctx) {
     console.log(`✅ [MANUAL] Leverage set to ${leverage}x`);
 
     // Step 2: Calculate quantity
-    console.log(`📏 [MANUAL] Calculating quantity for $${positionSize}...`);
+    console.log(`📏 [MANUAL] Calculating quantity for $${positionSize} at price $${entry}...`);
     const qty = await getValidQuantity(symbol, positionSize, entry);
+    console.log(`✅ [MANUAL] Quantity calculated: ${qty}`);
+
     const side = direction === 'LONG' ? 'Buy' : 'Sell';
-    console.log(`✅ [MANUAL] Quantity: ${qty} ${symbol}`);
+    console.log(`✅ [MANUAL] Side: ${side}`);
 
     // Step 3: Place MARKET order - IMMEDIATE EXECUTION
-    console.log(`🚀 [MANUAL] Placing MARKET order (${side}) ${qty} ${symbol} - INSTANT EXECUTION`);
-    const orderResult = await placeMarketOrder(symbol, side, qty);
+    console.log(`\n🚀 [MANUAL] Placing MARKET order (${side}) ${qty} ${symbol} - INSTANT EXECUTION`);
+    let orderResult;
+    try {
+      orderResult = await placeMarketOrder(symbol, side, qty);
+      console.log(`✅ [MANUAL] placeMarketOrder returned:`, orderResult);
+    } catch (orderErr) {
+      console.error(`❌ [MANUAL] placeMarketOrder threw error: ${orderErr.message}`);
+      throw orderErr;
+    }
 
-    if (!orderResult || !orderResult.orderId) {
-      throw new Error('Market order failed - no orderId returned');
+    if (!orderResult) {
+      throw new Error('Market order failed - placeMarketOrder returned null/undefined');
+    }
+
+    if (!orderResult.orderId) {
+      console.error(`❌ [MANUAL] orderResult has no orderId:`, orderResult);
+      throw new Error(`Market order failed - no orderId in result: ${JSON.stringify(orderResult)}`);
     }
 
     console.log(`✅ [MANUAL] MARKET ORDER PLACED! OrderID: ${orderResult.orderId}`);
     console.log(`✅ [MANUAL] Order executed at market price INSTANTLY`);
 
     // Step 4: Set TP/SL with retry
-    console.log(`🎯 [MANUAL] Setting TP/SL (TP=${tp}, SL=${sl})...`);
-    await setTakeProfitStopLoss(symbol, side, tp, sl, ctx.tickSize);
-    console.log(`✅ [MANUAL] TP/SL set successfully`);
+    console.log(`\n🎯 [MANUAL] Setting TP/SL (TP=${tp}, SL=${sl}, tickSize=${ctx.tickSize})...`);
+    try {
+      await setTakeProfitStopLoss(symbol, side, tp, sl, ctx.tickSize);
+      console.log(`✅ [MANUAL] TP/SL set successfully`);
+    } catch (tpslErr) {
+      console.error(`❌ [MANUAL] TP/SL setup failed: ${tpslErr.message}`);
+      throw tpslErr;
+    }
 
     // Step 5: Update position tracker
-    updatePosition(symbol, {
-      symbol,
-      side: direction,
-      entry,
-      tp,
-      sl,
-      qty,
-      positionSize,
-      leverage,
-      orderId: orderResult.orderId,
-      status: 'OPEN',
-      entryMode: 'MANUAL_MARKET',
-      tickSize: ctx.tickSize,
-      timestamp: new Date().toISOString()
-    }, ctx.tickSize);
+    console.log(`\n📍 [MANUAL] Updating position tracker...`);
+    try {
+      updatePosition(symbol, {
+        symbol,
+        side: direction,
+        entry,
+        tp,
+        sl,
+        qty,
+        positionSize,
+        leverage,
+        orderId: orderResult.orderId,
+        status: 'OPEN',
+        entryMode: 'MANUAL_MARKET',
+        tickSize: ctx.tickSize,
+        timestamp: new Date().toISOString()
+      }, ctx.tickSize);
+      console.log(`✅ [MANUAL] Position tracker updated`);
+    } catch (trackerErr) {
+      console.error(`❌ [MANUAL] Position tracker update failed: ${trackerErr.message}`);
+      throw trackerErr;
+    }
 
-    console.log(`✅ [MANUAL] Position tracker updated`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`🎯🎯🎯 [MANUAL TRADE] ✅ EXECUTED SUCCESSFULLY 🎯🎯🎯\n`);
 
@@ -1391,8 +1417,9 @@ async function executeManualTrade(ctx) {
     };
 
   } catch (err) {
-    console.error(`\n❌❌❌ [MANUAL TRADE] FAILED: ${err.message} ❌❌❌`);
-    console.error(err.stack);
+    console.error(`\n❌❌❌ [MANUAL TRADE] FAILED ❌❌❌`);
+    console.error(`Error: ${err.message}`);
+    console.error(`Stack:`, err.stack);
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     return {
