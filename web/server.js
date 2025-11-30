@@ -642,13 +642,11 @@ app.use(
 app.use(
   "/api/manual-trade",
   createProxyMiddleware({
-    target: "http://localhost:8090/api/manual-trade",
+    target: "http://localhost:8090",
     changeOrigin: true,
     timeout: 30000,
     proxyTimeout: 30000,
-    pathRewrite: {
-      "^/api/manual-trade": ""
-    }
+    logLevel: "debug"
   })
 );
 
