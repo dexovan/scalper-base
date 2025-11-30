@@ -1311,6 +1311,70 @@ async function loadCandleData(symbol) {
             </div>
           </div>
         </div>
+
+        <!-- Trading Recommendation Section -->
+        <div style="background: linear-gradient(135deg, #1a1f2e 0%, #0f1419 100%); border: 2px solid ${analysis.tradeType === 'LONG 🔺' ? '#10b981' : analysis.tradeType === 'SHORT 🔻' ? '#ef4444' : '#f59e0b'}; border-radius: 0.75rem; padding: 1.5rem;">
+          <div style="font-size: 1.25rem; font-weight: bold; color: #f1f5f9; margin-bottom: 1rem;">💰 Preporuka za Trgovanje</div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <!-- Trade Type -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid ${analysis.tradeType === 'LONG 🔺' ? '#10b981' : analysis.tradeType === 'SHORT 🔻' ? '#ef4444' : '#f59e0b'}; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Tip Trgovanja</div>
+              <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.tradeType === 'LONG 🔺' ? '#10b981' : analysis.tradeType === 'SHORT 🔻' ? '#ef4444' : '#f59e0b'};">${analysis.tradeType}</div>
+            </div>
+
+            <!-- Entry Price -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #0ea5e9; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">ENTRY Cijena</div>
+              <div style="font-size: 1.25rem; font-weight: bold; color: #0ea5e9; font-family: monospace;">$${analysis.entry}</div>
+            </div>
+
+            <!-- Take Profit -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #10b981; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Take Profit (TP)</div>
+              <div style="font-size: 1.25rem; font-weight: bold; color: #10b981; font-family: monospace;">$${analysis.tp}</div>
+            </div>
+
+            <!-- Stop Loss -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #ef4444; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Stop Loss (SL)</div>
+              <div style="font-size: 1.25rem; font-weight: bold; color: #ef4444; font-family: monospace;">$${analysis.sl}</div>
+            </div>
+
+            <!-- Profit Potential -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #f59e0b; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Potencijalni Profit</div>
+              <div style="font-size: 1.25rem; font-weight: bold; color: #f59e0b; font-family: monospace;">$${analysis.profitPotential}</div>
+            </div>
+
+            <!-- Profit Percentage -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #06b6d4; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">ROI %</div>
+              <div style="font-size: 1.25rem; font-weight: bold; color: #06b6d4; font-family: monospace;">${analysis.profitPercent}%</div>
+            </div>
+          </div>
+
+          <!-- Trading Strategy Explanation -->
+          <div style="background-color: rgba(15, 23, 42, 0.4); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+            <div style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
+              <div style="margin-bottom: 0.75rem;">
+                <strong>📌 Strategija:</strong><br>
+                ${analysis.tradeType === 'SHORT 🔻' ?
+                  `Prodaj na ENTRY cijeni ($${analysis.entry}). Očekuje se pad prema support-u ($${analysis.tp}). Ako cijena ide prema resistance-u ($${analysis.sl}), izađi sa gubitkom.` :
+                analysis.tradeType === 'LONG 🔺' ?
+                  `Kupi na ENTRY cijeni ($${analysis.entry}). Očekuje se rast prema resistance-u ($${analysis.tp}). Ako cijena pada prema support-u ($${analysis.sl}), izađi sa gubitkom.` :
+                  `Trend nije jasan. Čekaj breakout-a prije nego što uđeš. Čini se da je trend između support ($${analysis.sl}) i resistance ($${analysis.tp}).`
+                }
+              </div>
+              <div style="margin-bottom: 0.75rem;">
+                <strong>⏱️ Timing:</strong> Narednih 15 minuta su kritični - cijena bi trebala da ide u smjeru ${analysis.trendDirection}
+              </div>
+              <div>
+                <strong>⚠️ Risk Management:</strong> Ulazi sa pozicijom gde je R:R (Risk to Reward) minimalno 1:1, idealno 1:2
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
@@ -1431,6 +1495,38 @@ function analyzeCandlesTrend(candles) {
     }
   ];
 
+  // Calculate trading recommendation
+  const trendIsBullish = trendDirection === 'BULLISH ⬆️';
+  const trendIsBearish = trendDirection === 'BEARISH ⬇️';
+
+  let entry, tp, sl, profitPotential, tradeType, profitPercent;
+
+  if (trendIsBearish) {
+    // SHORT trade
+    tradeType = 'SHORT 🔻';
+    entry = currentPrice - (atr * 0.5); // Enter below current price
+    tp = support; // Take profit at support
+    sl = resistance; // Stop loss at resistance
+    profitPotential = entry - tp;
+    profitPercent = ((profitPotential / entry) * 100).toFixed(2);
+  } else if (trendIsBullish) {
+    // LONG trade
+    tradeType = 'LONG 🔺';
+    entry = currentPrice + (atr * 0.5); // Enter above current price
+    tp = resistance; // Take profit at resistance
+    sl = support; // Stop loss at support
+    profitPotential = tp - entry;
+    profitPercent = ((profitPotential / entry) * 100).toFixed(2);
+  } else {
+    // NEUTRAL - wait for breakout
+    tradeType = 'ČEKAJ ➡️';
+    entry = currentPrice;
+    tp = resistance;
+    sl = support;
+    profitPotential = 0;
+    profitPercent = 0;
+  }
+
   return {
     trendDirection,
     trendEmoji,
@@ -1444,7 +1540,14 @@ function analyzeCandlesTrend(candles) {
     atr,
     momentum,
     volatilityLevel,
-    predictions
+    predictions,
+    // Trading recommendation
+    entry: entry.toFixed(8),
+    tp: tp.toFixed(8),
+    sl: sl.toFixed(8),
+    tradeType,
+    profitPotential: profitPotential.toFixed(8),
+    profitPercent
   };
 }
 
