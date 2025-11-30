@@ -1359,9 +1359,58 @@ async function loadCandleData(symbol) {
           </div>
         </div>
 
+        <!-- Multi-Timeframe Analysis Section -->
+        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #0ea5e9; border-radius: 0.75rem; padding: 1.5rem;">
+          <div style="font-size: 1.1rem; font-weight: bold; color: #f1f5f9; margin-bottom: 1rem;">📊 Multi-vremenski Horizont Analiza</div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+            <!-- 5-minute -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid ${analysis.predictions[0]?.color || '#6b7280'}; border-radius: 0.5rem; padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">5 MINUTA</div>
+              <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.predictions[0]?.color || '#6b7280'};">${analysis.predictions[0]?.direction || '❓'}</div>
+              <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 0.5rem;">🔴 PRIORITET!</div>
+            </div>
+
+            <!-- 15-minute -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid ${analysis.predictions[1]?.color || '#6b7280'}; border-radius: 0.5rem; padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">15 MINUTA</div>
+              <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.predictions[1]?.color || '#6b7280'};">${analysis.predictions[1]?.direction || '❓'}</div>
+              <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 0.5rem;">Potvrda</div>
+            </div>
+
+            <!-- 60-minute -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid ${analysis.predictions[2]?.color || '#6b7280'}; border-radius: 0.5rem; padding: 1rem; text-align: center;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">60 MINUTA</div>
+              <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.predictions[2]?.color || '#6b7280'};">${analysis.predictions[2]?.direction || '❓'}</div>
+              <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 0.5rem;">SL Referenca</div>
+            </div>
+
+            <!-- Final Recommendation -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid ${analysis.trendColor}; border-radius: 0.5rem; padding: 1rem; text-align: center; grid-column: span 1;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">KONAČNA PREPORUKA</div>
+              <div style="font-size: 1.2rem; font-weight: bold; color: ${analysis.trendColor};">${analysis.trendDirection}</div>
+              <div style="font-size: 0.75rem; color: #10b981; margin-top: 0.5rem;">Pouzdanost: ${analysis.trendStrength}%</div>
+            </div>
+          </div>
+
+          <!-- Explanation -->
+          <div style="background-color: rgba(15, 23, 42, 0.4); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; margin-top: 1rem;">
+            <div style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
+              <div style="margin-bottom: 0.5rem;">
+                <strong>⚡ Kako čitati ovu analizu:</strong>
+              </div>
+              <ul style="margin-left: 1rem; margin-bottom: 0;">
+                <li>🔴 <strong>5 MINUTA (PRIORITET)</strong> - Koristi ovo za ulazak! Ako je BEARISH, može biti SHORT signal.</li>
+                <li><strong>15 MINUTA (Potvrda)</strong> - Trebala bi da bude ista kao 5m za jači signal.</li>
+                <li><strong>60 MINUTA (SL Referenca)</strong> - Koristi za postavljanje stop-loss-a, ne za ulazak.</li>
+                <li>✅ <strong>KONAČNA PREPORUKA</strong> - Kombinovani rezultat svih horizonata.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <!-- Prediction Section -->
         <div style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 1px solid #4b5563; border-radius: 0.75rem; padding: 1.5rem;">
-          <div style="font-size: 1.1rem; font-weight: bold; color: #f1f5f9; margin-bottom: 1rem;">🔮 Predikcija za naredni period</div>
+          <div style="font-size: 1.1rem; font-weight: bold; color: #f1f5f9; margin-bottom: 1rem;">🔮 Detaljne Predikcije</div>
           <div style="space: 1rem;">
             ${analysis.predictions.map(pred => `
               <div style="margin-bottom: 1rem; padding: 1rem; background-color: rgba(15, 23, 42, 0.6); border-left: 3px solid ${pred.color}; border-radius: 0.25rem;">
