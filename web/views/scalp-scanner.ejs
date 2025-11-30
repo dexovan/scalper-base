@@ -649,25 +649,25 @@ function renderSignalsTable(signals) {
 
     return `
       <tr>
-        <td class="font-semibold text-blue-400" style="text-align: left;">${signal.symbol}</td>
-        <td style="text-align: center;">
+        <td class="font-semibold text-blue-400 px-6 py-4" style="text-align: left;">${signal.symbol}</td>
+        <td class="px-6 py-4" style="text-align: center;">
           <span class="px-2 py-1 rounded text-xs font-semibold ${
             signal.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
           }">
             ${signal.side}
           </span>
         </td>
-        <td class="font-semibold text-emerald-400">${signal.confidence}%</td>
-        <td class="font-mono text-sm">$${fmt(signal.entry)}</td>
-        <td class="font-mono text-sm text-emerald-400">$${fmt(signal.takeProfit)}</td>
-        <td class="font-mono text-sm text-red-400">$${fmt(signal.stopLoss)}</td>
-        <td class="${signal.volatility >= 0.15 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.volatility)}%</td>
-        <td class="${signal.volumeSpike >= 1.5 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.volumeSpike)}x</td>
-        <td class="${signal.velocity >= 0.05 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.velocity)}%</td>
-        <td class="${signal.momentum >= 0.1 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.momentum)}%</td>
-        <td class="${(signal.side === 'LONG' && signal.imbalance >= 1.05) || (signal.side === 'SHORT' && signal.imbalance <= 0.95) ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.imbalance)}</td>
-        <td class="${signal.spread <= 0.1 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.spread)}%</td>
-        <td>
+        <td class="font-semibold text-emerald-400 px-6 py-4">${signal.confidence}%</td>
+        <td class="font-mono text-sm px-6 py-4">$${fmt(signal.entry)}</td>
+        <td class="font-mono text-sm text-emerald-400 px-6 py-4">$${fmt(signal.takeProfit)}</td>
+        <td class="font-mono text-sm text-red-400 px-6 py-4">$${fmt(signal.stopLoss)}</td>
+        <td class="${signal.volatility >= 0.15 ? 'text-green-400' : 'text-slate-400'} font-semibold px-6 py-4">${fmt(signal.volatility)}%</td>
+        <td class="${signal.volumeSpike >= 1.5 ? 'text-green-400' : 'text-slate-400'} font-semibold px-6 py-4">${fmt(signal.volumeSpike)}x</td>
+        <td class="${signal.velocity >= 0.05 ? 'text-green-400' : 'text-slate-400'} font-semibold px-6 py-4">${fmt(signal.velocity)}%</td>
+        <td class="${signal.momentum >= 0.1 ? 'text-green-400' : 'text-slate-400'} font-semibold px-6 py-4">${fmt(signal.momentum)}%</td>
+        <td class="${(signal.side === 'LONG' && signal.imbalance >= 1.05) || (signal.side === 'SHORT' && signal.imbalance <= 0.95) ? 'text-green-400' : 'text-slate-400'} font-semibold px-6 py-4">${fmt(signal.imbalance)}</td>
+        <td class="${signal.spread <= 0.1 ? 'text-green-400' : 'text-slate-400'} font-semibold px-6 py-4">${fmt(signal.spread)}%</td>
+        <td class="px-6 py-4">
           <span class="quality-badge quality-${qualityLevel}">
             ${qualityEmoji}
           </span>
