@@ -1452,10 +1452,10 @@ function updateDynamicEntry() {
     // ========================================
     // WIN RATE CALCULATION
     // ========================================
-    // R/R Ratio = SL Distance / TP Distance
+    // Reward:Risk Ratio = TP Distance / SL Distance (what we gain per unit of risk)
     const tpDistance = Math.abs(tp - entry);
     const slDistance = Math.abs(entry - sl);
-    const riskRewardRatio = slDistance / tpDistance;
+    const riskRewardRatio = tpDistance / slDistance;  // Reward per Risk unit
     const positionSize = POSITION_SIZE; // $18 × 3x leverage (from EXECUTION_CONFIG)
 
     // Calculate win rate based on multiple factors
@@ -1463,14 +1463,17 @@ function updateDynamicEntry() {
     let factors = {};
 
     // Factor 1: Risk/Reward Ratio (±25 points)
+    // Higher reward:risk is better (>1 means we gain more than we risk)
     if (riskRewardRatio > 2) {
-      factors.rrRatio = 25;
+      factors.rrRatio = 25;  // Excellent: 2+ profit per risk
+    } else if (riskRewardRatio > 1.5) {
+      factors.rrRatio = 20;  // Very good: 1.5+ profit per risk
     } else if (riskRewardRatio > 1) {
-      factors.rrRatio = 15;
+      factors.rrRatio = 15;  // Good: 1+ profit per risk (break-even)
     } else if (riskRewardRatio > 0.5) {
-      factors.rrRatio = 5;
+      factors.rrRatio = 5;   // Poor: 0.5 profit per risk
     } else {
-      factors.rrRatio = -15;
+      factors.rrRatio = -15; // Very poor: less than 0.5 profit per risk
     }
 
     // Factor 2: Entry Position vs Support/Resistance (±20 points)
@@ -1583,7 +1586,7 @@ function updateDynamicEntry() {
 
     // Update win rate display
     updateElement('[data-dynamic="win-rate"]', Math.round(winRate) + '%');
-    updateElement('[data-dynamic="rr-ratio"]', riskRewardRatio.toFixed(2) + ':1');
+    updateElement('[data-dynamic="rr-ratio"]', 'Reward:Risk ' + riskRewardRatio.toFixed(2) + ':1');
     updateElement('[data-dynamic="expected-value"]', expectedValuePercent + '%');
     updateElement('[data-dynamic="risk-level"]', riskLevel);
 
@@ -1598,7 +1601,7 @@ function updateDynamicEntry() {
       };
 
       updateBreakdown('[data-breakdown-item="rr-ratio"]',
-        `📊 Risk/Reward: ${riskRewardRatio.toFixed(2)}:1 (${factors.rrRatio > 0 ? '+' : ''}${factors.rrRatio} pts) ${riskRewardRatio > 2 ? '🟢' : riskRewardRatio > 1 ? '🟡' : '🔴'}`);
+        `📊 Reward:Risk: ${riskRewardRatio.toFixed(2)}:1 (${factors.rrRatio > 0 ? '+' : ''}${factors.rrRatio} pts) ${riskRewardRatio > 2 ? '🟢' : riskRewardRatio > 1 ? '🟡' : '🔴'}`);
       updateBreakdown('[data-breakdown-item="entry-position"]',
         `Entry Position: ${(entryVsSR * 100).toFixed(0)}% (${factors.entryPosition > 0 ? '+' : ''}${factors.entryPosition} pts)`);
       updateBreakdown('[data-breakdown-item="trend-strength"]',
