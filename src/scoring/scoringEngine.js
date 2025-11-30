@@ -281,10 +281,35 @@ class ScoringEngine {
         allowNewShort: true
       };
 
+      // Create wall analysis object for penalty scoring
+      // Converts raw wall data to status (HEALTHY/DEGRADED/NO_DATA)
+      let wallAnalysis = { status: "NO_DATA" };
+
+      if (featureState.walls) {
+        // Determine wall status based on data quality and confidence
+        const walls = featureState.walls;
+
+        // Check if wall data is recent and complete
+        const hasAbsorbingData = walls.absorbingSupportScore !== null && walls.absorbingResistanceScore !== null;
+        const hasSpoofData = walls.spoofingScore !== null;
+
+        if (hasAbsorbingData && hasSpoofData) {
+          // All data available - HEALTHY
+          wallAnalysis.status = "HEALTHY";
+        } else if (hasAbsorbingData || hasSpoofData) {
+          // Partial data - DEGRADED
+          wallAnalysis.status = "DEGRADED";
+        } else {
+          // No data - NO_DATA
+          wallAnalysis.status = "NO_DATA";
+        }
+      }
+
       // Compute base scores
       const baseScores = computeBaseScores(
         symbol,
         featureState,
+        wallAnalysis,
         this.config.weights
       );
 
