@@ -19,6 +19,17 @@ import {
 import { runAllSafetyChecks } from './utils/safetyChecks.js';
 import { formatPriceByTick } from './utils/priceFormatter.js';
 import { fetchInstrumentsUSDTPerp } from '../src/connectors/bybitPublic.js';
+import {
+  detectOrderBookWalls,
+  analyzeWallAbsorption,
+  integrateWallsWithPrice,
+  validateSupportResistanceWithWalls
+} from '../src/utils/orderBookWallAnalysis.js';
+import {
+  calculateDynamicEntryWithWalls,
+  isOptimalEntryTime,
+  shouldRetryEntry
+} from '../src/utils/livePriceIntegration.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -617,7 +628,7 @@ async function scanSymbol(symbol) {
     const latestCandle = candleData.candles[candleData.candles.length - 1];
 
     // 2. Fetch live market data
-    const liveData = await fetchLiveMarketData(symbol);
+    const liveData = liveDataManager.get(symbol);
     if (!liveData) {
       return null;
     }
@@ -710,6 +721,25 @@ async function scanSymbol(symbol) {
 
         checks: evaluation.checks
       };
+
+      // ===== WALL ANALYSIS (if available in live data) =====
+      // This will enhance entry timing in the modal
+      if (liveData.orderBook) {
+        try {
+          const walls = detectOrderBookWalls(liveData.orderBook, { wallThreshold: 0.05 });
+          const wallAbsorption = analyzeWallAbsorption(walls, liveData.recentTrades || [], liveData.price || 0);
+
+          signal.wallAnalysis = {
+            wallStatus: wallAbsorption.wallStatus,
+            confidenceScore: wallAbsorption.confidenceScore,
+            buyWallStatus: wallAbsorption.buyWallStatus,
+            sellWallStatus: wallAbsorption.sellWallStatus
+          };
+        } catch (wallErr) {
+          // Wall analysis failed silently - not critical
+          console.warn(`⚠️ Wall analysis failed for ${symbol}:`, wallErr.message);
+        }
+      }
 
       return signal;
     }
