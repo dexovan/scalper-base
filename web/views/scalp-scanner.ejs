@@ -1134,15 +1134,23 @@ async function loadCandleData(symbol) {
     const response = await fetch(`/api/symbol/${symbol}/candles/1m?limit=360`);
     const data = await response.json();
 
-    if (!data.success || !data.candles || data.candles.length === 0) {
+    console.log('📊 Candle data response:', data);
+
+    if (!data.ok && !data.success) {
+      throw new Error('API returned error: ' + (data.error || 'unknown error'));
+    }
+
+    if (!data.candles || data.candles.length === 0) {
+      console.warn('⚠️ No candles found for', symbol);
       document.getElementById('modal-candles').innerHTML = `
         <div class="text-center py-8 text-slate-500">
-          Nema dostupnih candle podataka za ovaj simbol
+          ⚠️ Nema dostupnih candle podataka za ovaj simbol (${data.count || 0} candles received)
         </div>
       `;
       return;
     }
 
+    console.log(`✅ Received ${data.candles.length} candles for ${symbol}`);
     const candles = data.candles;
     const analysis = analyzeCandlesTrend(candles);
 
@@ -1155,7 +1163,7 @@ async function loadCandleData(symbol) {
             <div style="font-size: 3rem;">${analysis.trendEmoji}</div>
             <div>
               <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.trendColor};">${analysis.trendDirection}</div>
-              <div style="font-size: 0.875rem; color: #cbd5e1; margin-top: 0.25rem;">Trend smjer: <strong>${analysis.trendStrength}%</strong></div>
+              <div style="font-size: 0.875rem; color: #cbd5e1; margin-top: 0.25rem;">Trend snaga: <strong>${analysis.trendStrength}%</strong></div>
             </div>
           </div>
           <div style="color: #e2e8f0; font-size: 0.95rem; line-height: 1.6;">${analysis.trendDescription}</div>
