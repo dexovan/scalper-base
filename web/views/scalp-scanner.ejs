@@ -1140,21 +1140,16 @@ async function loadMarketData(symbol) {
     const ticker = data.result.list[0];
     console.log('📊 Raw ticker lastPrice:', ticker.lastPrice, typeof ticker.lastPrice);
 
-    // Use price string directly from Bybit - it's already formatted correctly
+    // Simply use the price string exactly as Bybit provides it
     const formatPrice = (priceValue) => {
-      // If it's already a string, use it as-is (Bybit's native precision)
-      if (typeof priceValue === 'string') {
-        console.log(`💰 Using string price directly: ${priceValue}`);
-        return priceValue;
-      }
+      if (priceValue === null || priceValue === undefined) return '0';
 
-      // If it's a number, convert to string and keep all decimals
+      // Convert to string if it's a number (to preserve decimals)
       const str = String(priceValue);
-      console.log(`💰 Formatted number to string: ${str}`);
-      return str;
-    };
+      console.log(`💰 formatPrice("${priceValue}") → "${str}"`);
 
-    const marketHTML = `
+      return str;
+    };    const marketHTML = `
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
         <!-- Current Price -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
