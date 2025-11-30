@@ -24,6 +24,12 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.signals-table th:first-child {
+  @apply text-left;
+}
+.signals-table th:nth-child(2) {
+  @apply text-center;
+}
 .signals-table th.sortable::after {
   content: ' ↕';
   @apply text-slate-400;
@@ -46,6 +52,12 @@
   @apply px-3 py-2.5 text-slate-200 text-right;
   word-wrap: break-word;
   overflow-wrap: break-word;
+}
+.signals-table td:first-child {
+  @apply text-left font-semibold text-blue-400;
+}
+.signals-table td:nth-child(2) {
+  @apply text-center;
 }
 
 /* Signal Quality Badge */
@@ -79,10 +91,25 @@ select.filter-input {
   background-repeat: no-repeat;
   background-size: 1.5em 1.5em;
   padding-right: 2.5rem;
+  color: #e2e8f0 !important;
 }
-.filter-input option {
-  @apply bg-slate-800 text-slate-100;
-  color: #e2e8f0;
+.filter-input option,
+select.filter-input option {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+  padding: 8px 10px;
+  border: none;
+}
+.filter-input option:hover,
+select.filter-input option:hover {
+  background-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+.filter-input option:checked,
+select.filter-input option:checked {
+  background: linear-gradient(#3b82f6, #3b82f6) !important;
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
 }
 .filter-input:disabled {
   @apply bg-slate-900 text-slate-500 cursor-not-allowed;
