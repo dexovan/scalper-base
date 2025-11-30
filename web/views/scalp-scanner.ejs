@@ -1062,14 +1062,16 @@ function openSignalModal(symbol) {
     console.error('❌ Modal element not found!');
     return;
   }
-  modal.classList.add('active');
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
   console.log('✅ Modal opened, loading details...');
   loadSignalDetails(symbol);
 }
 
 function closeSignalModal() {
   const modal = document.getElementById('signal-modal');
-  modal.classList.remove('active');
+  modal.style.display = 'none';
 }
 
 async function loadSignalDetails(symbol) {
@@ -1256,17 +1258,17 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 <!-- Signal Details Modal -->
-<div id="signal-modal" class="modal" onclick="if(event.target === this) closeSignalModal()">
-  <div class="modal-content">
-    <div class="modal-header">
+<div id="signal-modal" class="modal" style="display: none; position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); z-index: 9999; backdrop-filter: blur(4px); align-items: center; justify-content: center;" onclick="if(event.target === this) closeSignalModal()">
+  <div class="modal-content" style="background-color: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); max-width: 56rem; width: 90%; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-header" style="position: sticky; top: 0; background: linear-gradient(to right, #1e293b, #0ea5e9); border-bottom: 1px solid #334155; padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
       <div>
         <h2 class="text-2xl font-bold text-slate-100" id="modal-symbol">BTCUSDT</h2>
         <p class="text-sm text-slate-400 mt-1" id="modal-timestamp">Timestamp</p>
       </div>
-      <button onclick="closeSignalModal()" class="modal-close">&times;</button>
+      <button onclick="closeSignalModal()" style="color: #94a3b8; cursor: pointer; font-size: 2rem; background: none; border: none; padding: 0; hover-color: #f1f5f9;" onmouseover="this.style.color='#f1f5f9'" onmouseout="this.style.color='#94a3b8'">&times;</button>
     </div>
 
-    <div class="modal-body">
+    <div class="modal-body" style="padding: 1.5rem;">
       <!-- Signal Metrics Section -->
       <div class="modal-section">
         <h3>📊 Signal Metrici</h3>
