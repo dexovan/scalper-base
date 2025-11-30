@@ -122,10 +122,11 @@ select.filter-input option {
 
 /* Modal Styles */
 .modal {
-  @apply fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center hidden;
+  @apply fixed inset-0 bg-black/60 backdrop-blur-sm z-50 items-center justify-center;
+  display: none;
 }
 .modal.active {
-  @apply flex;
+  display: flex;
 }
 .modal-content {
   @apply bg-slate-900 border border-slate-700 rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto;
@@ -1055,8 +1056,14 @@ document.addEventListener('keydown', (e) => {
 
 // Modal Functions
 function openSignalModal(symbol) {
+  console.log('🔓 Opening modal for symbol:', symbol);
   const modal = document.getElementById('signal-modal');
+  if (!modal) {
+    console.error('❌ Modal element not found!');
+    return;
+  }
   modal.classList.add('active');
+  console.log('✅ Modal opened, loading details...');
   loadSignalDetails(symbol);
 }
 
