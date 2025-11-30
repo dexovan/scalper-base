@@ -1407,7 +1407,13 @@ function updateDynamicEntry() {
     updateElement('[data-dynamic="roi"]', profitPercent + '%');
     updateElement('[data-dynamic="status"]', entryStatus);
 
-    console.log(`💡 Dynamic Entry Updated: ${entryStatus}`);
+    // Debug logging
+    console.log(`💡 updateDynamicEntry() called:`);
+    console.log(`   Current Price: $${currentPrice.toFixed(8)}`);
+    console.log(`   Support: $${support.toFixed(8)}, Resistance: $${resistance.toFixed(8)}, ATR: $${atr.toFixed(8)}`);
+    console.log(`   Entry Calculated: $${entry.toFixed(8)}`);
+    console.log(`   Status: ${entryStatus}`);
+    console.log(`   Bullish: ${isBullish}, Bearish: ${isBearish}`);
 
   } catch (error) {
     console.warn('Dynamic entry update failed:', error);
