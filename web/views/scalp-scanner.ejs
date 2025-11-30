@@ -1344,25 +1344,29 @@ function updateDynamicEntry() {
 
     if (isBearish) {
       // SHORT strategy - Follow price DOWN
-      // Entry se pomjera dolje kako cijena pada
-      const minEntryPrice = support - atr; // Ne smije ići ispod ovoga
-      entry = Math.max(resistance - (atr * 0.3), Math.min(currentPrice + (atr * 0.15), resistance));
-      entry = Math.max(entry, minEntryPrice); // Osiguraj minimum
+      // Entry se pomjera dolje kako cijena pada, prateći je sa manjim offset-om
+      const minEntryPrice = support; // Ne smije ići ispod ovoga (support)
+      entry = Math.max(resistance - (atr * 0.3) - (resistance - currentPrice) * 0.25, minEntryPrice);
+      entry = Math.min(entry, resistance); // Osiguraj maksimum (resistance)
 
       tp = support;
       sl = resistance + atr;
       profitPotential = entry - tp;
       profitPercent = ((profitPotential / entry) * 100).toFixed(2);
 
-      // Status message
-      if (currentPrice > resistance * 0.95) {
-        entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu resistance-a)';
+      // Status message - prati gdje je cijena u odnosu na entry
+      const priceVsEntry = ((entry - currentPrice) / entry * 100).toFixed(2);
+
+      if (currentPrice > resistance * 0.98) {
+        entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu resistance-a) - ULAZAK SADA!';
+      } else if (currentPrice > resistance * 0.95) {
+        entryStatus = '✅ DOBAR ENTRY ZONE - Možeš ući';
       } else if (currentPrice > resistance * 0.90) {
-        entryStatus = '✅ DOBAR ENTRY ZONE - ULAZAK SADA!';
-      } else if (currentPrice > resistance * 0.80) {
-        entryStatus = '⏳ Dobro - cijena pada, sljedeća šansa za ulazak';
+        entryStatus = `⏳ Čekaj pullback gore... (Cijena je ${priceVsEntry}% ispod entry-a)`;
+      } else if (currentPrice > support * 1.02) {
+        entryStatus = `📉 Trend je jak! Praćenje cijene... (${priceVsEntry}% ispod entry-a)`;
       } else {
-        entryStatus = '⏳ ČEKAJ - Cijena je pala previše, pullback dolazi';
+        entryStatus = '⚠️ Blizu support-a - Razmisli o izlasku ili lock-in profit';
       }
     } else if (isBullish) {
       // LONG strategy - Follow price UP
