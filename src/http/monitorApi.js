@@ -1920,6 +1920,14 @@ export function startMonitorApiServer(port = 8090) {
             bid: signal.live.bid,
             ask: signal.live.ask,
             orderFlowNet60s: signal.live.orderFlowNet60s
+          } : null,
+
+          // Wall Analysis (NEW)
+          wallAnalysis: signal.wallAnalysis ? {
+            wallStatus: signal.wallAnalysis.wallStatus,
+            confidenceScore: signal.wallAnalysis.confidenceScore,
+            buyWallStatus: signal.wallAnalysis.buyWallStatus,
+            sellWallStatus: signal.wallAnalysis.sellWallStatus
           } : null
         };
       }).reverse(); // Most recent first

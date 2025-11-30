@@ -516,6 +516,37 @@ async function fetchLiveMarketBatch(symbols) {
 }
 
 // ============================================================
+// FETCH ORDER BOOK (for wall analysis) - Optional, best-effort
+// ============================================================
+
+async function fetchOrderBook(symbol) {
+  try {
+    // Try to fetch from Engine API (if available)
+    const url = `${CONFIG.engineApiUrl}/api/orderbook/${symbol}`;
+    const response = await fetch(url, { timeout: 2000 }); // Quick timeout - optional fetch
+
+    if (!response.ok) {
+      return null; // No order book available
+    }
+
+    const data = await response.json();
+
+    // Expected format: { bids: [[price, size], ...], asks: [[price, size], ...] }
+    if (data.bids && data.asks) {
+      return {
+        b: data.bids,  // bids
+        a: data.asks   // asks
+      };
+    }
+
+    return null;
+  } catch (error) {
+    // Order book fetch is optional - fail silently
+    return null;
+  }
+}
+
+// ============================================================
 // CALCULATE CANDIDATE SCORE (for hotlist ranking)
 // ============================================================
 
@@ -633,6 +664,14 @@ async function scanSymbol(symbol) {
       return null;
     }
 
+    // 2.5. Fetch order book (optional - for wall analysis)
+    let orderBook = null;
+    try {
+      orderBook = await fetchOrderBook(symbol);
+    } catch (err) {
+      // Order book fetch failed - continue without it
+    }
+
     // 3. Evaluate signal
     const evaluation = evaluateSignal(latestCandle, liveData);
 
@@ -722,11 +761,11 @@ async function scanSymbol(symbol) {
         checks: evaluation.checks
       };
 
-      // ===== WALL ANALYSIS (if available in live data) =====
+      // ===== WALL ANALYSIS (if available in order book) =====
       // This will enhance entry timing in the modal
-      if (liveData.orderBook) {
+      if (orderBook) {
         try {
-          const walls = detectOrderBookWalls(liveData.orderBook, { wallThreshold: 0.05 });
+          const walls = detectOrderBookWalls(orderBook, { wallThreshold: 0.05 });
           const wallAbsorption = analyzeWallAbsorption(walls, liveData.recentTrades || [], liveData.price || 0);
 
           signal.wallAnalysis = {
