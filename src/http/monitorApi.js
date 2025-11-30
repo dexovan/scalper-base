@@ -2752,6 +2752,7 @@ export function startMonitorApiServer(port = 8090) {
   // POST /api/manual-trade
   // Allows manual trade entry with calculated parameters from scanner
   // ============================================================
+  console.log("🎯🎯🎯 [MONITORAPI] Registering POST /api/manual-trade route 🎯🎯🎯");
   app.post("/api/manual-trade", async (req, res) => {
     try {
       const { symbol, direction, entry, tp, sl, initialMomentum, manualTrade } = req.body;

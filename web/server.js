@@ -636,6 +636,22 @@ app.use(
   })
 );
 
+// ===========================================
+// PROXY → MANUAL TRADE API (port 8090)
+// ===========================================
+app.use(
+  "/api/manual-trade",
+  createProxyMiddleware({
+    target: "http://localhost:8090/api/manual-trade",
+    changeOrigin: true,
+    timeout: 30000,
+    proxyTimeout: 30000,
+    pathRewrite: {
+      "^/api/manual-trade": ""
+    }
+  })
+);
+
 // 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
 app.get("/login", (req, res) => {
   if (req.session.user) return res.redirect("/");
@@ -779,6 +795,16 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
   console.log("📁 Sessions dir:", sessionsDir);
   console.log("📁 Views dir:", path.join(__dirname, "views"));
+
+  // DEBUG: Log registered routes/proxies
+  console.log("\n🔗 REGISTERED API PROXIES:");
+  console.log("  ✅ /api/manual-trade → http://localhost:8090/api/manual-trade");
+  console.log("  ✅ /api/features → http://localhost:8090/api/features");
+  console.log("  ✅ /api/diagnostics → http://localhost:8090/api/diagnostics");
+  console.log("  ✅ /api/engine/execution → http://localhost:8090/api/execution");
+  console.log("  ✅ /api/microstructure → http://localhost:8090/api/microstructure");
+  console.log("  ✅ /api/symbol → http://localhost:8090");
+  console.log("");
 });
 
 // ===========================================================

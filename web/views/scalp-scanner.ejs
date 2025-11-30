@@ -2413,10 +2413,16 @@ async function handleManualTrade() {
       body: JSON.stringify(tradeSignal)
     });
 
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error(`Server vratio non-JSON odgovor. Status: ${response.status} ${response.statusText}`);
+    }
+
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error || 'Nepoznata greška pri izvršenju trade-a');
+      throw new Error(result.error || result.message || 'Nepoznata greška pri izvršenju trade-a');
     }
 
     // Success!
