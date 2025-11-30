@@ -1580,6 +1580,7 @@ function updateDynamicEntry() {
 
     // Update win rate display
     updateElement('[data-dynamic="win-rate"]', Math.round(winRate) + '%');
+    updateElement('[data-dynamic="rr-ratio"]', riskRewardRatio.toFixed(2) + ':1');
     updateElement('[data-dynamic="expected-value"]', expectedValuePercent + '%');
     updateElement('[data-dynamic="risk-level"]', riskLevel);
 
@@ -1958,6 +1959,13 @@ async function loadCandleData(symbol) {
             <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #06b6d4; border-radius: 0.25rem; padding: 1rem;">
               <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">ROI %</div>
               <div data-dynamic="roi" style="font-size: 1.25rem; font-weight: bold; color: #06b6d4; font-family: monospace;">${analysis.profitPercent}%</div>
+            </div>
+
+            <!-- Risk/Reward Ratio (Dynamic) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #f59e0b; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">📊 Risk/Reward Ratio</div>
+              <div data-dynamic="rr-ratio" style="font-size: 1.25rem; font-weight: bold; color: #f59e0b; font-family: monospace;">--</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Profit vs Loss odnos</div>
             </div>
 
             <!-- Win Rate Probability (Dynamic) -->
