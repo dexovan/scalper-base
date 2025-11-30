@@ -311,14 +311,16 @@ function computeNewsPenalty(symbol, features) {
  */
 export function computeBaseScores(symbol, features, wallAnalysis, weights) {
   // Handle legacy calls (wallAnalysis might be weights if called with old signature)
-  if (wallAnalysis && typeof wallAnalysis === 'object' && wallAnalysis.orderbook) {
-    weights = wallAnalysis;
-    wallAnalysis = { status: "NO_DATA" };
+  let wallAnalysisStatus = wallAnalysis;
+
+  if (wallAnalysisStatus && typeof wallAnalysisStatus === 'object' && wallAnalysisStatus.orderbook) {
+    weights = wallAnalysisStatus;
+    wallAnalysisStatus = { status: "NO_DATA" };
   }
 
   // Default wall analysis if not provided
-  if (!wallAnalysis) {
-    wallAnalysis = { status: "NO_DATA" };
+  if (!wallAnalysisStatus) {
+    wallAnalysisStatus = { status: "NO_DATA" };
   }
 
   // Default weights (can be overridden by config)
@@ -367,11 +369,11 @@ export function computeBaseScores(symbol, features, wallAnalysis, weights) {
 
   // WALL ANALYSIS PENALTIES
   // Apply penalties based on wall status quality
-  if (wallAnalysis && wallAnalysis.status === "NO_DATA") {
+  if (wallAnalysisStatus && wallAnalysisStatus.status === "NO_DATA") {
     // No orderbook data available - high risk
     rawLong -= 10;
     rawShort -= 10;
-  } else if (wallAnalysis && wallAnalysis.status === "DEGRADED") {
+  } else if (wallAnalysisStatus && wallAnalysisStatus.status === "DEGRADED") {
     // Partial orderbook data - moderate risk
     rawLong -= 5;
     rawShort -= 5;
