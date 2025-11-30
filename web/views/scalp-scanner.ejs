@@ -341,8 +341,8 @@ select.filter-input option:checked {
       <table class="signals-table w-full" id="signals-table">
         <thead>
           <tr>
-            <th class="sortable" onclick="sortTable('symbol')" style="width: 100px;">Simbol</th>
-            <th class="sortable" onclick="sortTable('side')" style="width: 70px;">Tip</th>
+            <th class="sortable" onclick="sortTable('symbol')" style="width: 100px; text-align: left;">Simbol</th>
+            <th class="sortable" onclick="sortTable('side')" style="width: 70px; text-align: center;">Tip</th>
             <th class="sortable" onclick="sortTable('confidence')" style="width: 90px;">Conf %</th>
             <th class="sortable" onclick="sortTable('entry')" style="width: 90px;">Entry</th>
             <th class="sortable" onclick="sortTable('tp')" style="width: 90px;">TP</th>
@@ -630,8 +630,8 @@ function renderSignalsTable(signals) {
 
     return `
       <tr>
-        <td class="font-semibold text-blue-400">${signal.symbol}</td>
-        <td>
+        <td class="font-semibold text-blue-400" style="text-align: left;">${signal.symbol}</td>
+        <td style="text-align: center;">
           <span class="px-2 py-1 rounded text-xs font-semibold ${
             signal.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
           }">
