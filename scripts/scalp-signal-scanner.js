@@ -252,14 +252,22 @@ function isInSweetSpot(currentPrice, idealEntry, direction) {
 /**
  * Check if momentum is sufficient for entry
  */
-function checkMomentum(liveData, direction) {
+function checkMomentum(liveData, direction, candle) {
   const { minImbalanceLong, maxImbalanceShort, maxSpread } = SMART_ENTRY_CONFIG.momentum;
   const imbalance = liveData.imbalance || 1.0;
   const spreadPercent = parseFloat(liveData.spreadPercent) || 0;
+  const velocity = Math.abs(candle?.velocity ?? 0);
+  const volumeSpike = candle?.volumeSpike ?? 0;
 
   // Spread check (common for both)
   if (spreadPercent > maxSpread) {
     return { passed: false, reason: `spread_too_wide_${spreadPercent.toFixed(3)}%` };
+  }
+
+  // Minimum velocity check (need some price movement)
+  const minVelocity = 0.1; // At least 0.1% price movement
+  if (velocity < minVelocity) {
+    return { passed: false, reason: `insufficient_velocity_${velocity.toFixed(4)}%_need_${minVelocity}%` };
   }
 
   // Direction-specific imbalance check
@@ -1235,7 +1243,7 @@ async function scanAllSymbols() {
 
       // ✅ VALIDATION: Check momentum constraints for this direction
       // This ensures LONG signals have sufficient bid pressure and SHORT signals have sufficient ask pressure
-      const momentumCheck = checkMomentum(currentLiveData, direction);
+      const momentumCheck = checkMomentum(currentLiveData, direction, candle);
       if (!momentumCheck.passed) {
         continue;  // Signal direction doesn't have sufficient momentum, skip it
       }
