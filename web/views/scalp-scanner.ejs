@@ -2244,16 +2244,18 @@ function analyzeCandlesTrend(candles) {
     // SHORT trade
     tradeType = 'SHORT 🔻';
     entry = currentPrice - (atr * 0.5); // Enter below current price
-    tp = support; // Take profit at support
-    sl = resistance; // Stop loss at resistance
+    // Use EXECUTION_CONFIG TP/SL distances (0.35% TP, 0.30% SL)
+    tp = entry * (1 - EXECUTION_CONFIG.tpDistance);    // entry - 0.35%
+    sl = entry * (1 + EXECUTION_CONFIG.slDistance);    // entry + 0.30%
     profitPotential = entry - tp;
     profitPercent = ((profitPotential / entry) * 100).toFixed(2);
   } else if (trendIsBullish) {
     // LONG trade
     tradeType = 'LONG 🔺';
     entry = currentPrice + (atr * 0.5); // Enter above current price
-    tp = resistance; // Take profit at resistance
-    sl = support; // Stop loss at support
+    // Use EXECUTION_CONFIG TP/SL distances (0.35% TP, 0.30% SL)
+    tp = entry * (1 + EXECUTION_CONFIG.tpDistance);    // entry + 0.35%
+    sl = entry * (1 - EXECUTION_CONFIG.slDistance);    // entry - 0.30%
     profitPotential = tp - entry;
     profitPercent = ((profitPotential / entry) * 100).toFixed(2);
   } else {
