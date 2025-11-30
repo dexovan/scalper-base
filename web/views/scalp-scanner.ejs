@@ -1144,35 +1144,78 @@ async function loadCandleData(symbol) {
     }
 
     const candles = data.candles;
+    const analysis = analyzeCandlesTrend(candles);
 
-    // Create candle chart
-    const candleHTML = candles.slice(-60).map((candle, idx) => {
-      const time = new Date(candle.timestamp).toLocaleTimeString('sr-RS', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+    // Render analysis report
+    const analysisHTML = `
+      <div class="space-y-4">
+        <!-- Trend Direction -->
+        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid ${analysis.trendColor}; border-radius: 0.75rem; padding: 1.5rem;">
+          <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+            <div style="font-size: 3rem;">${analysis.trendEmoji}</div>
+            <div>
+              <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.trendColor};">${analysis.trendDirection}</div>
+              <div style="font-size: 0.875rem; color: #cbd5e1; margin-top: 0.25rem;">Trend smjer: <strong>${analysis.trendStrength}%</strong></div>
+            </div>
+          </div>
+          <div style="color: #e2e8f0; font-size: 0.95rem; line-height: 1.6;">${analysis.trendDescription}</div>
+        </div>
 
-      const change = candle.close - candle.open;
-      const percentChange = (change / candle.open) * 100;
-      const color = change >= 0 ? 'bg-emerald-500/40' : 'bg-red-500/40';
-      const textColor = change >= 0 ? 'text-emerald-300' : 'text-red-300';
-      const barHeight = Math.min(Math.abs(percentChange) * 50, 100);
-
-      return `
-        <div class="candle-row" title="${time} | O:${candle.open.toFixed(8)} H:${candle.high.toFixed(8)} L:${candle.low.toFixed(8)} C:${candle.close.toFixed(8)}">
-          <div class="candle-time">${time}</div>
-          <div class="candle-bar">
-            <div class="candle-bar-bg ${color}" style="height: ${barHeight}%;"></div>
-            <div class="candle-value ${textColor}">${percentChange.toFixed(3)}%</div>
+        <!-- Key Metrics -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+          <div style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+            <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Trenutna Cijena</div>
+            <div style="font-size: 1.5rem; font-weight: bold; color: #f1f5f9;">$${analysis.currentPrice}</div>
+          </div>
+          <div style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+            <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">6h Promjena</div>
+            <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.sixHourChange > 0 ? '#10b981' : '#ef4444'};">${analysis.sixHourChange > 0 ? '+' : ''}${analysis.sixHourChange.toFixed(3)}%</div>
+          </div>
+          <div style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+            <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Support/Resistance</div>
+            <div style="font-size: 0.875rem; color: #cbd5e1;">
+              <div>S: $${analysis.support.toFixed(8)}</div>
+              <div>R: $${analysis.resistance.toFixed(8)}</div>
+            </div>
           </div>
         </div>
-      `;
-    }).join('');
 
-    document.getElementById('modal-candles').innerHTML = `
-      <div class="text-xs text-slate-400 mb-3">Prikazani zadnjih 60 candle-a (1h)</div>
-      ${candleHTML}
+        <!-- Prediction Section -->
+        <div style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); border: 1px solid #4b5563; border-radius: 0.75rem; padding: 1.5rem;">
+          <div style="font-size: 1.1rem; font-weight: bold; color: #f1f5f9; margin-bottom: 1rem;">🔮 Predikcija za naredni period</div>
+          <div style="space: 1rem;">
+            ${analysis.predictions.map(pred => `
+              <div style="margin-bottom: 1rem; padding: 1rem; background-color: rgba(15, 23, 42, 0.6); border-left: 3px solid ${pred.color}; border-radius: 0.25rem;">
+                <div style="font-weight: bold; color: #f1f5f9;">${pred.timeframe}</div>
+                <div style="color: ${pred.color}; font-weight: bold; font-size: 1.1rem; margin-top: 0.25rem;">${pred.direction}</div>
+                <div style="color: #cbd5e1; font-size: 0.875rem; margin-top: 0.5rem;">${pred.description}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Volatility & Risk Assessment -->
+        <div style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #334155; border-radius: 0.75rem; padding: 1.5rem;">
+          <div style="font-size: 1rem; font-weight: bold; color: #f1f5f9; margin-bottom: 1rem;">⚠️ Rizik & Volatilnost</div>
+          <div style="display: grid; gap: 0.75rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: #cbd5e1;">ATR (Average True Range):</span>
+              <span style="color: #10b981; font-weight: bold;">$${analysis.atr.toFixed(8)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: #cbd5e1;">Momentum:</span>
+              <span style="color: ${analysis.momentum > 0 ? '#10b981' : '#ef4444'}; font-weight: bold;">${analysis.momentum > 0 ? '📈' : '📉'} ${Math.abs(analysis.momentum).toFixed(4)}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: #cbd5e1;">Volatilnost Ocjena:</span>
+              <span style="color: ${analysis.volatilityLevel === 'Visoka' ? '#ef4444' : analysis.volatilityLevel === 'Srednja' ? '#f59e0b' : '#10b981'}; font-weight: bold;">${analysis.volatilityLevel}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
+
+    document.getElementById('modal-candles').innerHTML = analysisHTML;
 
   } catch (error) {
     console.error('Error loading candle data:', error);
@@ -1182,6 +1225,128 @@ async function loadCandleData(symbol) {
       </div>
     `;
   }
+}
+
+function analyzeCandlesTrend(candles) {
+  if (!candles || candles.length === 0) {
+    return {
+      trendDirection: 'N/A',
+      trendEmoji: '❓',
+      trendColor: '#6b7280',
+      trendStrength: 0,
+      trendDescription: 'Nema podataka za analizu'
+    };
+  }
+
+  const recent = candles.slice(-60); // Zadnjih 60 minuta (1 sat)
+  const older = candles.slice(-120, -60); // 60-120 minuta unazad
+
+  // Izračuni
+  const currentPrice = recent[recent.length - 1]?.close || 0;
+  const openPrice = candles[0]?.open || currentPrice;
+  const highestPrice = Math.max(...candles.map(c => c.high));
+  const lowestPrice = Math.min(...candles.map(c => c.low));
+
+  const sixHourChange = ((currentPrice - openPrice) / openPrice) * 100;
+
+  // Trend analiza
+  const recentAvg = recent.reduce((sum, c) => sum + c.close, 0) / recent.length;
+  const olderAvg = older.length > 0 ? older.reduce((sum, c) => sum + c.close, 0) / older.length : recentAvg;
+
+  const trendDiff = recentAvg - olderAvg;
+  const trendStrength = Math.min(Math.abs(trendDiff / olderAvg * 100), 100);
+
+  // Support & Resistance
+  const support = lowestPrice;
+  const resistance = highestPrice;
+  const midpoint = (support + resistance) / 2;
+
+  // ATR (Average True Range)
+  let trueRanges = [];
+  for (let i = 1; i < candles.length; i++) {
+    const tr = Math.max(
+      candles[i].high - candles[i].low,
+      Math.abs(candles[i].high - candles[i - 1].close),
+      Math.abs(candles[i].low - candles[i - 1].close)
+    );
+    trueRanges.push(tr);
+  }
+  const atr = trueRanges.slice(-14).reduce((a, b) => a + b, 0) / Math.min(14, trueRanges.length);
+
+  // Momentum
+  const momentum = ((recent[recent.length - 1]?.close - recent[0]?.open) / recent[0]?.open) * 100;
+
+  // Volatilnost
+  const closes = recent.map(c => c.close);
+  const avg = closes.reduce((a, b) => a + b) / closes.length;
+  const variance = closes.reduce((sum, c) => sum + Math.pow(c - avg, 2), 0) / closes.length;
+  const stdDev = Math.sqrt(variance);
+  const volatilityPercent = (stdDev / avg) * 100;
+  const volatilityLevel = volatilityPercent > 0.2 ? 'Visoka' : volatilityPercent > 0.1 ? 'Srednja' : 'Niska';
+
+  // Trend smjer
+  let trendDirection, trendEmoji, trendColor;
+  if (trendDiff > 0) {
+    trendDirection = 'BULLISH ⬆️';
+    trendEmoji = '🚀';
+    trendColor = '#10b981';
+  } else if (trendDiff < 0) {
+    trendDirection = 'BEARISH ⬇️';
+    trendEmoji = '📉';
+    trendColor = '#ef4444';
+  } else {
+    trendDirection = 'NEUTRALNO ➡️';
+    trendEmoji = '↔️';
+    trendColor = '#f59e0b';
+  }
+
+  // Predikcije
+  const predictions = [
+    {
+      timeframe: '15 minuta',
+      direction: trendDiff > 0 ? '📈 BULLISH' : trendDiff < 0 ? '📉 BEARISH' : '➡️ NEUTRALNO',
+      color: trendDiff > 0 ? '#10b981' : trendDiff < 0 ? '#ef4444' : '#f59e0b',
+      description: trendDiff > 0
+        ? 'Očekuje se nastavak rasta sa mogućnošću konsolidacije'
+        : trendDiff < 0
+        ? 'Očekuje se nastavak pada sa mogućim rejectionom na support-u'
+        : 'Tržište je indecisivno, čekaj potvrdu smjera'
+    },
+    {
+      timeframe: '1 sat',
+      direction: sixHourChange > 0 ? '📈 UP' : sixHourChange < 0 ? '📉 DOWN' : '➡️ FLAT',
+      color: sixHourChange > 0 ? '#10b981' : sixHourChange < 0 ? '#ef4444' : '#f59e0b',
+      description: sixHourChange > 0
+        ? `Cijena je u trendu rasta za ${sixHourChange.toFixed(2)}%. Očekuje se test resistance-a.`
+        : sixHourChange < 0
+        ? `Cijena je u trendu pada za ${Math.abs(sixHourChange).toFixed(2)}%. Očekuje se test support-a.`
+        : 'Tržište je u ravnoteži, čekaj breakout'
+    },
+    {
+      timeframe: 'Potencijalni smjerovi',
+      direction: '🎯 Scenario analiza',
+      color: '#0ea5e9',
+      description: currentPrice > midpoint
+        ? `Cijena je blizu resistance-a ($${resistance.toFixed(8)}). Ako je破裂, očekuje se nastavak rasta. Ako padne, test support-a na $${support.toFixed(8)}.`
+        : `Cijena je blizu support-a ($${support.toFixed(8)}). Ako je popravka, očekuje se nastavak pada. Ako se poprave, test resistance-a na $${resistance.toFixed(8)}.`
+    }
+  ];
+
+  return {
+    trendDirection,
+    trendEmoji,
+    trendColor,
+    trendStrength: Math.round(trendStrength),
+    trendDescription: `Trend je ${trendDirection}. U posljednjih sat vremena, cijena se kretala u smjeru ${trendDirection}. Momentum je ${momentum > 0 ? 'pozitivan' : 'negativan'} (${momentum.toFixed(3)}%). Očekuje se ${trendDirection === 'BULLISH ⬆️' ? 'nastavak rasta' : trendDirection === 'BEARISH ⬇️' ? 'nastavak pada' : 'konsolidacija'}.`,
+    currentPrice: currentPrice.toFixed(8),
+    sixHourChange,
+    support,
+    resistance,
+    atr,
+    momentum,
+    volatilityLevel,
+    predictions
+  };
 }
 
 function loadQualityAssessment(signal) {
@@ -1324,12 +1489,12 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
 
-      <!-- Candle Data Section (Last 6 Hours) -->
+      <!-- Trend Analysis Section (Last 6 Hours) -->
       <div class="modal-section">
-        <h3>🕯️ Candle Podaci (Zadnjih 6 Sati)</h3>
-        <div class="candle-chart" id="modal-candles">
+        <h3>📊 Analiza Trenda & Predikcija (Zadnjih 6 Sati)</h3>
+        <div class="candle-chart" id="modal-candles" style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #334155;">
           <div class="text-center py-8 text-slate-500">
-            ⏳ Učitavanje candle podataka...
+            ⏳ Analiza candle podataka...
           </div>
         </div>
       </div>
