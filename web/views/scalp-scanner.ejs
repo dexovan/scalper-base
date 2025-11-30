@@ -1091,29 +1091,10 @@ async function loadSignalDetails(symbol) {
     const timestamp = new Date().toLocaleString('sr-RS');
     document.getElementById('modal-timestamp').textContent = timestamp;
 
-    // Update modal stats
-    const sideClass = signal.side === 'LONG' ? 'success' : 'danger';
-    document.getElementById('modal-side-stat').className = `modal-stat ${sideClass}`;
-    document.getElementById('modal-side-value').textContent = signal.side;
-    document.getElementById('modal-confidence-value').textContent = `${signal.confidence}%`;
-    document.getElementById('modal-entry-value').textContent = `$${fmt(signal.entry)}`;
-    document.getElementById('modal-tp-value').textContent = `$${fmt(signal.takeProfit)}`;
-    document.getElementById('modal-sl-value').textContent = `$${fmt(signal.stopLoss)}`;
+    // Load live market data
+    await loadMarketData(symbol);
 
-    // Calculate Risk/Reward
-    const riskDist = Math.abs(signal.entry - signal.stopLoss);
-    const rewardDist = Math.abs(signal.takeProfit - signal.entry);
-    const rr = riskDist > 0 ? (rewardDist / riskDist).toFixed(2) : 0;
-    document.getElementById('modal-rr-value').textContent = `1:${rr}`;
-
-    document.getElementById('modal-volatility-value').textContent = `${fmt(signal.volatility)}%`;
-    document.getElementById('modal-volume-value').textContent = `${fmt(signal.volumeSpike)}x`;
-    document.getElementById('modal-velocity-value').textContent = `${fmt(signal.velocity)}%`;
-    document.getElementById('modal-momentum-value').textContent = `${fmt(signal.momentum)}%`;
-    document.getElementById('modal-imbalance-value').textContent = fmt(signal.imbalance);
-    document.getElementById('modal-spread-value').textContent = `${fmt(signal.spread)}%`;
-
-    // Load candle data
+    // Load candle data and analysis
     await loadCandleData(symbol);
 
     // Load quality assessment
@@ -1121,15 +1102,106 @@ async function loadSignalDetails(symbol) {
 
   } catch (error) {
     console.error('Error loading signal details:', error);
-    document.getElementById('modal-candles').innerHTML = `
+    document.getElementById('modal-market-data').innerHTML = `
       <div class="text-center py-8 text-red-400">
         ❌ Greška pri učitavanju podataka
       </div>
     `;
   }
+}async function loadMarketData(symbol) {
+  try {
+    // Fetch ticker data from Bybit API
+    const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`);
+    const data = await response.json();
+
+    if (data.retCode !== 0 || !data.result || !data.result.list || data.result.list.length === 0) {
+      document.getElementById('modal-market-data').innerHTML = `
+        <div class="text-center py-4 text-slate-500">
+          ⚠️ Nije moguće učitati tržišne podatke
+        </div>
+      `;
+      return;
+    }
+
+    const ticker = data.result.list[0];
+
+    // Determine decimal places based on price
+    const price = parseFloat(ticker.lastPrice);
+    let decimals = 2;
+    if (price < 0.01) decimals = 8;
+    else if (price < 0.1) decimals = 6;
+    else if (price < 1) decimals = 4;
+
+    const formatPrice = (p) => parseFloat(p).toFixed(decimals);
+
+    const marketHTML = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
+        <!-- Current Price -->
+        <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Trenutna Cijena</div>
+          <div style="font-size: 1.5rem; font-weight: bold; color: #f1f5f9;">$${formatPrice(ticker.lastPrice)}</div>
+          <div style="font-size: 0.75rem; color: ${ticker.price24hPcnt > 0 ? '#10b981' : '#ef4444'}; margin-top: 0.25rem;">
+            ${ticker.price24hPcnt > 0 ? '📈' : '📉'} ${(ticker.price24hPcnt * 100).toFixed(2)}%
+          </div>
+        </div>
+
+        <!-- 24H High -->
+        <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">24H High</div>
+          <div style="font-size: 1.5rem; font-weight: bold; color: #10b981;">$${formatPrice(ticker.highPrice24h)}</div>
+        </div>
+
+        <!-- 24H Low -->
+        <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">24H Low</div>
+          <div style="font-size: 1.5rem; font-weight: bold; color: #ef4444;">$${formatPrice(ticker.lowPrice24h)}</div>
+        </div>
+
+        <!-- Index Price -->
+        <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Index Price</div>
+          <div style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9;">$${formatPrice(ticker.indexPrice)}</div>
+        </div>
+
+        <!-- 24H Volume -->
+        <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">24H Turnover</div>
+          <div style="font-size: 1rem; font-weight: bold; color: #f1f5f9;">$${(parseFloat(ticker.turnover24h) / 1e6).toFixed(2)}M</div>
+        </div>
+
+        <!-- Funding Rate -->
+        <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Funding Rate</div>
+          <div style="font-size: 1.5rem; font-weight: bold; color: ${ticker.fundingRate > 0 ? '#10b981' : '#ef4444'};">${(ticker.fundingRate * 100).toFixed(4)}%</div>
+        </div>
+
+        <!-- Open Interest -->
+        <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Open Interest</div>
+          <div style="font-size: 1rem; font-weight: bold; color: #f1f5f9;">${(parseFloat(ticker.openInterest) / 1e6).toFixed(2)}M</div>
+        </div>
+
+        <!-- Mark Price -->
+        <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Mark Price</div>
+          <div style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9;">$${formatPrice(ticker.markPrice)}</div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modal-market-data').innerHTML = marketHTML;
+
+  } catch (error) {
+    console.error('Error loading market data:', error);
+    document.getElementById('modal-market-data').innerHTML = `
+      <div class="text-center py-4 text-red-400">
+        ❌ Greška pri učitavanju tržišnih podataka
+      </div>
+    `;
+  }
 }
 
-async function loadCandleData(symbol) {
+
   try {
     const response = await fetch(`/api/symbol/${symbol}/candles/1m?limit=360`);
     const data = await response.json();
@@ -1442,57 +1514,12 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
 
     <div class="modal-body" style="padding: 1.5rem;">
-      <!-- Signal Metrics Section -->
+      <!-- Live Market Data Section -->
       <div class="modal-section">
-        <h3>📊 Signal Metrici</h3>
-        <div class="modal-grid">
-          <div class="modal-stat" id="modal-side-stat">
-            <div class="modal-stat-label">Tip Signala</div>
-            <div class="modal-stat-value" id="modal-side-value">LONG</div>
-          </div>
-          <div class="modal-stat">
-            <div class="modal-stat-label">Confidence</div>
-            <div class="modal-stat-value" id="modal-confidence-value">100%</div>
-          </div>
-          <div class="modal-stat">
-            <div class="modal-stat-label">Entry Price</div>
-            <div class="modal-stat-value text-emerald-400" id="modal-entry-value">$0.00</div>
-          </div>
-          <div class="modal-stat">
-            <div class="modal-stat-label">Take Profit</div>
-            <div class="modal-stat-value text-emerald-400" id="modal-tp-value">$0.00</div>
-          </div>
-          <div class="modal-stat">
-            <div class="modal-stat-label">Stop Loss</div>
-            <div class="modal-stat-value text-red-400" id="modal-sl-value">$0.00</div>
-          </div>
-          <div class="modal-stat">
-            <div class="modal-stat-label">Risk/Reward</div>
-            <div class="modal-stat-value" id="modal-rr-value">1:2</div>
-          </div>
-          <div class="modal-stat success">
-            <div class="modal-stat-label">Volatilnost</div>
-            <div class="modal-stat-value text-emerald-300" id="modal-volatility-value">0%</div>
-          </div>
-          <div class="modal-stat">
-            <div class="modal-stat-label">Volume Spike</div>
-            <div class="modal-stat-value" id="modal-volume-value">0x</div>
-          </div>
-          <div class="modal-stat success">
-            <div class="modal-stat-label">Velocity</div>
-            <div class="modal-stat-value text-emerald-300" id="modal-velocity-value">0%</div>
-          </div>
-          <div class="modal-stat">
-            <div class="modal-stat-label">Momentum</div>
-            <div class="modal-stat-value" id="modal-momentum-value">0%</div>
-          </div>
-          <div class="modal-stat success">
-            <div class="modal-stat-label">Imbalance</div>
-            <div class="modal-stat-value text-emerald-300" id="modal-imbalance-value">0</div>
-          </div>
-          <div class="modal-stat">
-            <div class="modal-stat-label">Spread</div>
-            <div class="modal-stat-value" id="modal-spread-value">0%</div>
+        <h3>💱 Live Tržišni Podaci</h3>
+        <div id="modal-market-data" style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #334155; border-radius: 0.75rem; padding: 1.5rem;">
+          <div class="text-center py-8 text-slate-500">
+            ⏳ Učitavanje tržišnih podataka...
           </div>
         </div>
       </div>
