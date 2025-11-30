@@ -1551,7 +1551,7 @@ function updateDynamicEntry() {
     // Calculate Expected Value (in percentage terms)
     // EV% = (Win% × Profit%) - (Loss% × Loss%)
     const tpProfitPercent = ((tp - entry) / entry) * 100;
-    const slLossPercent = ((entry - sl) / entry) * 100;
+    const slLossPercent = Math.abs((entry - sl) / entry) * 100;
     const winProbability = winRate / 100;
     const lossProbability = 1 - winProbability;
 
