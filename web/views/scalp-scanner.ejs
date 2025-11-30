@@ -1559,12 +1559,12 @@ function updateDynamicEntry() {
 
     // Calculate Expected Value (in percentage terms)
     // EV% = (Win% × Profit%) - (Loss% × Loss%)
-    const profitPercent = ((tp - entry) / entry) * 100;
-    const lossPercent = ((entry - sl) / entry) * 100;
+    const tpProfitPercent = ((tp - entry) / entry) * 100;
+    const slLossPercent = ((entry - sl) / entry) * 100;
     const winProbability = winRate / 100;
     const lossProbability = 1 - winProbability;
 
-    const expectedValuePercent = (winProbability * profitPercent - lossProbability * lossPercent).toFixed(2);
+    const expectedValuePercent = (winProbability * tpProfitPercent - lossProbability * slLossPercent).toFixed(2);
 
     // Determine Risk Level
     let riskLevel = 'MODERATE';
