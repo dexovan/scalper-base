@@ -8,6 +8,64 @@
 .signal-card {
   @apply rounded-lg border border-slate-800 bg-slate-900/60 p-4 hover:border-slate-700 transition-colors;
 }
+
+/* Advanced Table Styles */
+.signals-table {
+  @apply w-full border-collapse text-sm;
+}
+.signals-table thead {
+  @apply bg-slate-800/50 border-b border-slate-700;
+}
+.signals-table th {
+  @apply px-3 py-2 text-left text-xs font-semibold text-slate-300 cursor-pointer hover:bg-slate-700/50 transition;
+}
+.signals-table th.sortable::after {
+  content: ' ↕';
+  @apply text-slate-500;
+}
+.signals-table th.sorted-asc::after {
+  content: ' ↑';
+  @apply text-blue-400;
+}
+.signals-table th.sorted-desc::after {
+  content: ' ↓';
+  @apply text-blue-400;
+}
+.signals-table tbody tr {
+  @apply border-b border-slate-700/50 hover:bg-slate-800/30 transition;
+}
+.signals-table td {
+  @apply px-3 py-2;
+}
+
+/* Signal Quality Badge */
+.quality-badge {
+  @apply inline-flex items-center px-2 py-1 rounded text-xs font-medium;
+}
+.quality-excellent { @apply bg-emerald-500/20 text-emerald-300 border border-emerald-500/30; }
+.quality-good { @apply bg-blue-500/20 text-blue-300 border border-blue-500/30; }
+.quality-fair { @apply bg-yellow-500/20 text-yellow-300 border border-yellow-500/30; }
+.quality-poor { @apply bg-red-500/20 text-red-300 border border-red-500/30; }
+
+/* Filter Controls */
+.filter-controls {
+  @apply bg-slate-900/60 rounded-lg border border-slate-800 p-4 space-y-3;
+}
+.filter-group {
+  @apply flex flex-col gap-2;
+}
+.filter-group label {
+  @apply text-xs font-semibold text-slate-300;
+}
+.filter-input {
+  @apply w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none transition;
+}
+.filter-range {
+  @apply flex items-center gap-2;
+}
+.filter-range input {
+  @apply flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100 focus:border-blue-500 focus:outline-none;
+}
 </style>
 
 <div class="space-y-4">
@@ -139,6 +197,128 @@
     </div>
   </section>
 
+  <!-- Advanced Filter & Table Section -->
+  <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-sm font-semibold text-slate-100">📊 Detaljni Pregled Signala</h3>
+      <div class="flex items-center gap-2">
+        <button onclick="toggleAdvancedFilters()" class="px-3 py-1 text-xs bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded hover:bg-blue-500/20 transition">
+          ⚙️ Filteri
+        </button>
+        <button onclick="clearAllFilters()" class="px-3 py-1 text-xs bg-slate-700 text-slate-300 rounded hover:bg-slate-600 transition">
+          ↺ Reset
+        </button>
+      </div>
+    </div>
+
+    <!-- Advanced Filters (Togglable) -->
+    <div id="advanced-filters" class="filter-controls mb-4 hidden">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Search by Symbol -->
+        <div class="filter-group">
+          <label>🔍 Simbol</label>
+          <input type="text" id="filter-symbol" class="filter-input" placeholder="npr. BTCUSDT" onkeyup="applyFilters()">
+        </div>
+
+        <!-- Filter by Side -->
+        <div class="filter-group">
+          <label>📈 Tip Signala</label>
+          <select id="filter-side" class="filter-input" onchange="applyFilters()">
+            <option value="">Svi</option>
+            <option value="LONG">LONG</option>
+            <option value="SHORT">SHORT</option>
+          </select>
+        </div>
+
+        <!-- Volatility Range -->
+        <div class="filter-group">
+          <label>📊 Volatilnost (%) min-max</label>
+          <div class="filter-range">
+            <input type="number" id="filter-vol-min" class="filter-input" placeholder="Min" step="0.01" onchange="applyFilters()">
+            <span>-</span>
+            <input type="number" id="filter-vol-max" class="filter-input" placeholder="Max" step="0.01" onchange="applyFilters()">
+          </div>
+        </div>
+
+        <!-- Velocity Range -->
+        <div class="filter-group">
+          <label>⚡ Velocity (%) min-max</label>
+          <div class="filter-range">
+            <input type="number" id="filter-vel-min" class="filter-input" placeholder="Min" step="0.0001" onchange="applyFilters()">
+            <span>-</span>
+            <input type="number" id="filter-vel-max" class="filter-input" placeholder="Max" step="0.01" onchange="applyFilters()">
+          </div>
+        </div>
+
+        <!-- Momentum Range -->
+        <div class="filter-group">
+          <label>💫 Momentum (%) min-max</label>
+          <div class="filter-range">
+            <input type="number" id="filter-mom-min" class="filter-input" placeholder="Min" step="0.01" onchange="applyFilters()">
+            <span>-</span>
+            <input type="number" id="filter-mom-max" class="filter-input" placeholder="Max" step="0.1" onchange="applyFilters()">
+          </div>
+        </div>
+
+        <!-- Imbalance Range -->
+        <div class="filter-group">
+          <label>⚖️ Imbalance min-max</label>
+          <div class="filter-range">
+            <input type="number" id="filter-imb-min" class="filter-input" placeholder="Min" step="0.01" onchange="applyFilters()">
+            <span>-</span>
+            <input type="number" id="filter-imb-max" class="filter-input" placeholder="Max" step="0.01" onchange="applyFilters()">
+          </div>
+        </div>
+
+        <!-- Confidence Range -->
+        <div class="filter-group">
+          <label>✅ Confidence (%) min-max</label>
+          <div class="filter-range">
+            <input type="number" id="filter-conf-min" class="filter-input" placeholder="Min" step="1" min="0" max="100" onchange="applyFilters()">
+            <span>-</span>
+            <input type="number" id="filter-conf-max" class="filter-input" placeholder="Max" step="1" min="0" max="100" onchange="applyFilters()">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Signals Table -->
+    <div class="overflow-x-auto">
+      <table class="signals-table" id="signals-table">
+        <thead>
+          <tr>
+            <th class="sortable w-20" onclick="sortTable('symbol')">Simbol</th>
+            <th class="sortable w-16" onclick="sortTable('side')">Tip</th>
+            <th class="sortable w-20" onclick="sortTable('confidence')">Confidence</th>
+            <th class="sortable w-20" onclick="sortTable('entry')">Entry</th>
+            <th class="sortable w-20" onclick="sortTable('tp')">TP</th>
+            <th class="sortable w-20" onclick="sortTable('sl')">SL</th>
+            <th class="sortable w-24" onclick="sortTable('volatility')">Vol (%)</th>
+            <th class="sortable w-20" onclick="sortTable('volumeSpike')">Spike (x)</th>
+            <th class="sortable w-20" onclick="sortTable('velocity')">Vel (%)</th>
+            <th class="sortable w-20" onclick="sortTable('momentum')">Mom (%)</th>
+            <th class="sortable w-24" onclick="sortTable('imbalance')">Imbalance</th>
+            <th class="sortable w-20" onclick="sortTable('spread')">Spread (%)</th>
+            <th class="sortable w-24" onclick="sortTable('quality')">Kvalitet</th>
+          </tr>
+        </thead>
+        <tbody id="signals-tbody">
+          <tr>
+            <td colspan="13" class="text-center py-8 text-slate-500">
+              🔍 Učitavanje signala...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Table Info -->
+    <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+      <span id="table-info">0 signala</span>
+      <span>Klikni na kolonu za sortiranje ↕</span>
+    </div>
+  </section>
+
   <!-- Filter Status -->
   <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
     <h3 class="text-sm font-semibold text-slate-100 mb-3">📋 Aktivni Filteri</h3>
@@ -176,7 +356,7 @@
     </div>
   </section>
 
-  <!-- Signals List -->
+  <!-- Signals List (Card View) -->
   <section class="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
     <div class="flex items-center justify-between mb-4">
       <h3 class="text-sm font-semibold text-slate-100">🎯 Detektovani Signali</h3>
@@ -246,7 +426,188 @@ function fmt(num) {
   return Number(num.toFixed(precision));
 }
 
-// Render signal card
+// =============== ADVANCED TABLE FUNCTIONS ===============
+
+// Calculate signal quality score
+function getSignalQuality(signal) {
+  let score = 0;
+  let qualityLevel = 'poor';
+
+  // Strong velocity
+  if (signal.velocity > 1) score += 3;
+  else if (signal.velocity > 0.5) score += 2;
+  else if (signal.velocity > 0.05) score += 1;
+
+  // Strong volatility
+  if (signal.volatility > 5) score += 3;
+  else if (signal.volatility > 1) score += 2;
+  else if (signal.volatility > 0.15) score += 1;
+
+  // Strong volume spike
+  if (signal.volumeSpike > 3) score += 2;
+  else if (signal.volumeSpike > 1.5) score += 1;
+
+  // Strong momentum
+  if (signal.momentum > 0.5) score += 2;
+  else if (signal.momentum > 0.1) score += 1;
+
+  // Determine quality level
+  if (score >= 8) qualityLevel = 'excellent';
+  else if (score >= 5) qualityLevel = 'good';
+  else if (score >= 2) qualityLevel = 'fair';
+
+  return { score, qualityLevel };
+}
+
+// Toggle filter panel
+function toggleAdvancedFilters() {
+  const filters = document.getElementById('advanced-filters');
+  filters.classList.toggle('hidden');
+}
+
+// Clear all filters
+function clearAllFilters() {
+  document.getElementById('filter-symbol').value = '';
+  document.getElementById('filter-side').value = '';
+  document.getElementById('filter-vol-min').value = '';
+  document.getElementById('filter-vol-max').value = '';
+  document.getElementById('filter-vel-min').value = '';
+  document.getElementById('filter-vel-max').value = '';
+  document.getElementById('filter-mom-min').value = '';
+  document.getElementById('filter-mom-max').value = '';
+  document.getElementById('filter-imb-min').value = '';
+  document.getElementById('filter-imb-max').value = '';
+  document.getElementById('filter-conf-min').value = '';
+  document.getElementById('filter-conf-max').value = '';
+  applyFilters();
+}
+
+// Apply filters and render table
+function applyFilters() {
+  if (!scannerData || !scannerData.signals) return;
+
+  const symbol = document.getElementById('filter-symbol').value.toUpperCase();
+  const side = document.getElementById('filter-side').value;
+  const volMin = parseFloat(document.getElementById('filter-vol-min').value) || 0;
+  const volMax = parseFloat(document.getElementById('filter-vol-max').value) || 100;
+  const velMin = parseFloat(document.getElementById('filter-vel-min').value) || 0;
+  const velMax = parseFloat(document.getElementById('filter-vel-max').value) || 1000;
+  const momMin = parseFloat(document.getElementById('filter-mom-min').value) || 0;
+  const momMax = parseFloat(document.getElementById('filter-mom-max').value) || 1000;
+  const imbMin = parseFloat(document.getElementById('filter-imb-min').value) || 0;
+  const imbMax = parseFloat(document.getElementById('filter-imb-max').value) || 10;
+  const confMin = parseFloat(document.getElementById('filter-conf-min').value) || 0;
+  const confMax = parseFloat(document.getElementById('filter-conf-max').value) || 100;
+
+  // Filter signals
+  let filtered = scannerData.signals.filter(signal => {
+    if (symbol && !signal.symbol.includes(symbol)) return false;
+    if (side && signal.side !== side) return false;
+    if (signal.volatility < volMin || signal.volatility > volMax) return false;
+    if (signal.velocity < velMin || signal.velocity > velMax) return false;
+    if (signal.momentum < momMin || signal.momentum > momMax) return false;
+    if (signal.imbalance < imbMin || signal.imbalance > imbMax) return false;
+    if (signal.confidence < confMin || signal.confidence > confMax) return false;
+    return true;
+  });
+
+  // Render filtered signals
+  renderSignalsTable(filtered);
+}
+
+// Sort table by column
+let currentSort = { column: 'symbol', direction: 'asc' };
+function sortTable(column) {
+  const headers = document.querySelectorAll('.signals-table th.sortable');
+  headers.forEach(h => h.classList.remove('sorted-asc', 'sorted-desc'));
+
+  if (currentSort.column === column) {
+    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort.column = column;
+    currentSort.direction = 'asc';
+  }
+
+  const header = Array.from(headers).find(h => h.textContent.toLowerCase().includes(column.toLowerCase()));
+  if (header) {
+    header.classList.add(currentSort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+  }
+
+  applyFilters();
+}
+
+// Render signals in table
+function renderSignalsTable(signals) {
+  const tbody = document.getElementById('signals-tbody');
+
+  if (!signals || signals.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="13" class="text-center py-8 text-slate-500">
+          ⏳ Nema signala koji zadovoljavaju filtre
+        </td>
+      </tr>
+    `;
+    document.getElementById('table-info').textContent = '0 signala';
+    return;
+  }
+
+  // Sort signals
+  const sorted = [...signals].sort((a, b) => {
+    let aVal = a[currentSort.column];
+    let bVal = b[currentSort.column];
+
+    if (aVal === null || aVal === undefined) aVal = '';
+    if (bVal === null || bVal === undefined) bVal = '';
+
+    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+    return currentSort.direction === 'asc' ? comparison : -comparison;
+  });
+
+  // Render rows
+  tbody.innerHTML = sorted.map(signal => {
+    const { qualityLevel } = getSignalQuality(signal);
+    const qualityEmoji = {
+      'excellent': '⭐⭐⭐',
+      'good': '⭐⭐',
+      'fair': '⭐',
+      'poor': '○'
+    }[qualityLevel];
+
+    return `
+      <tr>
+        <td class="font-semibold text-blue-400">${signal.symbol}</td>
+        <td>
+          <span class="px-2 py-1 rounded text-xs font-semibold ${
+            signal.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'
+          }">
+            ${signal.side}
+          </span>
+        </td>
+        <td class="font-semibold text-emerald-400">${signal.confidence}%</td>
+        <td class="font-mono text-sm">$${fmt(signal.entry)}</td>
+        <td class="font-mono text-sm text-emerald-400">$${fmt(signal.takeProfit)}</td>
+        <td class="font-mono text-sm text-red-400">$${fmt(signal.stopLoss)}</td>
+        <td class="${signal.volatility >= 0.15 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.volatility)}%</td>
+        <td class="${signal.volumeSpike >= 1.5 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.volumeSpike)}x</td>
+        <td class="${signal.velocity >= 0.05 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.velocity)}%</td>
+        <td class="${signal.momentum >= 0.1 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.momentum)}%</td>
+        <td class="${(signal.side === 'LONG' && signal.imbalance >= 1.05) || (signal.side === 'SHORT' && signal.imbalance <= 0.95) ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.imbalance)}</td>
+        <td class="${signal.spread <= 0.1 ? 'text-green-400' : 'text-slate-400'} font-semibold">${fmt(signal.spread)}%</td>
+        <td>
+          <span class="quality-badge quality-${qualityLevel}">
+            ${qualityEmoji}
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('table-info').textContent = `${sorted.length} signala`;
+}
+
+// ============================================================
+
 function renderSignal(signal) {
   const passCount = [
     signal.volatility >= 0.15,
@@ -449,6 +810,9 @@ function updateUI(data) {
       </div>
     `;
   }
+
+  // Update advanced table view with filters applied
+  applyFilters();
 }
 
 // Show error message
