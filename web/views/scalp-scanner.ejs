@@ -1452,7 +1452,10 @@ function updateDynamicEntry() {
     // ========================================
     // WIN RATE CALCULATION
     // ========================================
-    const riskRewardRatio = (tp - entry) / Math.abs(entry - sl);
+    // R/R Ratio = SL Distance / TP Distance
+    const tpDistance = Math.abs(tp - entry);
+    const slDistance = Math.abs(entry - sl);
+    const riskRewardRatio = slDistance / tpDistance;
     const positionSize = POSITION_SIZE; // $18 × 3x leverage (from EXECUTION_CONFIG)
 
     // Calculate win rate based on multiple factors
