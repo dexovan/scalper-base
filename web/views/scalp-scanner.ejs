@@ -1117,7 +1117,16 @@ async function loadMarketData(symbol) {
     const data = await response.json();
 
     console.log('🔍 Bybit API Response:', data);
-    console.log('📊 Ticker Data:', data.result?.list[0]);
+    console.log('📊 Full Ticker Data:', data.result?.list[0]);
+
+    const ticker = data.result?.list[0];
+    if (ticker) {
+      console.log(`lastPrice type: ${typeof ticker.lastPrice}, value: "${ticker.lastPrice}"`);
+      console.log(`highPrice24h type: ${typeof ticker.highPrice24h}, value: "${ticker.highPrice24h}"`);
+      console.log(`lowPrice24h type: ${typeof ticker.lowPrice24h}, value: "${ticker.lowPrice24h}"`);
+      console.log(`indexPrice type: ${typeof ticker.indexPrice}, value: "${ticker.indexPrice}"`);
+      console.log(`markPrice type: ${typeof ticker.markPrice}, value: "${ticker.markPrice}"`);
+    }
 
     if (data.retCode !== 0 || !data.result || !data.result.list || data.result.list.length === 0) {
       document.getElementById('modal-market-data').innerHTML = `
@@ -1129,38 +1138,23 @@ async function loadMarketData(symbol) {
     }
 
     const ticker = data.result.list[0];
+    console.log('📊 Raw ticker lastPrice:', ticker.lastPrice, typeof ticker.lastPrice);
 
-    // Keep Bybit's native precision - don't modify
-    // But ensure minimum decimals for consistency
-    const formatPrice = (p) => {
-      const str = String(p);
-      const num = parseFloat(p);
-
-      console.log(`💰 Formatting ${symbol} price: input="${str}" | parsed="${num}"`);
-
-      // If string already has good precision, use it
-      if (str.includes('.')) {
-        const parts = str.split('.');
-        if (parts[1].length >= 2) {
-          const result = num.toFixed(Math.min(8, parts[1].length));
-          console.log(`   → Using native precision: ${result}`);
-          return result;
-        }
+    // Use price string directly from Bybit - it's already formatted correctly
+    const formatPrice = (priceValue) => {
+      // If it's already a string, use it as-is (Bybit's native precision)
+      if (typeof priceValue === 'string') {
+        console.log(`💰 Using string price directly: ${priceValue}`);
+        return priceValue;
       }
 
-      // Fallback: determine based on price value
-      let result;
-      if (num < 0.001) result = num.toFixed(8);
-      else if (num < 0.01) result = num.toFixed(8);
-      else if (num < 0.1) result = num.toFixed(6);
-      else if (num < 1) result = num.toFixed(4);
-      else if (num < 10) result = num.toFixed(3);
-      else if (num < 100) result = num.toFixed(2);
-      else result = num.toFixed(2);
+      // If it's a number, convert to string and keep all decimals
+      const str = String(priceValue);
+      console.log(`💰 Formatted number to string: ${str}`);
+      return str;
+    };
 
-      console.log(`   → Using fallback: ${result}`);
-      return result;
-    };    const marketHTML = `
+    const marketHTML = `
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
         <!-- Current Price -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
