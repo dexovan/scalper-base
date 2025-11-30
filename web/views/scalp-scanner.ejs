@@ -1322,6 +1322,21 @@ async function loadMarketDataQuick(symbol) {
   }
 }
 
+// ========================================
+// EXECUTION CONFIG CONSTANTS
+// (Synced from bybitOrderExecutor.js)
+// ========================================
+const EXECUTION_CONFIG = {
+  leverage: 3,
+  marginPerTrade: 18,
+  tpDistance: 0.0035,   // 0.35% TP
+  slDistance: 0.0030,   // 0.30% SL
+  minMomentumPercent: 50 // 50% minimum momentum
+};
+
+// Calculated position size
+const POSITION_SIZE = EXECUTION_CONFIG.marginPerTrade * EXECUTION_CONFIG.leverage; // $54
+
 // Dynamic entry calculation - updates every 500ms
 function updateDynamicEntry() {
   if (!window.modalState.support || !window.modalState.resistance || !window.modalState.atr) {
@@ -1433,6 +1448,198 @@ function updateDynamicEntry() {
     updateElement('[data-dynamic="profit"]', '$' + profitPotential.toFixed(8));
     updateElement('[data-dynamic="roi"]', profitPercent + '%');
     updateElement('[data-dynamic="status"]', entryStatus);
+
+    // ========================================
+    // WIN RATE CALCULATION
+    // ========================================
+    const riskRewardRatio = (tp - entry) / Math.abs(entry - sl);
+    const positionSize = POSITION_SIZE; // $18 × 3x leverage (from EXECUTION_CONFIG)
+
+    // Calculate win rate based on multiple factors
+    let winRate = 50; // Baseline 50%
+    let factors = {};
+
+    // Factor 1: Risk/Reward Ratio (±25 points)
+    if (riskRewardRatio > 2) {
+      factors.rrRatio = 25;
+    } else if (riskRewardRatio > 1) {
+      factors.rrRatio = 15;
+    } else if (riskRewardRatio > 0.5) {
+      factors.rrRatio = 5;
+    } else {
+      factors.rrRatio = -15;
+    }
+
+    // Factor 2: Entry Position vs Support/Resistance (±20 points)
+    let entryVsSR;
+    if (isBullish) {
+      entryVsSR = (entry - support) / (resistance - support);
+    } else {
+      entryVsSR = (resistance - entry) / (resistance - support);
+    }
+
+    if (entryVsSR > 0.7) {
+      factors.entryPosition = -20; // Bad entry (too close to resistance for LONG, support for SHORT)
+    } else if (entryVsSR > 0.5) {
+      factors.entryPosition = 0;
+    } else if (entryVsSR > 0.3) {
+      factors.entryPosition = 15;
+    } else {
+      factors.entryPosition = 20; // Good entry (close to support for LONG, resistance for SHORT)
+    }
+
+    // Factor 3: Trend Strength (±25 points)
+    const trendStrength = window.modalState.trendStrength || 50;
+    if (trendStrength > 70) {
+      factors.trendStrength = 25;
+    } else if (trendStrength > 60) {
+      factors.trendStrength = 15;
+    } else if (trendStrength > 50) {
+      factors.trendStrength = 5;
+    } else {
+      factors.trendStrength = -20;
+    }
+
+    // Factor 4: Imbalance Alignment (±15 points)
+    // This would come from live data
+    factors.imbalance = isBullish ? 10 : -5; // Simplified - can be enhanced
+
+    // Factor 5: Volatility (±15 points)
+    // Lower volatility = more predictable = better
+    // Higher volatility = more risk = worse
+    const atrPercent = (atr / currentPrice) * 100;
+    if (atrPercent < 0.3) {
+      factors.volatility = 15; // Very low vol - predictable
+    } else if (atrPercent < 0.5) {
+      factors.volatility = 10;
+    } else if (atrPercent < 1.0) {
+      factors.volatility = 0;
+    } else {
+      factors.volatility = -10; // High vol - risky
+    }
+
+    // Factor 6: Momentum/Velocity (±20 points)
+    const priceMomentum = isBullish ? (currentPrice - entry) : (entry - currentPrice);
+    if (Math.abs(priceMomentum / entry) > 0.01) {
+      factors.momentum = 20; // Strong momentum
+    } else if (Math.abs(priceMomentum / entry) > 0.005) {
+      factors.momentum = 10;
+    } else if (Math.abs(priceMomentum / entry) > 0) {
+      factors.momentum = 5;
+    } else {
+      factors.momentum = -15; // Against trend
+    }
+
+    // Factor 7: Wall Status Validation (±20 points)
+    let wallStatus = window.modalState.wallAnalysis?.wallStatus || 'NO_DATA';
+    let wallConfidence = window.modalState.wallAnalysis?.confidenceScore || 0;
+
+    if (wallStatus === 'BROKEN') {
+      factors.wallStatus = 20 * (wallConfidence / 100);
+    } else if (wallStatus === 'ABSORBING') {
+      factors.wallStatus = 15 * (wallConfidence / 100);
+    } else if (wallStatus === 'STRONG') {
+      factors.wallStatus = -5 * (wallConfidence / 100);
+    } else {
+      factors.wallStatus = 0; // NO_DATA
+    }
+
+    // Calculate final win rate
+    winRate = 50 +
+      (factors.rrRatio || 0) +
+      (factors.entryPosition || 0) +
+      (factors.trendStrength || 0) +
+      (factors.imbalance || 0) +
+      (factors.volatility || 0) +
+      (factors.momentum || 0) +
+      (factors.wallStatus || 0);
+
+    // Clamp between 20% and 95%
+    winRate = Math.max(20, Math.min(95, winRate));
+
+    // Calculate Expected Value
+    const profitIfWin = parseFloat(profitPotential);
+    const lossIfLose = Math.abs(parseFloat(sl) - parseFloat(entry));
+    const expectedValue = (winRate / 100) * profitIfWin - ((100 - winRate) / 100) * lossIfLose;
+    const expectedValuePercent = ((expectedValue / positionSize) * 100).toFixed(2);
+
+    // Determine Risk Level
+    let riskLevel = 'MODERATE';
+    if (winRate > 70) {
+      riskLevel = '✅ NISKA RISK';
+    } else if (winRate > 60) {
+      riskLevel = '⚠️ SREDNJA RISK';
+    } else if (winRate > 50) {
+      riskLevel = '⚠️ POVEĆANA RISK';
+    } else {
+      riskLevel = '❌ VISOKA RISK';
+    }
+
+    // Update win rate display
+    updateElement('[data-dynamic="win-rate"]', Math.round(winRate) + '%');
+    updateElement('[data-dynamic="expected-value"]', expectedValuePercent + '%');
+    updateElement('[data-dynamic="risk-level"]', riskLevel);
+
+    // Show breakdown
+    const breakdownEl = document.querySelector('[data-dynamic="win-rate-breakdown"]');
+    if (breakdownEl) {
+      breakdownEl.style.display = 'block';
+
+      const updateBreakdown = (selector, text) => {
+        const el = breakdownEl.querySelector(selector);
+        if (el) el.textContent = text;
+      };
+
+      updateBreakdown('[data-breakdown-item="rr-ratio"]',
+        `Risk/Reward Ratio: ${riskRewardRatio.toFixed(2)} (${factors.rrRatio > 0 ? '+' : ''}${factors.rrRatio} pts)`);
+      updateBreakdown('[data-breakdown-item="entry-position"]',
+        `Entry Position: ${(entryVsSR * 100).toFixed(0)}% (${factors.entryPosition > 0 ? '+' : ''}${factors.entryPosition} pts)`);
+      updateBreakdown('[data-breakdown-item="trend-strength"]',
+        `Trend Strength: ${trendStrength}% (${factors.trendStrength > 0 ? '+' : ''}${factors.trendStrength} pts)`);
+      updateBreakdown('[data-breakdown-item="imbalance"]',
+        `Imbalance Alignment: ${factors.imbalance > 0 ? '✅' : '❌'} (${factors.imbalance > 0 ? '+' : ''}${factors.imbalance} pts)`);
+      updateBreakdown('[data-breakdown-item="volatility"]',
+        `Volatility: ${atrPercent.toFixed(3)}% (${factors.volatility > 0 ? '+' : ''}${factors.volatility} pts)`);
+      updateBreakdown('[data-breakdown-item="momentum"]',
+        `Momentum: ${(Math.abs(priceMomentum / entry) * 100).toFixed(2)}% (${factors.momentum > 0 ? '+' : ''}${factors.momentum} pts)`);
+      updateBreakdown('[data-breakdown-item="wall-status"]',
+        `Wall Status: ${wallStatus} ${wallConfidence}% (${factors.wallStatus > 0 ? '+' : ''}${factors.wallStatus.toFixed(0)} pts)`);
+    }
+
+    // ========================================
+    // END WIN RATE CALCULATION
+    // ========================================
+
+    // ========================================
+    // POSITION SIZING CALCULATOR
+    // ========================================
+    // Use POSITION_SIZE constant from execution config
+    const positionSizeForCalc = POSITION_SIZE; // $18 × 3x leverage = $54
+
+    // Calculate % price change needed for specific profit targets
+    const calcPricePercentNeeded = (profitTarget) => {
+      return (profitTarget / positionSizeForCalc) * 100;
+    };
+
+    const percent1Dollar = calcPricePercentNeeded(1);
+    const percent5Dollar = calcPricePercentNeeded(5);
+    const percent10Dollar = calcPricePercentNeeded(10);
+    const percentTP = ((tp - entry) / entry) * 100;
+
+    // Update position calculator display
+    const updateCalc = (selector, text) => {
+      const el = document.querySelector(selector);
+      if (el) el.textContent = text;
+    };
+
+    updateCalc('[data-calc="profit-1"]', percent1Dollar.toFixed(3) + '%');
+    updateCalc('[data-calc="profit-5"]', percent5Dollar.toFixed(3) + '%');
+    updateCalc('[data-calc="profit-10"]', percent10Dollar.toFixed(3) + '%');
+    updateCalc('[data-calc="profit-tp"]', percentTP.toFixed(3) + '%');
+
+    // ========================================
+    // END POSITION SIZING CALCULATOR
+    // ========================================
 
     // Update wall analysis display (if available)
     if (window.modalState.wallAnalysis) {
@@ -1749,10 +1956,93 @@ async function loadCandleData(symbol) {
               <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">ROI %</div>
               <div data-dynamic="roi" style="font-size: 1.25rem; font-weight: bold; color: #06b6d4; font-family: monospace;">${analysis.profitPercent}%</div>
             </div>
+
+            <!-- Win Rate Probability (Dynamic) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #8b5cf6; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">🎲 Win Rate Šansa</div>
+              <div data-dynamic="win-rate" style="font-size: 1.25rem; font-weight: bold; color: #8b5cf6; font-family: monospace;">--</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Osnovna na svim faktorima</div>
+            </div>
+
+            <!-- Expected Value (Dynamic) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #ec4899; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">📊 Expected Value</div>
+              <div data-dynamic="expected-value" style="font-size: 1.25rem; font-weight: bold; color: #ec4899; font-family: monospace;">--</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Prosečna očekivana vrijednost</div>
+            </div>
+
+            <!-- Risk Level (Dynamic) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #06b6d4; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">⚠️ Risk Level</div>
+              <div data-dynamic="risk-level" style="font-size: 1.1rem; font-weight: bold; color: #06b6d4; font-family: monospace;">--</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Procjena rizika</div>
+            </div>
+
+            <!-- Position Sizing (Dynamic) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #10b981; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">💰 Pozicija Veličina</div>
+              <div data-dynamic="position-size" style="font-size: 1.1rem; font-weight: bold; color: #10b981; font-family: monospace;">$54 (18×3x)</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">$18 margin × 3x leverage</div>
+            </div>
+          </div>
+
+          <!-- Win Rate Breakdown (Dynamic) -->
+          <div data-dynamic="win-rate-breakdown" style="background-color: rgba(139, 92, 246, 0.1); border: 1px solid #8b5cf6; border-radius: 0.5rem; padding: 1rem; margin-top: 1.5rem; display: none;">
+            <div style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
+              <strong>📊 Kako se Win Rate Računa:</strong><br>
+              <div style="margin-top: 0.75rem; font-size: 0.8rem;">
+                <div data-breakdown-item="rr-ratio" style="margin-bottom: 0.5rem;">Risk/Reward Ratio: --</div>
+                <div data-breakdown-item="entry-position" style="margin-bottom: 0.5rem;">Entry Position: --</div>
+                <div data-breakdown-item="trend-strength" style="margin-bottom: 0.5rem;">Trend Strength: --</div>
+                <div data-breakdown-item="imbalance" style="margin-bottom: 0.5rem;">Imbalance Alignment: --</div>
+                <div data-breakdown-item="volatility" style="margin-bottom: 0.5rem;">Volatility: --</div>
+                <div data-breakdown-item="momentum" style="margin-bottom: 0.5rem;">Momentum: --</div>
+                <div data-breakdown-item="wall-status" style="margin-bottom: 0;">Wall Status: --</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Position Sizing Calculator (Dynamic) -->
+          <div data-dynamic="position-calculator" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(6, 182, 212, 0.1) 100%); border: 2px solid #10b981; border-radius: 0.5rem; padding: 1rem; margin-top: 1.5rem;">
+            <div style="font-size: 0.95rem; color: #f1f5f9; font-weight: bold; margin-bottom: 1rem;">💰 Koliko % Trebam Pomaknuti Cijenu za Profit?</div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
+              <!-- For $1 profit -->
+              <div style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #10b981; border-radius: 0.5rem; padding: 1rem; text-align: center;">
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem;">Za <strong>$1</strong> Profit</div>
+                <div data-calc="profit-1" style="font-size: 1.5rem; font-weight: bold; color: #10b981; font-family: monospace;">--</div>
+                <div style="font-size: 0.7rem; color: #cbd5e1; margin-top: 0.5rem;">% Cijena Gore (LONG) / Dolje (SHORT)</div>
+              </div>
+
+              <!-- For $5 profit -->
+              <div style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #06b6d4; border-radius: 0.5rem; padding: 1rem; text-align: center;">
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem;">Za <strong>$5</strong> Profit</div>
+                <div data-calc="profit-5" style="font-size: 1.5rem; font-weight: bold; color: #06b6d4; font-family: monospace;">--</div>
+                <div style="font-size: 0.7rem; color: #cbd5e1; margin-top: 0.5rem;">% Cijena Gore (LONG) / Dolje (SHORT)</div>
+              </div>
+
+              <!-- For $10 profit -->
+              <div style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #f59e0b; border-radius: 0.5rem; padding: 1rem; text-align: center;">
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem;">Za <strong>$10</strong> Profit</div>
+                <div data-calc="profit-10" style="font-size: 1.5rem; font-weight: bold; color: #f59e0b; font-family: monospace;">--</div>
+                <div style="font-size: 0.7rem; color: #cbd5e1; margin-top: 0.5rem;">% Cijena Gore (LONG) / Dolje (SHORT)</div>
+              </div>
+
+              <!-- For full TP -->
+              <div style="background-color: rgba(15, 23, 42, 0.8); border: 1px solid #8b5cf6; border-radius: 0.5rem; padding: 1rem; text-align: center;">
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem;">Za <strong>TP</strong> Profit</div>
+                <div data-calc="profit-tp" style="font-size: 1.5rem; font-weight: bold; color: #8b5cf6; font-family: monospace;">--</div>
+                <div style="font-size: 0.7rem; color: #cbd5e1; margin-top: 0.5rem;">% Cijena do Take Profit-a</div>
+              </div>
+            </div>
+
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 0.75rem; margin-top: 1rem; font-size: 0.8rem; color: #cbd5e1;">
+              <strong>📝 Kako čitati:</strong> Ako vidiš <strong>+0.18%</strong> - trebam da cijena poraste za samo 0.18% (LONG) ili padne za 0.18% (SHORT) da bih zaradio $1. Što je manji %, to je lakši target! 🎯
+            </div>
           </div>
 
           <!-- Trading Strategy Explanation -->
-          <div style="background-color: rgba(15, 23, 42, 0.4); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
+          <div style="background-color: rgba(15, 23, 42, 0.4); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; margin-top: 1rem;">
             <div style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
               <div style="margin-bottom: 0.75rem;">
                 <strong>📌 Strategija:</strong><br>

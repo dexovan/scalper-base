@@ -111,6 +111,9 @@ const EXECUTION_CONFIG = {
   autoCloseOnTpslFailure: true
 };
 
+// Export EXECUTION_CONFIG for use in other modules (scanner, win rate calculator, etc.)
+export { EXECUTION_CONFIG };
+
 console.log(`🟣 [EXECUTOR] MODE: ${EXECUTION_CONFIG.entryMode}`);
 console.log(`⏱️  [EXECUTOR] Maker wait: ${EXECUTION_CONFIG.makerFirst.fallbackDelayMs}ms`);
 console.log(`📊 [EXECUTOR] Timing: ${EXECUTION_CONFIG.pullbackCheck.recheckDelayMs}ms delay, ${EXECUTION_CONFIG.pullbackCheck.minInitialMomentum * 100}% momentum, ${EXECUTION_CONFIG.pullbackCheck.longTopPercentThreshold * 100}% range`);
