@@ -1343,8 +1343,12 @@ function updateDynamicEntry() {
     let entry, tp, sl, profitPotential, profitPercent, entryStatus;
 
     if (isBearish) {
-      // SHORT strategy
-      entry = resistance - (atr * 0.3); // Entry blizu resistance-a
+      // SHORT strategy - Follow price DOWN
+      // Entry se pomjera dolje kako cijena pada
+      const minEntryPrice = support - atr; // Ne smije ići ispod ovoga
+      entry = Math.max(resistance - (atr * 0.3), Math.min(currentPrice + (atr * 0.15), resistance));
+      entry = Math.max(entry, minEntryPrice); // Osiguraj minimum
+
       tp = support;
       sl = resistance + atr;
       profitPotential = entry - tp;
@@ -1354,30 +1358,43 @@ function updateDynamicEntry() {
       if (currentPrice > resistance * 0.95) {
         entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu resistance-a)';
       } else if (currentPrice > resistance * 0.90) {
-        entryStatus = '✅ DOBAR ENTRY ZONE';
+        entryStatus = '✅ DOBAR ENTRY ZONE - ULAZAK SADA!';
+      } else if (currentPrice > resistance * 0.80) {
+        entryStatus = '⏳ Dobro - cijena pada, sljedeća šansa za ulazak';
       } else {
-        entryStatus = '⏳ ČEKAJ POVRATAK (Cijena je pala previše)';
+        entryStatus = '⏳ ČEKAJ - Cijena je pala previše, pullback dolazi';
       }
     } else if (isBullish) {
-      // LONG strategy
-      entry = support + (atr * 0.3); // Entry blizu support-a
+      // LONG strategy - Follow price UP
+      // Entry se pomjera gore kako cijena raste, prateći je sa manjim offset-om
+      const maxEntryPrice = resistance; // Ne smije ići iznad ovoga
+      entry = Math.min(support + (atr * 0.3) + (currentPrice - support) * 0.25, maxEntryPrice);
+      entry = Math.max(entry, support); // Osiguraj minimum (support)
+
       tp = resistance;
       sl = support - atr;
       profitPotential = tp - entry;
       profitPercent = ((profitPotential / entry) * 100).toFixed(2);
 
-      // Status message
-      if (currentPrice < support * 1.05) {
-        entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu support-a)';
+      // Status message - prati gdje je cijena u odnosu na entry
+      const priceVsEntry = ((currentPrice - entry) / entry * 100).toFixed(2);
+
+      if (currentPrice < support * 1.02) {
+        entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu support-a) - ULAZAK SADA!';
+      } else if (currentPrice < support * 1.05) {
+        entryStatus = '✅ DOBAR ENTRY ZONE - Možeš ući';
       } else if (currentPrice < support * 1.10) {
-        entryStatus = '✅ DOBAR ENTRY ZONE';
+        entryStatus = `⏳ Čekaj pullback... (Cijena je ${priceVsEntry}% iznad entry-a)`;
+      } else if (currentPrice < resistance * 0.98) {
+        entryStatus = `📈 Trend je jak! Praćenje cijene... (${priceVsEntry}% iznad entry-a)`;
       } else {
-        entryStatus = '⏳ ČEKAJ PULLBACK (Cijena je previsoka)';
+        entryStatus = '⚠️ Blizu resistance-a - Razmisli o izlasku ili lock-in profit';
       }
     } else {
       // NEUTRAL
       entry = currentPrice;
       tp = resistance;
+
       sl = support;
       profitPotential = 0;
       profitPercent = 0;
