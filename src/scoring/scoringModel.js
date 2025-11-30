@@ -312,9 +312,10 @@ function computeNewsPenalty(symbol, features) {
 export function computeBaseScores(symbol, features, wallAnalysis, weights) {
   // Handle legacy calls (wallAnalysis might be weights if called with old signature)
   let wallAnalysisStatus = wallAnalysis;
+  let weightsConfig = weights;
 
   if (wallAnalysisStatus && typeof wallAnalysisStatus === 'object' && wallAnalysisStatus.orderbook) {
-    weights = wallAnalysisStatus;
+    weightsConfig = wallAnalysisStatus;
     wallAnalysisStatus = { status: "NO_DATA" };
   }
 
@@ -324,7 +325,7 @@ export function computeBaseScores(symbol, features, wallAnalysis, weights) {
   }
 
   // Default weights (can be overridden by config)
-  const w = weights || {
+  const w = weightsConfig || {
     orderbook: 0.20,
     flow: 0.25,
     walls: 0.15,
