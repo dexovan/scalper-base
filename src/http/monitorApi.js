@@ -2748,6 +2748,105 @@ export function startMonitorApiServer(port = 8090) {
   });
 
   // ============================================================
+  // MANUAL TRADE EXECUTION
+  // POST /api/manual-trade
+  // Allows manual trade entry with calculated parameters from scanner
+  // ============================================================
+  app.post("/api/manual-trade", async (req, res) => {
+    try {
+      const { symbol, direction, entry, tp, sl, initialMomentum, manualTrade } = req.body;
+
+      console.log(`\n🎯 [API/MANUAL-TRADE] Manual trade request: ${symbol} ${direction}`);
+      console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl}`);
+      console.log(`   Manual Trade Flag: ${manualTrade}`);
+
+      // ===== VALIDATION =====
+      if (!symbol || !direction || !entry || !tp || !sl) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing required parameters",
+          required: ["symbol", "direction", "entry", "tp", "sl"]
+        });
+      }
+
+      // Check if direction is valid
+      if (!["LONG", "SHORT"].includes(direction)) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid direction (must be LONG or SHORT)"
+        });
+      }
+
+      // ===== DUPLICATE PREVENTION =====
+      console.log(`🔍 [API/MANUAL-TRADE] Checking for existing positions...`);
+      const activePositions = await getActivePositions();
+      console.log(`📊 [API/MANUAL-TRADE] Active positions count: ${activePositions.length}`);
+
+      const existingPosition = activePositions.find(p => p.symbol === symbol);
+
+      if (existingPosition) {
+        console.log(`⚠️  [API/MANUAL-TRADE] Duplicate prevented: ${symbol} already in position`);
+        return res.json({
+          ok: false,
+          error: `Already in position for ${symbol}. Close existing position first.`,
+          existingPosition
+        });
+      }
+
+      // ===== EXECUTE TRADE =====
+      // Create signal object compatible with executeTrade function
+      const signal = {
+        symbol,
+        direction,
+        entry: parseFloat(entry),
+        tp: parseFloat(tp),
+        sl: parseFloat(sl),
+        confidence: 0,
+        entryZone: {
+          min: parseFloat(entry) * 0.998,
+          ideal: parseFloat(entry),
+          max: parseFloat(entry) * 1.002
+        },
+        initialMomentum: initialMomentum || 0,
+        manualTrade: true  // Flag to indicate manual execution
+      };
+
+      console.log(`🚀 [API/MANUAL-TRADE] Calling executeTrade for ${symbol}...`);
+      console.log(`   Signal object:`, JSON.stringify(signal, null, 2));
+
+      const result = await executeTrade(signal);
+
+      if (result.success) {
+        console.log(`✅ [API/MANUAL-TRADE] Trade executed: ${symbol} ${direction}`);
+        return res.json({
+          ok: true,
+          message: `Manuelni trade uspešan! ${symbol} ${direction} na ulaznoj ceni $${entry}`,
+          ...result,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        const errorMsg = result.error || result.reason || 'Unknown error';
+        console.log(`❌ [API/MANUAL-TRADE] Trade failed: ${errorMsg}`);
+        return res.json({
+          ok: false,
+          error: errorMsg,
+          message: `Manuelni trade neuspešan: ${errorMsg}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+    } catch (error) {
+      console.error("❌ [API/MANUAL-TRADE] Error:", error);
+      res.status(500).json({
+        ok: false,
+        error: error.message,
+        message: `Greška pri izvršenju manuelnog trade-a: ${error.message}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ============================================================
   // START SERVER
   // ============================================================
   app.listen(port, "0.0.0.0", async () => {

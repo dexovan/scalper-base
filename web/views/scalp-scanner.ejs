@@ -2066,6 +2066,33 @@ async function loadCandleData(symbol) {
               </div>
             </div>
           </div>
+
+          <!-- Manual Trade Action Button -->
+          <div style="margin-top: 1.5rem; text-align: center;">
+            <button
+              id="manual-trade-btn"
+              onclick="handleManualTrade()"
+              style="
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                color: white;
+                font-weight: bold;
+                padding: 1rem 2rem;
+                border: none;
+                border-radius: 0.5rem;
+                font-size: 1rem;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+              "
+              onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(16, 185, 129, 0.4)';"
+              onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(16, 185, 129, 0.3)';"
+            >
+              🚀 Idi u Trejd
+            </button>
+            <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 0.75rem;">
+              Kliknite da uđete u manuelni trade sa izračunatim parametrima
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -2306,6 +2333,111 @@ function loadQualityAssessment(signal) {
   }).join('');
 
   document.getElementById('modal-quality-assessment').innerHTML = assessment;
+}
+
+// Manual Trade Handler - Executes trade with calculated parameters
+async function handleManualTrade() {
+  try {
+    // Get current modal state with all calculated data
+    const modalState = window.modalState || {};
+
+    if (!modalState.symbol) {
+      alert('❌ Greška: Nema simbola. Odaberite tržište prvo.');
+      return;
+    }
+
+    if (!modalState.tradeType || modalState.tradeType === 'ČEKAJ ➡️') {
+      alert('⚠️ Čekaj signala: Trend nije dovoljno jasan. Nema trade preporuke.');
+      return;
+    }
+
+    // Determine direction from tradeType
+    const direction = modalState.tradeType === 'LONG 🔺' ? 'LONG' : 'SHORT';
+
+    // Construct trade signal with all calculated parameters
+    const tradeSignal = {
+      symbol: modalState.symbol,
+      direction: direction,
+      entry: parseFloat(modalState.entry || modalState.currentPrice),
+      tp: parseFloat(modalState.tp),
+      sl: parseFloat(modalState.sl),
+      initialMomentum: modalState.momentum || 0,
+      manualTrade: true,  // Flag to indicate this is manual trade
+      timestamp: new Date().toISOString()
+    };
+
+    // Validation
+    if (!tradeSignal.entry || !tradeSignal.tp || !tradeSignal.sl) {
+      alert('❌ Greška: Nedostaju TP ili SL vrednosti.');
+      return;
+    }
+
+    if (direction === 'LONG' && tradeSignal.tp <= tradeSignal.entry) {
+      alert('❌ LONG Trade: TP mora biti veći od ENTRY cene.');
+      return;
+    }
+
+    if (direction === 'SHORT' && tradeSignal.tp >= tradeSignal.entry) {
+      alert('❌ SHORT Trade: TP mora biti manji od ENTRY cene.');
+      return;
+    }
+
+    // Show confirmation dialog
+    const confirmation = confirm(
+      `🚀 POTVRDI MANUALNI TRADE\n\n` +
+      `Symbol: ${tradeSignal.symbol}\n` +
+      `Tip: ${direction}\n` +
+      `Entry: $${tradeSignal.entry.toFixed(8)}\n` +
+      `TP: $${tradeSignal.tp.toFixed(8)}\n` +
+      `SL: $${tradeSignal.sl.toFixed(8)}\n\n` +
+      `Kliknite OK da nastavite sa trade izvršenjem.`
+    );
+
+    if (!confirmation) {
+      console.log('❌ Manualni trade otkazan od korisnika.');
+      return;
+    }
+
+    // Show loading state
+    const btn = document.getElementById('manual-trade-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ Izvršavanje...';
+    btn.disabled = true;
+
+    // Send to backend - will call executeTrade with same logic as auto trading
+    const response = await fetch('/api/manual-trade', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(tradeSignal)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Nepoznata greška pri izvršenju trade-a');
+    }
+
+    // Success!
+    alert(`✅ TRADE USPEŠAN!\n\n${result.message}`);
+
+    // Restore button
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+
+    // Close modal
+    closeSignalModal();
+
+  } catch (error) {
+    console.error('❌ Greška pri izvršenju manual trade-a:', error);
+    alert(`❌ GREŠKA: ${error.message}`);
+
+    // Restore button
+    const btn = document.getElementById('manual-trade-btn');
+    btn.innerHTML = '🚀 Idi u Trejd';
+    btn.disabled = false;
+  }
 }
 
 // Initialize
