@@ -21,10 +21,12 @@ export async function initializeScannerIntegration() {
     console.log('🔍 [SCANNER-INTEGRATION] Initializing signal scanner...');
 
     // Import scanner module (ESM)
+    // Add cache buster to force fresh load when code changes
     const scannerPath = path.resolve(__dirname, '../../scripts/scalp-signal-scanner.js');
-    scannerModule = await import(scannerPath);
+    const cacheBuster = `?t=${Date.now()}`;
+    scannerModule = await import(scannerPath + cacheBuster);
 
-    console.log('✅ [SCANNER-INTEGRATION] Scanner module loaded');
+    console.log('✅ [SCANNER-INTEGRATION] Scanner module loaded (fresh)');
     return true;
   } catch (error) {
     console.error('❌ [SCANNER-INTEGRATION] Failed to load scanner:', error.message);
@@ -62,6 +64,19 @@ export async function startScannerLoops() {
       }
     }, 30000); // 30 seconds
 
+    // Perioda module reload (every 5 minutes) to pick up code changes
+    const moduleReloadInterval = setInterval(async () => {
+      try {
+        console.log('🔄 [SCANNER-INTEGRATION] Reloading scanner module (picking up code changes)...');
+        const scannerPath = path.resolve(__dirname, '../../scripts/scalp-signal-scanner.js');
+        const cacheBuster = `?t=${Date.now()}`;
+        scannerModule = await import(scannerPath + cacheBuster);
+        console.log('✅ [SCANNER-INTEGRATION] Scanner module reloaded');
+      } catch (error) {
+        console.error('[SCANNER-INTEGRATION] Module reload error:', error.message);
+      }
+    }, 300000); // Every 5 minutes
+
     // Start fast track loop (2s) - with same delay
     let fastTrackStarted = false;
     const fastTrackInterval = setInterval(async () => {
@@ -82,12 +97,14 @@ export async function startScannerLoops() {
     console.log('✅ [SCANNER-INTEGRATION] Scanner loops started');
     console.log('   - Full scan: 30s interval (5s initial delay)');
     console.log('   - Fast track: 2s interval');
+    console.log('   - Module reload: 5m interval (auto-picks up code changes)');
 
     // Return control object
     return {
       stop() {
         clearInterval(fullScanInterval);
         clearInterval(fastTrackInterval);
+        clearInterval(moduleReloadInterval);
         console.log('⏹️  [SCANNER-INTEGRATION] Scanner loops stopped');
       }
     };
