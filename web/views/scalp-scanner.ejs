@@ -1526,13 +1526,15 @@ function updateDynamicEntry() {
     let wallConfidence = window.modalState.wallAnalysis?.confidenceScore || 0;
 
     if (wallStatus === 'BROKEN') {
-      factors.wallStatus = 20 * (wallConfidence / 100);
+      factors.wallStatus = 20 * (wallConfidence / 100);  // Strong: wall is broken, trend continues
     } else if (wallStatus === 'ABSORBING') {
-      factors.wallStatus = 15 * (wallConfidence / 100);
+      factors.wallStatus = 15 * (wallConfidence / 100);  // Medium: volume absorbing wall
     } else if (wallStatus === 'STRONG') {
-      factors.wallStatus = -5 * (wallConfidence / 100);
+      factors.wallStatus = -5 * (wallConfidence / 100);  // Weak: wall will likely hold
+    } else if (wallStatus === 'NO_DATA') {
+      factors.wallStatus = -10;  // Penalty: Missing critical orderbook data = higher risk
     } else {
-      factors.wallStatus = 0; // NO_DATA
+      factors.wallStatus = 0;  // Unknown status
     }
 
     // Calculate final win rate
