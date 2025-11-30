@@ -1154,28 +1154,32 @@ async function loadMarketData(symbol) {
         <!-- Current Price -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Trenutna Cijena</div>
-          <div style="font-size: 1.5rem; font-weight: bold; color: #f1f5f9;">$${formatPrice(ticker.lastPrice)}</div>
+          <div id="debug-price-display" style="font-size: 1.5rem; font-weight: bold; color: #f1f5f9; font-family: monospace; letter-spacing: 0.05em;">$${formatPrice(ticker.lastPrice)}</div>
           <div style="font-size: 0.75rem; color: ${ticker.price24hPcnt > 0 ? '#10b981' : '#ef4444'}; margin-top: 0.25rem;">
             ${ticker.price24hPcnt > 0 ? '📈' : '📉'} ${(ticker.price24hPcnt * 100).toFixed(2)}%
           </div>
+          <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.lastPrice}</div>
         </div>
 
         <!-- 24H High -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">24H High</div>
           <div style="font-size: 1.5rem; font-weight: bold; color: #10b981;">$${formatPrice(ticker.highPrice24h)}</div>
+          <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.highPrice24h}</div>
         </div>
 
         <!-- 24H Low -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">24H Low</div>
           <div style="font-size: 1.5rem; font-weight: bold; color: #ef4444;">$${formatPrice(ticker.lowPrice24h)}</div>
+          <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.lowPrice24h}</div>
         </div>
 
         <!-- Index Price -->
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Index Price</div>
           <div style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9;">$${formatPrice(ticker.indexPrice)}</div>
+          <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.indexPrice}</div>
         </div>
 
         <!-- 24H Volume -->
@@ -1200,6 +1204,7 @@ async function loadMarketData(symbol) {
         <div style="background-color: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem;">
           <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Mark Price</div>
           <div style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9;">$${formatPrice(ticker.markPrice)}</div>
+          <div style="font-size: 0.6rem; color: #64748b; margin-top: 0.25rem; font-family: monospace;">Raw: ${ticker.markPrice}</div>
         </div>
       </div>
     `;
