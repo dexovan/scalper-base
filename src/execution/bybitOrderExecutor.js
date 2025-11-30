@@ -1320,114 +1320,106 @@ async function waitForMakerFill({ symbol, orderId, limitPrice, config }) {
 }
 
 // =====================================================
-// 10.5) MANUAL TRADE - Instant market order execution
+// 10.5) MANUAL TRADE - Instant market order execution - DIREKTAN KOD
 // =====================================================
 async function executeManualTrade(ctx) {
   const { symbol, direction, entry, tp, sl, positionSize, leverage } = ctx;
 
-  console.log('\n🎯🎯🎯 [MANUAL TRADE] Starting instant market order execution 🎯🎯🎯');
-  console.log(`   Symbol: ${symbol}`);
-  console.log(`   Direction: ${direction}`);
-  console.log(`   Position: $${positionSize} @ ${leverage}x leverage`);
-  console.log(`   Entry Target: ${entry}, TP: ${tp}, SL: ${sl}`);
-  console.log(`   TickSize: ${ctx.tickSize}`);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('\n\n');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('🎯🎯🎯 [MANUAL TRADE] DIREKTAN ULAZAK U TREJD 🎯🎯🎯');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`Symbol: ${symbol}`);
+  console.log(`Direction: ${direction}`);
+  console.log(`Entry: ${entry} | TP: ${tp} | SL: ${sl}`);
+  console.log(`Position: $${positionSize} @ ${leverage}x`);
+  console.log(`TickSize: ${ctx.tickSize}`);
+  console.log('═══════════════════════════════════════════════════════════════\n');
 
-  try {
-    // Step 1: Set leverage
-    console.log(`📊 [MANUAL] Setting leverage to ${leverage}x...`);
-    await setLeverage(symbol, leverage);
-    console.log(`✅ [MANUAL] Leverage set to ${leverage}x`);
+  // KORAK 1: Set leverage
+  console.log(`[1/5] Setting leverage ${leverage}x...`);
+  await setLeverage(symbol, leverage);
+  console.log(`✅ Leverage set!\n`);
 
-    // Step 2: Calculate quantity
-    console.log(`📏 [MANUAL] Calculating quantity for $${positionSize} at price $${entry}...`);
-    const qty = await getValidQuantity(symbol, positionSize, entry);
-    console.log(`✅ [MANUAL] Quantity calculated: ${qty}`);
+  // KORAK 2: Calculate quantity
+  console.log(`[2/5] Calculating quantity...`);
+  const qty = await getValidQuantity(symbol, positionSize, entry);
+  console.log(`✅ Quantity: ${qty}\n`);
 
-    const side = direction === 'LONG' ? 'Buy' : 'Sell';
-    console.log(`✅ [MANUAL] Side: ${side}`);
+  // KORAK 3: Place market order
+  const side = direction === 'LONG' ? 'Buy' : 'Sell';
+  console.log(`[3/5] Placing MARKET order: ${side} ${qty} ${symbol}...`);
+  const orderResult = await bybitClient.submitOrder({
+    category: 'linear',
+    symbol,
+    side,
+    orderType: 'Market',
+    qty: String(qty),
+    positionIdx: 0
+  });
 
-    // Step 3: Place MARKET order - IMMEDIATE EXECUTION
-    console.log(`\n🚀 [MANUAL] Placing MARKET order (${side}) ${qty} ${symbol} - INSTANT EXECUTION`);
-    let orderResult;
-    try {
-      orderResult = await placeMarketOrder(symbol, side, qty);
-      console.log(`✅ [MANUAL] placeMarketOrder returned:`, orderResult);
-    } catch (orderErr) {
-      console.error(`❌ [MANUAL] placeMarketOrder threw error: ${orderErr.message}`);
-      throw orderErr;
-    }
+  console.log(`📨 Bybit response:`, JSON.stringify(orderResult, null, 2));
 
-    if (!orderResult) {
-      throw new Error('Market order failed - placeMarketOrder returned null/undefined');
-    }
-
-    if (!orderResult.orderId) {
-      console.error(`❌ [MANUAL] orderResult has no orderId:`, orderResult);
-      throw new Error(`Market order failed - no orderId in result: ${JSON.stringify(orderResult)}`);
-    }
-
-    console.log(`✅ [MANUAL] MARKET ORDER PLACED! OrderID: ${orderResult.orderId}`);
-    console.log(`✅ [MANUAL] Order executed at market price INSTANTLY`);
-
-    // Step 4: Set TP/SL with retry
-    console.log(`\n🎯 [MANUAL] Setting TP/SL (TP=${tp}, SL=${sl}, tickSize=${ctx.tickSize})...`);
-    try {
-      await setTakeProfitStopLoss(symbol, side, tp, sl, ctx.tickSize);
-      console.log(`✅ [MANUAL] TP/SL set successfully`);
-    } catch (tpslErr) {
-      console.error(`❌ [MANUAL] TP/SL setup failed: ${tpslErr.message}`);
-      throw tpslErr;
-    }
-
-    // Step 5: Update position tracker
-    console.log(`\n📍 [MANUAL] Updating position tracker...`);
-    try {
-      updatePosition(symbol, {
-        symbol,
-        side: direction,
-        entry,
-        tp,
-        sl,
-        qty,
-        positionSize,
-        leverage,
-        orderId: orderResult.orderId,
-        status: 'OPEN',
-        entryMode: 'MANUAL_MARKET',
-        tickSize: ctx.tickSize,
-        timestamp: new Date().toISOString()
-      }, ctx.tickSize);
-      console.log(`✅ [MANUAL] Position tracker updated`);
-    } catch (trackerErr) {
-      console.error(`❌ [MANUAL] Position tracker update failed: ${trackerErr.message}`);
-      throw trackerErr;
-    }
-
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`🎯🎯🎯 [MANUAL TRADE] ✅ EXECUTED SUCCESSFULLY 🎯🎯🎯\n`);
-
-    return {
-      success: true,
-      mode: 'MANUAL_MARKET',
-      orderId: orderResult.orderId,
-      entry,
-      tp,
-      sl
-    };
-
-  } catch (err) {
-    console.error(`\n❌❌❌ [MANUAL TRADE] FAILED ❌❌❌`);
-    console.error(`Error: ${err.message}`);
-    console.error(`Stack:`, err.stack);
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
-    return {
-      success: false,
-      mode: 'MANUAL_MARKET_FAILED',
-      reason: err.message
-    };
+  if (orderResult?.retCode !== 0) {
+    console.error(`❌ ORDER FAILED: ${orderResult?.retMsg}`);
+    throw new Error(`Order failed: ${orderResult?.retMsg}`);
   }
+
+  const orderId = orderResult.result?.orderId;
+  console.log(`✅ Order placed! OrderID: ${orderId}\n`);
+
+  // KORAK 4: Set TP/SL
+  console.log(`[4/5] Setting TP/SL...`);
+  const formattedTP = formatPriceByTick(tp, ctx.tickSize);
+  const formattedSL = formatPriceByTick(sl, ctx.tickSize);
+
+  const tpslResult = await bybitClient.setTradingStop({
+    category: 'linear',
+    symbol,
+    positionIdx: 0,
+    takeProfit: formattedTP,
+    stopLoss: formattedSL
+  });
+
+  console.log(`📨 TP/SL response:`, JSON.stringify(tpslResult, null, 2));
+
+  if (tpslResult?.retCode !== 0) {
+    console.warn(`⚠️ TP/SL warning: ${tpslResult?.retMsg}`);
+  } else {
+    console.log(`✅ TP/SL set!\n`);
+  }
+
+  // KORAK 5: Update position tracker
+  console.log(`[5/5] Updating position tracker...`);
+  updatePosition(symbol, {
+    symbol,
+    side: direction,
+    entry,
+    tp,
+    sl,
+    qty,
+    positionSize,
+    leverage,
+    orderId,
+    status: 'OPEN',
+    entryMode: 'MANUAL_MARKET',
+    tickSize: ctx.tickSize,
+    timestamp: new Date().toISOString()
+  }, ctx.tickSize);
+  console.log(`✅ Position tracker updated!\n`);
+
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`🎯🎯🎯 [MANUAL TRADE] ✅ USPEŠNO IZVRŠEN 🎯🎯🎯`);
+  console.log('═══════════════════════════════════════════════════════════════\n');
+
+  return {
+    success: true,
+    mode: 'MANUAL_MARKET',
+    orderId,
+    entry,
+    tp,
+    sl
+  };
 }
 
 // =====================================================
