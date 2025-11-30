@@ -1108,7 +1108,9 @@ async function loadSignalDetails(symbol) {
       </div>
     `;
   }
-}async function loadMarketData(symbol) {
+}
+
+async function loadMarketData(symbol) {
   try {
     // Fetch ticker data from Bybit API
     const response = await fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`);
@@ -1201,7 +1203,7 @@ async function loadSignalDetails(symbol) {
   }
 }
 
-
+async function loadCandleData(symbol) {
   try {
     const response = await fetch(`/api/symbol/${symbol}/candles/1m?limit=360`);
     const data = await response.json();
