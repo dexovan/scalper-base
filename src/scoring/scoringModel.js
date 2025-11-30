@@ -347,7 +347,7 @@ export function computeBaseScores(symbol, features, wallAnalysis, weights) {
   const newsPenalty = computeNewsPenalty(symbol, features);
 
   // Combine for LONG
-  const rawLong =
+  let rawLong =
     orderbook.scoreLong * w.orderbook +
     flow.scoreLong * w.flow +
     walls.scoreLong * w.walls +
@@ -358,7 +358,7 @@ export function computeBaseScores(symbol, features, wallAnalysis, weights) {
     newsPenalty * w.news;
 
   // Combine for SHORT
-  const rawShort =
+  let rawShort =
     orderbook.scoreShort * w.orderbook +
     flow.scoreShort * w.flow +
     walls.scoreShort * w.walls +
