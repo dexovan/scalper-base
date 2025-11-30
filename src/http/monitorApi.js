@@ -1178,20 +1178,53 @@ export function startMonitorApiServer(port = 8090) {
     }
   });
 
-  // GET /api/symbol/:symbol/candles/:timeframe - Micro candles
+  // GET /api/symbol/:symbol/candles/:timeframe - Micro candles (with fallback to scanner data)
   app.get("/api/symbol/:symbol/candles/:timeframe", async (req, res) => {
     try {
       const { symbol, timeframe } = req.params;
       const { limit = 100 } = req.query;
 
-      const candles = OrderbookManager.getCandles(symbol, timeframe, parseInt(limit));
+      // Try OrderbookManager first
+      let candles = OrderbookManager.getCandles(symbol, timeframe, parseInt(limit));
+
+      // If no candles from OrderbookManager, try to load from scanner's data directory
+      if (!candles || candles.length === 0) {
+        const fs = await import('fs').then(m => m.default);
+        const path = await import('path').then(m => m.default);
+        const dataDir = path.join(process.cwd(), 'data', 'live');
+        const filePath = path.join(dataDir, `${symbol}_live.json`);
+
+        console.log(`📊 [API] Attempting to load candle data from: ${filePath}`);
+
+        if (fs.existsSync(filePath)) {
+          try {
+            const content = fs.readFileSync(filePath, 'utf8');
+            if (content && content.trim() !== '') {
+              const data = JSON.parse(content);
+
+              // Data might be a candle history array
+              if (Array.isArray(data)) {
+                candles = data.slice(-parseInt(limit));
+              } else if (data.history && Array.isArray(data.history)) {
+                candles = data.history.slice(-parseInt(limit));
+              } else if (data.candles && Array.isArray(data.candles)) {
+                candles = data.candles.slice(-parseInt(limit));
+              }
+
+              console.log(`✅ [API] Loaded ${candles.length} candles from scanner data for ${symbol}`);
+            }
+          } catch (parseError) {
+            console.warn(`⚠️  [API] Failed to parse scanner data for ${symbol}:`, parseError.message);
+          }
+        }
+      }
 
       return res.json({
         ok: true,
         symbol,
         timeframe,
-        candles,
-        count: candles.length,
+        candles: candles || [],
+        count: (candles || []).length,
         timestamp: new Date().toISOString()
       });
     } catch (error) {
