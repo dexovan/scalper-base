@@ -1124,6 +1124,12 @@ async function loadSignalDetails(symbol) {
     // Store symbol in modal state
     window.modalState.symbol = symbol;
 
+    // Store wall analysis (if available from signal)
+    if (signal.wallAnalysis) {
+      window.modalState.wallAnalysis = signal.wallAnalysis;
+      console.log('🧱 Wall analysis loaded:', signal.wallAnalysis);
+    }
+
     // Load live market data
     await loadMarketData(symbol);
 
@@ -1428,6 +1434,19 @@ function updateDynamicEntry() {
     updateElement('[data-dynamic="roi"]', profitPercent + '%');
     updateElement('[data-dynamic="status"]', entryStatus);
 
+    // Update wall analysis display (if available)
+    if (window.modalState.wallAnalysis) {
+      const wallStatus = window.modalState.wallAnalysis.wallStatus || 'NO DATA';
+      const buyWallStatus = window.modalState.wallAnalysis.buyWallStatus || '-';
+      const sellWallStatus = window.modalState.wallAnalysis.sellWallStatus || '-';
+      const wallConfidence = window.modalState.wallAnalysis.confidenceScore || 0;
+
+      updateElement('[data-dynamic="wall-status"]', wallStatus);
+      updateElement('[data-dynamic="buy-wall-status"]', buyWallStatus);
+      updateElement('[data-dynamic="sell-wall-status"]', sellWallStatus);
+      updateElement('[data-dynamic="wall-confidence"]', wallConfidence + '%');
+    }
+
     // Debug logging
     console.log(`💡 updateDynamicEntry() called:`);
     console.log(`   Current Price: $${currentPrice.toFixed(8)}`);
@@ -1626,6 +1645,53 @@ async function loadCandleData(symbol) {
               Ako je razlika <strong>NEGATIVNA</strong> (-$0.10): Cijena je ispod ENTRY = <span style="color: #10b981;">✅ ULAZAK SADA!</span><br>
               Ako je razlika <strong>POZITIVNA</strong> (+$0.10): Cijena je gore od ENTRY = <span style="color: #ef4444;">⏳ ČEKAJ PULLBACK</span><br>
               Prati razliku - trebam da vidim kako se mijenja!
+            </div>
+          </div>
+        </div>
+
+        <!-- Order Book Wall Analysis Section -->
+        <div style="background: linear-gradient(135deg, #2d1b69 0%, #1a0f3a 100%); border: 2px solid #a855f7; border-radius: 0.75rem; padding: 1.5rem;">
+          <div style="font-size: 1.1rem; font-weight: bold; color: #f1f5f9; margin-bottom: 1rem;">🧱 Order Book Wall Analysis</div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <!-- Wall Status -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid #a855f7; border-radius: 0.5rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">📊 Wall Status</div>
+              <div data-dynamic="wall-status" style="font-size: 1.25rem; font-weight: bold; color: #a855f7; font-family: monospace;">NO DATA</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">STRONG | ABSORBING | BROKEN</div>
+            </div>
+
+            <!-- Buy Wall Status -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid #10b981; border-radius: 0.5rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">💰 Buy Wall (Support)</div>
+              <div data-dynamic="buy-wall-status" style="font-size: 1.1rem; font-weight: bold; color: #10b981; font-family: monospace;">-</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Podrška na nižoj cijeni</div>
+            </div>
+
+            <!-- Sell Wall Status -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid #ef4444; border-radius: 0.5rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">📈 Sell Wall (Resistance)</div>
+              <div data-dynamic="sell-wall-status" style="font-size: 1.1rem; font-weight: bold; color: #ef4444; font-family: monospace;">-</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Otpor na višoj cijeni</div>
+            </div>
+
+            <!-- Wall Confidence Score -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid #fbbf24; border-radius: 0.5rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">⚡ Wall Confidence</div>
+              <div data-dynamic="wall-confidence" style="font-size: 1.5rem; font-weight: bold; color: #fbbf24; font-family: monospace;">0%</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Jačina signala iz wall-ova</div>
+            </div>
+          </div>
+
+          <!-- Wall Interpretation Guide -->
+          <div style="background-color: rgba(15, 23, 42, 0.4); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; margin-top: 1rem;">
+            <div style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
+              <strong>🎯 Kako čitati wall-ove:</strong><br>
+              <strong>STRONG:</strong> Wall je čvrst - cijena će se odbiti od njega<br>
+              <strong>ABSORBING:</strong> Veliki volume prolazi kroz wall - signal jačine trenda<br>
+              <strong>BROKEN:</strong> Wall je slomljen - trend će nastaviti - 🚀 ULAZAK<br>
+              <strong>BUY WALL (Support):</strong> Veliki buy orderi dolje - podrška trenda<br>
+              <strong>SELL WALL (Resistance):</strong> Veliki sell orderi gore - otpor trenda
             </div>
           </div>
         </div>
