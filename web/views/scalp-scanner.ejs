@@ -1390,6 +1390,15 @@ function updateDynamicEntry() {
       if (el) el.textContent = text;
     };
 
+    // Calculate difference between current price and entry
+    const priceDifference = currentPrice - entry;
+    const priceDifferencePercent = ((priceDifference / entry) * 100).toFixed(2);
+    const differenceText = priceDifference > 0
+      ? `+$${priceDifference.toFixed(8)} (+${priceDifferencePercent}%)`
+      : `$${priceDifference.toFixed(8)} (${priceDifferencePercent}%)`;
+
+    updateElement('[data-dynamic="current-price"]', '$' + currentPrice.toFixed(8));
+    updateElement('[data-dynamic="price-difference"]', differenceText);
     updateElement('[data-dynamic="entry"]', '$' + entry.toFixed(8));
     updateElement('[data-dynamic="tp"]', '$' + tp.toFixed(8));
     updateElement('[data-dynamic="sl"]', '$' + sl.toFixed(8));
@@ -1551,6 +1560,44 @@ async function loadCandleData(symbol) {
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="color: #cbd5e1;">Volatilnost Ocjena:</span>
               <span style="color: ${analysis.volatilityLevel === 'Visoka' ? '#ef4444' : analysis.volatilityLevel === 'Srednja' ? '#f59e0b' : '#10b981'}; font-weight: bold;">${analysis.volatilityLevel}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Price Comparison Section -->
+        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #06b6d4; border-radius: 0.75rem; padding: 1.5rem;">
+          <div style="font-size: 1.1rem; font-weight: bold; color: #f1f5f9; margin-bottom: 1rem;">📈 Live Cijena vs Entry (Real-time Comparison)</div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <!-- Trenutna (Live) Cijena -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid #06b6d4; border-radius: 0.5rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">📊 Trenutna Cijena (LIVE)</div>
+              <div data-dynamic="current-price" style="font-size: 1.5rem; font-weight: bold; color: #06b6d4; font-family: monospace;">$${analysis.currentPrice}</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Osvježava se svako 500ms</div>
+            </div>
+
+            <!-- ENTRY Cijena (Dynamic) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid #0ea5e9; border-radius: 0.5rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">🎯 ENTRY Cijena (DYNAMIC)</div>
+              <div data-dynamic="entry" style="font-size: 1.5rem; font-weight: bold; color: #0ea5e9; font-family: monospace;">$${analysis.entry}</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Mijenja se sa trendом</div>
+            </div>
+
+            <!-- Razlika (Difference) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border: 2px solid #f59e0b; border-radius: 0.5rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">📊 Razlika (Live - Entry)</div>
+              <div data-dynamic="price-difference" style="font-size: 1.1rem; font-weight: bold; color: #f59e0b; font-family: monospace;">+$0.00000000</div>
+              <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.25rem;">Ako je + trebam PULLBACK</div>
+            </div>
+          </div>
+
+          <!-- Explanation -->
+          <div style="background-color: rgba(15, 23, 42, 0.4); border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; margin-top: 1rem;">
+            <div style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
+              <strong>⚡ Kako koristiti:</strong><br>
+              Ako je razlika <strong>NEGATIVNA</strong> (-$0.10): Cijena je ispod ENTRY = <span style="color: #10b981;">✅ ULAZAK SADA!</span><br>
+              Ako je razlika <strong>POZITIVNA</strong> (+$0.10): Cijena je gore od ENTRY = <span style="color: #ef4444;">⏳ ČEKAJ PULLBACK</span><br>
+              Prati razliku - trebam da vidim kako se mijenja!
             </div>
           </div>
         </div>
