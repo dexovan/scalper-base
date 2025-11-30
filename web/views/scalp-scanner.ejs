@@ -1364,63 +1364,38 @@ function updateDynamicEntry() {
     let entry, tp, sl, profitPotential, profitPercent, entryStatus;
 
     if (isBearish) {
-      // SHORT strategy - Follow price DOWN
-      // Entry se pomjera dolje kako cijena pada, prateći je sa manjim offset-om
-      const minEntryPrice = support; // Ne smije ići ispod ovoga (support)
-      entry = Math.max(resistance - (atr * 0.3) - (resistance - currentPrice) * 0.25, minEntryPrice);
-      entry = Math.min(entry, resistance); // Osiguraj maksimum (resistance)
-
-      tp = support;
-      sl = resistance + atr;
+      // SHORT strategy - Use EXECUTION_CONFIG TP/SL distances
+      entry = currentPrice - (atr * 0.5);
+      tp = entry * (1 - EXECUTION_CONFIG.tpDistance);    // entry - 0.35%
+      sl = entry * (1 + EXECUTION_CONFIG.slDistance);    // entry + 0.30%
       profitPotential = entry - tp;
       profitPercent = ((profitPotential / entry) * 100).toFixed(2);
 
-      // Status message - prati gdje je cijena u odnosu na entry
       const priceVsEntry = ((entry - currentPrice) / entry * 100).toFixed(2);
-
-      if (currentPrice > resistance * 0.98) {
-        entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu resistance-a) - ULAZAK SADA!';
-      } else if (currentPrice > resistance * 0.95) {
-        entryStatus = '✅ DOBAR ENTRY ZONE - Možeš ući';
-      } else if (currentPrice > resistance * 0.90) {
-        entryStatus = `⏳ Čekaj pullback gore... (Cijena je ${priceVsEntry}% ispod entry-a)`;
-      } else if (currentPrice > support * 1.02) {
-        entryStatus = `📉 Trend je jak! Praćenje cijene... (${priceVsEntry}% ispod entry-a)`;
+      if (currentPrice < entry) {
+        entryStatus = '✅ ULAZAK SADA! (Cijena je ispod entry-a)';
       } else {
-        entryStatus = '⚠️ Blizu support-a - Razmisli o izlasku ili lock-in profit';
+        entryStatus = `⏳ Čekaj pullback dolje... (${Math.abs(priceVsEntry)}% do entry-a)`;
       }
     } else if (isBullish) {
-      // LONG strategy - Follow price UP
-      // Entry se pomjera gore kako cijena raste, prateći je sa manjim offset-om
-      const maxEntryPrice = resistance; // Ne smije ići iznad ovoga
-      entry = Math.min(support + (atr * 0.3) + (currentPrice - support) * 0.25, maxEntryPrice);
-      entry = Math.max(entry, support); // Osiguraj minimum (support)
-
-      tp = resistance;
-      sl = support - atr;
+      // LONG strategy - Use EXECUTION_CONFIG TP/SL distances
+      entry = currentPrice + (atr * 0.5);
+      tp = entry * (1 + EXECUTION_CONFIG.tpDistance);    // entry + 0.35%
+      sl = entry * (1 - EXECUTION_CONFIG.slDistance);    // entry - 0.30%
       profitPotential = tp - entry;
       profitPercent = ((profitPotential / entry) * 100).toFixed(2);
 
-      // Status message - prati gdje je cijena u odnosu na entry
       const priceVsEntry = ((currentPrice - entry) / entry * 100).toFixed(2);
-
-      if (currentPrice < support * 1.02) {
-        entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu support-a) - ULAZAK SADA!';
-      } else if (currentPrice < support * 1.05) {
-        entryStatus = '✅ DOBAR ENTRY ZONE - Možeš ući';
-      } else if (currentPrice < support * 1.10) {
-        entryStatus = `⏳ Čekaj pullback... (Cijena je ${priceVsEntry}% iznad entry-a)`;
-      } else if (currentPrice < resistance * 0.98) {
-        entryStatus = `📈 Trend je jak! Praćenje cijene... (${priceVsEntry}% iznad entry-a)`;
+      if (currentPrice > entry) {
+        entryStatus = '✅ ULAZAK SADA! (Cijena je iznad entry-a)';
       } else {
-        entryStatus = '⚠️ Blizu resistance-a - Razmisli o izlasku ili lock-in profit';
+        entryStatus = `⏳ Čekaj pullback gore... (${Math.abs(priceVsEntry)}% do entry-a)`;
       }
     } else {
       // NEUTRAL
       entry = currentPrice;
-      tp = resistance;
-
-      sl = support;
+      tp = currentPrice * (1 + EXECUTION_CONFIG.tpDistance);
+      sl = currentPrice * (1 - EXECUTION_CONFIG.slDistance);
       profitPotential = 0;
       profitPercent = 0;
       entryStatus = '⏸️ ČEKAJ BREAKOUT';
@@ -2238,34 +2213,14 @@ function analyzeCandlesTrend(candles) {
   const trendIsBullish = finalTrendDirection === 'BULLISH ⬆️';
   const trendIsBearish = finalTrendDirection === 'BEARISH ⬇️';
 
-  let entry, tp, sl, profitPotential, tradeType, profitPercent;
-
+  // Use values from updateDynamicEntry (entry, tp, sl already calculated correctly)
+  let tradeType;
   if (trendIsBearish) {
-    // SHORT trade
     tradeType = 'SHORT 🔻';
-    entry = currentPrice - (atr * 0.5); // Enter below current price
-    // Use EXECUTION_CONFIG TP/SL distances (0.35% TP, 0.30% SL)
-    tp = entry * (1 - EXECUTION_CONFIG.tpDistance);    // entry - 0.35%
-    sl = entry * (1 + EXECUTION_CONFIG.slDistance);    // entry + 0.30%
-    profitPotential = entry - tp;
-    profitPercent = ((profitPotential / entry) * 100).toFixed(2);
   } else if (trendIsBullish) {
-    // LONG trade
     tradeType = 'LONG 🔺';
-    entry = currentPrice + (atr * 0.5); // Enter above current price
-    // Use EXECUTION_CONFIG TP/SL distances (0.35% TP, 0.30% SL)
-    tp = entry * (1 + EXECUTION_CONFIG.tpDistance);    // entry + 0.35%
-    sl = entry * (1 - EXECUTION_CONFIG.slDistance);    // entry - 0.30%
-    profitPotential = tp - entry;
-    profitPercent = ((profitPotential / entry) * 100).toFixed(2);
   } else {
-    // NEUTRAL - wait for breakout
     tradeType = 'ČEKAJ ➡️';
-    entry = currentPrice;
-    tp = resistance;
-    sl = support;
-    profitPotential = 0;
-    profitPercent = 0;
   }
 
   return {
