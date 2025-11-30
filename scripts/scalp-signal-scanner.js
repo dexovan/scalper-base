@@ -265,9 +265,11 @@ function checkMomentum(liveData, direction, candle) {
   }
 
   // Minimum velocity check (need some price movement)
-  const minVelocity = 0.1; // At least 0.1% price movement
+  // Velocity is in decimal format: 0.0014 = 0.14%
+  const minVelocity = 0.0005; // At least 0.05% price movement
   if (velocity < minVelocity) {
-    return { passed: false, reason: `insufficient_velocity_${velocity.toFixed(4)}%_need_${minVelocity}%` };
+    console.log(`⚠️ [MOMENTUM-REJECT] Velocity too low: ${velocity.toFixed(6)} < ${minVelocity}`);
+    return { passed: false, reason: `insufficient_velocity_${velocity.toFixed(6)}_need_${minVelocity}` };
   }
 
   // Direction-specific imbalance check
