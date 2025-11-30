@@ -1671,68 +1671,73 @@ export async function executeTrade(signal) {
       ctx.tickSize = 0.0001;
     }
 
-    // Phase 2: Pullback check (BALANCED MODE)
-    const pullbackCheck = await checkPricePullback(signal.symbol, signal.direction, signal.entry);
-    if (!pullbackCheck.passed) {
-      console.log(formatRejectionLog({
-        symbol: signal.symbol,
-        direction: signal.direction,
-        reason: pullbackCheck.reason,
-        pullbackCheck,
-        tickSize: ctx.tickSize
-      }));
-
-      return {
-        success: false,
-        mode: 'REJECTED_PULLBACK',
-        symbol: signal.symbol,
-        direction: signal.direction,
-        reason: pullbackCheck.reason,
-        tickSize: ctx.tickSize || null
-      };
-    }
-
-    // Phase 2: Momentum recheck (BALANCED MODE)
-    const momentumCheck = await recheckMomentum(signal.symbol, signal.direction, signal.initialMomentum || 0);
-    if (!momentumCheck.passed) {
-      console.log(formatRejectionLog({
-        symbol: signal.symbol,
-        direction: signal.direction,
-        reason: momentumCheck.reason,
-        momentumCheck,
-        tickSize: ctx.tickSize
-      }));
-
-      return {
-        success: false,
-        mode: 'REJECTED_MOMENTUM',
-        symbol: signal.symbol,
-        direction: signal.direction,
-        reason: momentumCheck.reason,
-        tickSize: ctx.tickSize || null
-      };
-    }
-
     // =====================================================
-    // ANTI-TOP EXECUTION PATCH
+    // MANUAL TRADE BYPASS – Skip all validation checks
     // =====================================================
-    const antiTop = await antiTopFinalCheck(signal.symbol, signal.direction);
-
-    if (!antiTop.passed) {
+    if (!signal.manualTrade) {
+      // Phase 2: Pullback check (BALANCED MODE) - ONLY FOR AUTOMATED TRADES
+      const pullbackCheck = await checkPricePullback(signal.symbol, signal.direction, signal.entry);
+      if (!pullbackCheck.passed) {
         console.log(formatRejectionLog({
-            symbol: signal.symbol,
-            direction: signal.direction,
-            reason: antiTop.reason,
-            tickSize: ctx.tickSize
+          symbol: signal.symbol,
+          direction: signal.direction,
+          reason: pullbackCheck.reason,
+          pullbackCheck,
+          tickSize: ctx.tickSize
         }));
+
         return {
-            success: false,
-            mode: 'REJECTED_ANTI_TOP',
-            reason: antiTop.reason,
-            symbol: signal.symbol,
-            direction: signal.direction,
-            tickSize: ctx.tickSize
+          success: false,
+          mode: 'REJECTED_PULLBACK',
+          symbol: signal.symbol,
+          direction: signal.direction,
+          reason: pullbackCheck.reason,
+          tickSize: ctx.tickSize || null
         };
+      }
+
+      // Phase 2: Momentum recheck (BALANCED MODE) - ONLY FOR AUTOMATED TRADES
+      const momentumCheck = await recheckMomentum(signal.symbol, signal.direction, signal.initialMomentum || 0);
+      if (!momentumCheck.passed) {
+        console.log(formatRejectionLog({
+          symbol: signal.symbol,
+          direction: signal.direction,
+          reason: momentumCheck.reason,
+          momentumCheck,
+          tickSize: ctx.tickSize
+        }));
+
+        return {
+          success: false,
+          mode: 'REJECTED_MOMENTUM',
+          symbol: signal.symbol,
+          direction: signal.direction,
+          reason: momentumCheck.reason,
+          tickSize: ctx.tickSize || null
+        };
+      }
+
+      // ANTI-TOP EXECUTION PATCH - ONLY FOR AUTOMATED TRADES
+      const antiTop = await antiTopFinalCheck(signal.symbol, signal.direction);
+
+      if (!antiTop.passed) {
+          console.log(formatRejectionLog({
+              symbol: signal.symbol,
+              direction: signal.direction,
+              reason: antiTop.reason,
+              tickSize: ctx.tickSize
+          }));
+          return {
+              success: false,
+              mode: 'REJECTED_ANTI_TOP',
+              reason: antiTop.reason,
+              symbol: signal.symbol,
+              direction: signal.direction,
+              tickSize: ctx.tickSize
+          };
+      }
+    } else {
+      console.log(`⚠️  [EXECUTOR] MANUAL TRADE MODE - Skipping pullback, momentum, and anti-top checks`);
     }
 
     // =====================================================
