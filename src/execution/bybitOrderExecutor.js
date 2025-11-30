@@ -1730,13 +1730,17 @@ export async function executeTrade(signal) {
   const startTime = Date.now();
 
   try {
+    // FORCE manual trade flag to boolean
+    const isManualTrade = signal.manualTrade === true;
+
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`🚀 [EXECUTOR] Starting trade execution for ${signal.symbol}`);
     console.log(`   Direction: ${signal.direction}`);
     console.log(`   Entry: ${signal.entry}, TP: ${signal.tp}, SL: ${signal.sl}`);
     console.log(`   Initial momentum: ${(signal.initialMomentum * 100).toFixed(1)}%`);
     console.log(`   Mode: ${EXECUTION_CONFIG.entryMode}`);
-    console.log(`   ⚡ MANUAL TRADE: ${signal.manualTrade === true ? 'YES - DIREKTAN ULAZAK' : 'NO - automated'}`);
+    console.log(`   ⚡⚡⚡ MANUAL TRADE: ${isManualTrade ? 'YES ✅ DIREKTAN ULAZAK' : 'NO - automated'}`);
+    console.log(`   Raw signal.manualTrade value: ${signal.manualTrade} (type: ${typeof signal.manualTrade})`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const ctx = {
@@ -1753,7 +1757,7 @@ export async function executeTrade(signal) {
     // =====================================================
     // EARLY MANUAL TRADE CHECK - AKO JE MANUAL, PREPRAVI LOKALNO
     // =====================================================
-    if (signal.manualTrade === true) {
+    if (isManualTrade) {
       console.log('\n\n✅✅✅ MANUAL TRADE AKTIVIRAN - DIREKTAN ULAZAK ✅✅✅\n');
 
       // Fetch tickSize brzo
