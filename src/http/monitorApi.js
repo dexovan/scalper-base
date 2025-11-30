@@ -2754,12 +2754,15 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   console.log("🎯🎯🎯 [MONITORAPI] Registering POST /api/manual-trade route 🎯🎯🎯");
   app.post("/api/manual-trade", async (req, res) => {
+    console.log('\n\n🚀🚀🚀 [/api/manual-trade] ZAHTEV PRIMLJEN 🚀🚀🚀');
+    console.log(`Request body:`, JSON.stringify(req.body, null, 2));
+
     try {
       const { symbol, direction, entry, tp, sl, initialMomentum, manualTrade } = req.body;
 
       console.log(`\n🎯 [API/MANUAL-TRADE] Manual trade request: ${symbol} ${direction}`);
       console.log(`   Entry: ${entry} | TP: ${tp} | SL: ${sl}`);
-      console.log(`   Manual Trade Flag: ${manualTrade}`);
+      console.log(`   Manual Trade Flag: ${manualTrade} (type: ${typeof manualTrade})`);
 
       // ===== VALIDATION =====
       if (!symbol || !direction || !entry || !tp || !sl) {
@@ -2778,25 +2781,11 @@ export function startMonitorApiServer(port = 8090) {
         });
       }
 
-      // ===== DUPLICATE PREVENTION =====
-      console.log(`🔍 [API/MANUAL-TRADE] Checking for existing positions...`);
-      const activePositions = await getActivePositions();
-      console.log(`📊 [API/MANUAL-TRADE] Active positions count: ${activePositions.length}`);
+      // ===== SKIP DUPLICATE CHECK FOR MANUAL TRADES =====
+      // Manual trades should be able to execute immediately without position checking
+      console.log(`✅ [API/MANUAL-TRADE] Skipping duplicate check for manual trade`);
 
-      const existingPosition = activePositions.find(p => p.symbol === symbol);
-
-      if (existingPosition) {
-        console.log(`⚠️  [API/MANUAL-TRADE] Duplicate prevented: ${symbol} already in position`);
-        return res.json({
-          ok: false,
-          error: `Already in position for ${symbol}. Close existing position first.`,
-          existingPosition
-        });
-      }
-
-      // ===== EXECUTE TRADE =====
-      // Create signal object compatible with executeTrade function
-      const signal = {
+      // ===== CREATE SIGNAL AND EXECUTE =====
         symbol,
         direction,
         entry: parseFloat(entry),
@@ -2812,10 +2801,15 @@ export function startMonitorApiServer(port = 8090) {
         manualTrade: true  // Flag to indicate manual execution
       };
 
-      console.log(`🚀 [API/MANUAL-TRADE] Calling executeTrade for ${symbol}...`);
+      console.log(`\n🚀 [API/MANUAL-TRADE] Calling executeTrade for ${symbol}...`);
       console.log(`   Signal object:`, JSON.stringify(signal, null, 2));
 
       const result = await executeTrade(signal);
+
+      console.log(`\n✅ [API/MANUAL-TRADE] ExecuteTrade vraća:`);
+      console.log(`   Success: ${result.success}`);
+      console.log(`   Mode: ${result.mode}`);
+      console.log(`   Result:`, JSON.stringify(result, null, 2));
 
       if (result.success) {
         console.log(`✅ [API/MANUAL-TRADE] Trade executed: ${symbol} ${direction}`);

@@ -2366,6 +2366,8 @@ async function handleManualTrade() {
       timestamp: new Date().toISOString()
     };
 
+    console.log('📊 [FRONTEND] Trade signal prepared:', tradeSignal);
+
     // Validation
     if (!tradeSignal.entry || !tradeSignal.tp || !tradeSignal.sl) {
       alert('❌ Greška: Nedostaju TP ili SL vrednosti.');
@@ -2403,6 +2405,16 @@ async function handleManualTrade() {
     const originalText = btn.innerHTML;
     btn.innerHTML = '⏳ Izvršavanje...';
     btn.disabled = true;
+
+    // TIMING TRIGGER - ČEKAJ ZA OPTIMALNI TRENUTAK
+    console.log('⏱️  [TIMING] Čekam za optimalni ulazni trenutak...');
+    btn.innerHTML = '⏱️  Čekam tajming...';
+
+    // Čekaj minimalno 500ms da se tržište stabilizuje
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    console.log('✅ [TIMING] Tajming je ispravan - slanjem trade zahteva');
+    btn.innerHTML = '📡 Slanje zahteva...';
 
     // Send to backend - will call executeTrade with same logic as auto trading
     const response = await fetch('/api/manual-trade', {
