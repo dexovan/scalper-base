@@ -1557,11 +1557,14 @@ function updateDynamicEntry() {
     // Clamp between 20% and 95%
     winRate = Math.max(20, Math.min(95, winRate));
 
-    // Calculate Expected Value
-    const profitIfWin = parseFloat(profitPotential);
-    const lossIfLose = Math.abs(parseFloat(sl) - parseFloat(entry));
-    const expectedValue = (winRate / 100) * profitIfWin - ((100 - winRate) / 100) * lossIfLose;
-    const expectedValuePercent = ((expectedValue / positionSize) * 100).toFixed(2);
+    // Calculate Expected Value (in percentage terms)
+    // EV% = (Win% × Profit%) - (Loss% × Loss%)
+    const profitPercent = ((tp - entry) / entry) * 100;
+    const lossPercent = ((entry - sl) / entry) * 100;
+    const winProbability = winRate / 100;
+    const lossProbability = 1 - winProbability;
+
+    const expectedValuePercent = (winProbability * profitPercent - lossProbability * lossPercent).toFixed(2);
 
     // Determine Risk Level
     let riskLevel = 'MODERATE';
@@ -1591,7 +1594,7 @@ function updateDynamicEntry() {
       };
 
       updateBreakdown('[data-breakdown-item="rr-ratio"]',
-        `Risk/Reward Ratio: ${riskRewardRatio.toFixed(2)} (${factors.rrRatio > 0 ? '+' : ''}${factors.rrRatio} pts)`);
+        `📊 Risk/Reward: ${riskRewardRatio.toFixed(2)}:1 (${factors.rrRatio > 0 ? '+' : ''}${factors.rrRatio} pts) ${riskRewardRatio > 2 ? '🟢' : riskRewardRatio > 1 ? '🟡' : '🔴'}`);
       updateBreakdown('[data-breakdown-item="entry-position"]',
         `Entry Position: ${(entryVsSR * 100).toFixed(0)}% (${factors.entryPosition > 0 ? '+' : ''}${factors.entryPosition} pts)`);
       updateBreakdown('[data-breakdown-item="trend-strength"]',
@@ -1991,7 +1994,7 @@ async function loadCandleData(symbol) {
             <div style="font-size: 0.875rem; color: #cbd5e1; line-height: 1.6;">
               <strong>📊 Kako se Win Rate Računa:</strong><br>
               <div style="margin-top: 0.75rem; font-size: 0.8rem;">
-                <div data-breakdown-item="rr-ratio" style="margin-bottom: 0.5rem;">Risk/Reward Ratio: --</div>
+                <div data-breakdown-item="rr-ratio" style="margin-bottom: 0.5rem; padding: 0.5rem; background-color: rgba(15, 23, 42, 0.6); border-radius: 0.25rem; border-left: 3px solid #f59e0b;">📊 <strong>Risk/Reward Ratio:</strong> --</div>
                 <div data-breakdown-item="entry-position" style="margin-bottom: 0.5rem;">Entry Position: --</div>
                 <div data-breakdown-item="trend-strength" style="margin-bottom: 0.5rem;">Trend Strength: --</div>
                 <div data-breakdown-item="imbalance" style="margin-bottom: 0.5rem;">Imbalance Alignment: --</div>
