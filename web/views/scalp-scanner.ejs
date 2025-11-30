@@ -1054,6 +1054,18 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeSignalModal();
 });
 
+// Global state for dynamic entry calculation
+window.modalState = {
+  symbol: null,
+  currentPrice: null,
+  support: null,
+  resistance: null,
+  atr: null,
+  trendDirection: null,
+  trendIsBullish: false,
+  trendIsBearish: false
+};
+
 // Modal Functions
 function openSignalModal(symbol) {
   console.log('🔓 Opening modal for symbol:', symbol);
@@ -1068,16 +1080,17 @@ function openSignalModal(symbol) {
   console.log('✅ Modal opened, loading details...');
   loadSignalDetails(symbol);
 
-  // Start auto-refresh of market data every 1 second while modal is open
+  // Start auto-refresh of market data every 500ms while modal is open
   if (window.modalRefreshInterval) clearInterval(window.modalRefreshInterval);
   window.modalRefreshInterval = setInterval(() => {
     const modal = document.getElementById('signal-modal');
     if (modal && modal.style.display === 'flex') {
       loadMarketDataQuick(symbol);
+      updateDynamicEntry(); // Update entry/TP/SL every 500ms
     } else {
       clearInterval(window.modalRefreshInterval);
     }
-  }, 1000);
+  }, 500);
 }
 
 function closeSignalModal() {
@@ -1107,6 +1120,9 @@ async function loadSignalDetails(symbol) {
     document.getElementById('modal-symbol').textContent = symbol;
     const timestamp = new Date().toLocaleString('sr-RS');
     document.getElementById('modal-timestamp').textContent = timestamp;
+
+    // Store symbol in modal state
+    window.modalState.symbol = symbol;
 
     // Load live market data
     await loadMarketData(symbol);
@@ -1300,6 +1316,94 @@ async function loadMarketDataQuick(symbol) {
   }
 }
 
+// Dynamic entry calculation - updates every 500ms
+function updateDynamicEntry() {
+  if (!window.modalState.support || !window.modalState.resistance || !window.modalState.atr) {
+    return; // Not ready yet
+  }
+
+  try {
+    // Get current price from DOM
+    const priceElement = document.querySelector('[data-price-type="lastPrice"]');
+    if (!priceElement) return;
+
+    const currentPriceText = priceElement.textContent.replace('$', '').trim();
+    const currentPrice = parseFloat(currentPriceText);
+
+    if (!currentPrice || isNaN(currentPrice)) return;
+
+    window.modalState.currentPrice = currentPrice;
+
+    const support = window.modalState.support;
+    const resistance = window.modalState.resistance;
+    const atr = window.modalState.atr;
+    const isBullish = window.modalState.trendIsBullish;
+    const isBearish = window.modalState.trendIsBearish;
+
+    let entry, tp, sl, profitPotential, profitPercent, entryStatus;
+
+    if (isBearish) {
+      // SHORT strategy
+      entry = resistance - (atr * 0.3); // Entry blizu resistance-a
+      tp = support;
+      sl = resistance + atr;
+      profitPotential = entry - tp;
+      profitPercent = ((profitPotential / entry) * 100).toFixed(2);
+
+      // Status message
+      if (currentPrice > resistance * 0.95) {
+        entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu resistance-a)';
+      } else if (currentPrice > resistance * 0.90) {
+        entryStatus = '✅ DOBAR ENTRY ZONE';
+      } else {
+        entryStatus = '⏳ ČEKAJ POVRATAK (Cijena je pala previše)';
+      }
+    } else if (isBullish) {
+      // LONG strategy
+      entry = support + (atr * 0.3); // Entry blizu support-a
+      tp = resistance;
+      sl = support - atr;
+      profitPotential = tp - entry;
+      profitPercent = ((profitPotential / entry) * 100).toFixed(2);
+
+      // Status message
+      if (currentPrice < support * 1.05) {
+        entryStatus = '🎯 ODLIČAN ENTRY ZONE (Blizu support-a)';
+      } else if (currentPrice < support * 1.10) {
+        entryStatus = '✅ DOBAR ENTRY ZONE';
+      } else {
+        entryStatus = '⏳ ČEKAJ PULLBACK (Cijena je previsoka)';
+      }
+    } else {
+      // NEUTRAL
+      entry = currentPrice;
+      tp = resistance;
+      sl = support;
+      profitPotential = 0;
+      profitPercent = 0;
+      entryStatus = '⏸️ ČEKAJ BREAKOUT';
+    }
+
+    // Update DOM elements
+    const updateElement = (selector, text) => {
+      const el = document.querySelector(selector);
+      if (el) el.textContent = text;
+    };
+
+    updateElement('[data-dynamic="entry"]', '$' + entry.toFixed(8));
+    updateElement('[data-dynamic="tp"]', '$' + tp.toFixed(8));
+    updateElement('[data-dynamic="sl"]', '$' + sl.toFixed(8));
+    updateElement('[data-dynamic="profit"]', '$' + profitPotential.toFixed(8));
+    updateElement('[data-dynamic="roi"]', profitPercent + '%');
+    updateElement('[data-dynamic="status"]', entryStatus);
+
+    console.log(`💡 Dynamic Entry Updated: ${entryStatus}`);
+
+  } catch (error) {
+    console.warn('Dynamic entry update failed:', error);
+  }
+}
+
 async function loadCandleData(symbol) {
   try {
     const response = await fetch(`/api/symbol/${symbol}/candles/1m?limit=360`);
@@ -1324,6 +1428,16 @@ async function loadCandleData(symbol) {
     console.log(`✅ Received ${data.candles.length} candles for ${symbol}`);
     const candles = data.candles;
     const analysis = analyzeCandlesTrend(candles);
+
+    // Store analysis data in modal state for dynamic entry updates
+    window.modalState.support = analysis.support;
+    window.modalState.resistance = analysis.resistance;
+    window.modalState.atr = analysis.atr;
+    window.modalState.trendDirection = analysis.trendDirection;
+    window.modalState.trendIsBullish = analysis.trendDirection === 'BULLISH ⬆️';
+    window.modalState.trendIsBearish = analysis.trendDirection === 'BEARISH ⬇️';
+
+    console.log('📊 Modal state updated:', window.modalState);
 
     // Render analysis report
     const analysisHTML = `
@@ -1452,34 +1566,40 @@ async function loadCandleData(symbol) {
               <div style="font-size: 1.5rem; font-weight: bold; color: ${analysis.tradeType === 'LONG 🔺' ? '#10b981' : analysis.tradeType === 'SHORT 🔻' ? '#ef4444' : '#f59e0b'};">${analysis.tradeType}</div>
             </div>
 
-            <!-- Entry Price -->
+            <!-- Entry Status (Dynamic) -->
+            <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #fbbf24; border-radius: 0.25rem; padding: 1rem;">
+              <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Status Ulaska</div>
+              <div data-dynamic="status" style="font-size: 0.9rem; font-weight: bold; color: #fbbf24; font-family: monospace;">⏳ Osvježavanje...</div>
+            </div>
+
+            <!-- Entry Price (Dynamic) -->
             <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #0ea5e9; border-radius: 0.25rem; padding: 1rem;">
               <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">ENTRY Cijena</div>
-              <div style="font-size: 1.25rem; font-weight: bold; color: #0ea5e9; font-family: monospace;">$${analysis.entry}</div>
+              <div data-dynamic="entry" style="font-size: 1.25rem; font-weight: bold; color: #0ea5e9; font-family: monospace;">$${analysis.entry}</div>
             </div>
 
-            <!-- Take Profit -->
+            <!-- Take Profit (Dynamic) -->
             <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #10b981; border-radius: 0.25rem; padding: 1rem;">
               <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Take Profit (TP)</div>
-              <div style="font-size: 1.25rem; font-weight: bold; color: #10b981; font-family: monospace;">$${analysis.tp}</div>
+              <div data-dynamic="tp" style="font-size: 1.25rem; font-weight: bold; color: #10b981; font-family: monospace;">$${analysis.tp}</div>
             </div>
 
-            <!-- Stop Loss -->
+            <!-- Stop Loss (Dynamic) -->
             <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #ef4444; border-radius: 0.25rem; padding: 1rem;">
               <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Stop Loss (SL)</div>
-              <div style="font-size: 1.25rem; font-weight: bold; color: #ef4444; font-family: monospace;">$${analysis.sl}</div>
+              <div data-dynamic="sl" style="font-size: 1.25rem; font-weight: bold; color: #ef4444; font-family: monospace;">$${analysis.sl}</div>
             </div>
 
-            <!-- Profit Potential -->
+            <!-- Profit Potential (Dynamic) -->
             <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #f59e0b; border-radius: 0.25rem; padding: 1rem;">
               <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">Potencijalni Profit</div>
-              <div style="font-size: 1.25rem; font-weight: bold; color: #f59e0b; font-family: monospace;">$${analysis.profitPotential}</div>
+              <div data-dynamic="profit" style="font-size: 1.25rem; font-weight: bold; color: #f59e0b; font-family: monospace;">$${analysis.profitPotential}</div>
             </div>
 
-            <!-- Profit Percentage -->
+            <!-- Profit Percentage (Dynamic) -->
             <div style="background-color: rgba(15, 23, 42, 0.6); border-left: 4px solid #06b6d4; border-radius: 0.25rem; padding: 1rem;">
               <div style="font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.5rem;">ROI %</div>
-              <div style="font-size: 1.25rem; font-weight: bold; color: #06b6d4; font-family: monospace;">${analysis.profitPercent}%</div>
+              <div data-dynamic="roi" style="font-size: 1.25rem; font-weight: bold; color: #06b6d4; font-family: monospace;">${analysis.profitPercent}%</div>
             </div>
           </div>
 
