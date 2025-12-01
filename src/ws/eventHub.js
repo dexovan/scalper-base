@@ -19,7 +19,32 @@ import * as riskEngine from '../risk/riskEngine.js';
 export function initEventHub() {
   console.log("📡 [EVENT-HUB] Initializing...");
 
-  publicEmitter.on("ws", (msg) => {
+  // 🔥 CRITICAL: Listen to "event" (not "ws" which never happens)
+  // index.js emits publicEmitter.emit("event", {type: "ticker", ...})
+  publicEmitter.on("event", (eventObj) => {
+    // Convert from new format to old format for compatibility
+    // Event format from index.js: {type: "ticker", symbol, payload: msg.data, timestamp}
+    // Convert to: {topic: "tickers.SYMBOL", data: msg.data}
+
+    if (!eventObj?.type) return;
+
+    let msg = null;
+    if (eventObj.type === "ticker") {
+      msg = {
+        topic: `tickers.${eventObj.symbol}`,
+        data: eventObj.payload,
+        type: "delta"
+      };
+    } else if (eventObj.type === "trade") {
+      msg = {
+        topic: `publicTrade.${eventObj.symbol}`,
+        data: eventObj.payload,
+        type: "delta"
+      };
+    } else {
+      return;
+    }
+
     if (!msg?.topic || !msg?.data) return;
 
     const topic = msg.topic;
