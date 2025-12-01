@@ -242,6 +242,9 @@ async function startEngine() {
                     // Removed debug log - was generating 600+ logs/sec for orderbook events
 
                     if (channelType === "tickers" && msg.data) {
+                        if (symbol === "LTCUSDT") {
+                            console.log(`[INDEX] 🎯 EMITTING ticker event for LTC: ${msg.data.lastPrice}`);
+                        }
                         publicEmitter.emit("event", {
                             type: "ticker",
                             symbol,

@@ -26,6 +26,10 @@ export function initEventHub() {
     // Event format from index.js: {type: "ticker", symbol, payload: msg.data, timestamp}
     // Convert to: {topic: "tickers.SYMBOL", data: msg.data}
 
+    if (eventObj?.symbol === "LTCUSDT") {
+      console.log(`[EventHub] 📨 Received event for LTC: type=${eventObj.type}`);
+    }
+
     if (!eventObj?.type) return;
 
     let msg = null;
