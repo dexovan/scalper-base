@@ -48,6 +48,21 @@ const DEFAULT_PRIME_SYMBOLS = [
   "SUSUSDT"    // Sui
 ];
 
+// Good Normal tier symbols for WS subscription (established altcoins with decent volume)
+// Avoids low-volume meme tokens and ensures proper market discovery
+const GOOD_NORMAL_SYMBOLS = new Set([
+  "UNIUSDT", "SHIBUSDT", "MATICUSDT", "MKRUSDT", "ARUSDT",
+  "COMPUSDT", "SNXUSDT", "CROUSDT", "DYDXUSDT", "CONVUSDT",
+  "LDOBUSDT", "STGUSDT", "FILUSDT", "GALAUSDT", "GUSDT",
+  "CHZUSDT", "IMXUSDT", "MANAUSDT", "RVNUSDT", "STXUSDT",
+  "ZECUSDT", "QTUMUSDT", "ZILAUSDT", "GLMUSDT", "XEMUSDT",
+  "ENSUSDT", "KDAUSDT", "MINAUSDT", "LRCUSDT", "HFTUSDT",
+  "SKLUSDT", "EPSUSDT", "UMAUSDT", "KASUSDT", "PENDLEUSDT",
+  "STRLUSDT", "GMTUSDT", "HIGHUSDT", "CFXUSDT", "MASKUSDT",
+  "RONUSDT", "TFUELUSDT", "ALICEUSDT", "BEANUSDT", "PSTUSDT",
+  "CLOUSDT", "SYNUSDT", "BADGERUSDT", "SSVUSDT", "SCRTUSDT"
+]);
+
 const UniverseState = {
   fetchedAt: null,
   symbols: {}, // symbol -> SymbolMeta
@@ -252,8 +267,18 @@ export async function getSymbolsByCategory(category) {
     return Object.values(UniverseState.symbols || {});
   }
 
-  const filtered = Object.values(UniverseState.symbols || {})
+  let filtered = Object.values(UniverseState.symbols || {})
     .filter((meta) => meta.category && meta.category.toLowerCase() === target);
+
+  // SPECIAL: For Normal category, prioritize GOOD_NORMAL_SYMBOLS to avoid meme tokens
+  if (target === "normal") {
+    // First pass: return GOOD_NORMAL_SYMBOLS that exist
+    const goodSymbols = filtered.filter(meta => GOOD_NORMAL_SYMBOLS.has(meta.symbol));
+    if (goodSymbols.length > 0) {
+      console.log(`🌍 [UNIVERSE] Category '${category}' → found ${goodSymbols.length} GOOD symbols (filtered from ${filtered.length})`);
+      return goodSymbols;
+    }
+  }
 
   console.log(`🌍 [UNIVERSE] Category '${category}' → found ${filtered.length} symbols`);
   return filtered;
