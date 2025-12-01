@@ -158,15 +158,16 @@ async function startEngine() {
 
     console.log("📡 METRICS: Calling connect() now...");
 
-    // 🚀 HOT LIST ARCHITECTURE:
-    // - Subscribe TICKERS + ORDERBOOK for Prime symbols (cheap, always needed)
-    // - Normal symbols monitored via regime engine only (no WS subscriptions to avoid 1006 limit)
-    // - Scanner will dynamically subscribe publicTrade.* for top 20-30 candidates
-    // - This avoids Bybit 1006 error from too many subscriptions (limit ~100 topics)
+    // 🚀 HOT LIST ARCHITECTURE (EXPANDED):
+    // - Subscribe TICKERS + ORDERBOOK for Prime symbols (21) + top Normal symbols (50)
+    // - This allows system to discover opportunities beyond just the mega-caps
+    // - Still under Bybit 1006 limit: 71 symbols × 2 channels = 142 connections
+    // - Scanner will dynamically subscribe publicTrade.* for top 20-30 hottest candidates
 
-    console.log(`\n⏳ [INDEX] ============ PRIME SYMBOLS FETCH START ============`);
+    console.log(`\n⏳ [INDEX] ============ PRIME + NORMAL SYMBOLS FETCH START ============`);
     const FALLBACK_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "DOTUSDT"];
     let primeSymbolsForWS = FALLBACK_SYMBOLS.slice(); // Default to fallback
+    let normalSymbolsForWS = []; // Will add top Normal symbols
 
     try {
       console.log(`⏳ [INDEX] Step 1: Attempting to fetch Prime symbols dynamically...`);
@@ -192,23 +193,44 @@ async function startEngine() {
       } else if (result.data && result.data.length > 0) {
         console.log(`✅ [INDEX] Step 3b: SUCCESS - Got ${result.data.length} Prime symbols dynamically`);
         primeSymbolsForWS = result.data.map(m => m.symbol);
-        console.log(`✅ [INDEX] Symbols: ${primeSymbolsForWS.slice(0, 5).join(", ")}${primeSymbolsForWS.length > 5 ? "..." : ""}`);
+        console.log(`✅ [INDEX] Prime Symbols: ${primeSymbolsForWS.slice(0, 5).join(", ")}${primeSymbolsForWS.length > 5 ? "..." : ""}`);
       } else {
         console.warn(`⚠️ [INDEX] Step 3c: getSymbolsByCategory returned empty - using FALLBACK`);
         primeSymbolsForWS = FALLBACK_SYMBOLS.slice();
       }
       console.log(`✅ [INDEX] ============ PRIME SYMBOLS FETCH COMPLETE (${primeSymbolsForWS.length} symbols) ============`);
+
+      // NEWLY ADDED: Also fetch top Normal symbols for broader market coverage
+      console.log(`⏳ [INDEX] Step 4: Fetching top Normal symbols for broader market coverage...`);
+      try {
+        const normalSymbols = await getSymbolsByCategory("Normal");
+        if (normalSymbols && normalSymbols.length > 0) {
+          const topNormal = normalSymbols.slice(0, 50);
+          normalSymbolsForWS = topNormal.map(m => m.symbol);
+          console.log(`✅ [INDEX] Step 4b: Got ${normalSymbolsForWS.length} Normal symbols`);
+          console.log(`✅ [INDEX] Normal Symbols: ${normalSymbolsForWS.slice(0, 5).join(", ")}${normalSymbolsForWS.length > 5 ? "..." : ""}`);
+        }
+      } catch (normalErr) {
+        console.warn(`⚠️ [INDEX] Step 4c: Could not fetch Normal symbols:`, normalErr.message);
+        normalSymbolsForWS = [];
+      }
     } catch (symbolErr) {
-      console.error(`❌ [INDEX] Step 3e: EXCEPTION in symbol fetch:`, symbolErr.message);
-      console.log(`⚠️ [INDEX] Step 4: Using FALLBACK symbols due to error...`);
+      console.error(`❌ [INDEX] Step 5: EXCEPTION in symbol fetch:`, symbolErr.message);
+      console.log(`⚠️ [INDEX] Step 6: Using FALLBACK symbols due to error...`);
       primeSymbolsForWS = FALLBACK_SYMBOLS.slice();
       console.log(`⚠️ [INDEX] ============ USING FALLBACK: ${primeSymbolsForWS.join(", ")} ============`);
     }
 
+    // Combine Prime + Normal for WS subscription
+    const allSymbolsForWS = [...primeSymbolsForWS, ...normalSymbolsForWS];
+
     console.log(`\n🔥 [INDEX] *** AFTER SYMBOL FETCH - ABOUT TO CONNECT WEBSOCKET ***`);
     console.log(`\n⏳ [INDEX] ============ READY TO CONNECT WEBSOCKET ============`);
-    console.log(`📡 [WS] Subscribing to TICKERS + ORDERBOOK for ${primeSymbolsForWS.length} Prime symbols...`);
-    console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);;
+    console.log(`📡 [WS] Subscribing to TICKERS + ORDERBOOK for:`);
+    console.log(`   - ${primeSymbolsForWS.length} Prime tier (mega-caps)`);
+    console.log(`   - ${normalSymbolsForWS.length} Normal tier (broader coverage)`);
+    console.log(`   - Total: ${allSymbolsForWS.length} symbols | ${allSymbolsForWS.length * 2} WS connections / 1006 limit`);
+    console.log(`📡 [WS] publicTrade.* will be dynamically managed by flowHotlistManager`);
 
     // 🔥 AWAIT WebSocket connection before continuing - WITH ERROR HANDLING
     console.log(`\n⏳ [INDEX] ============ WEBSOCKET CONNECTION START ============`);
@@ -218,11 +240,11 @@ async function startEngine() {
 
     try {
       console.log(`⏳ [INDEX] Step 6: Calling metricsWS.connect() NOW...`);
-      console.log(`⏳ [INDEX] Step 6a: Symbols for WS:`, primeSymbolsForWS.length > 0 ? primeSymbolsForWS.slice(0, 3).join(",") + "..." : "FALLBACK");
+      console.log(`⏳ [INDEX] Step 6a: Symbols for WS:`, allSymbolsForWS.length > 0 ? allSymbolsForWS.slice(0, 3).join(",") + "..." : "FALLBACK");
 
       const connectPromise = metricsWS.connect({
-        symbols: primeSymbolsForWS.length > 0 ? primeSymbolsForWS : ["BTCUSDT", "ETHUSDT"], // Fallback symbols
-        channels: ["tickers", "orderbook.50"], // ✅ Prime symbols only to stay under 1006 limit
+        symbols: allSymbolsForWS.length > 0 ? allSymbolsForWS : ["BTCUSDT", "ETHUSDT"], // Prime + top Normal symbols
+        channels: ["tickers", "orderbook.50"], // ✅ Prime + Normal tier to stay under 1006 limit
 
         // MUST HAVE THE RAW MESSAGE
         onEvent: (msg) => {
