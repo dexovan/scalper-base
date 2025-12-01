@@ -1376,8 +1376,8 @@ async function scanAllSymbols() {
         : formattedEntryZone.ideal * 0.9925; // -0.75%
 
       const slRaw = direction === 'LONG'
-        ? formattedEntryZone.ideal * 0.9970  // -0.30% (wider, avoid noise)
-        : formattedEntryZone.ideal * 1.0030; // +0.30%
+        ? formattedEntryZone.ideal * 0.9950  // -0.50% (wider stop, better risk:reward)
+        : formattedEntryZone.ideal * 1.0050; // +0.50%
 
       const tp = parseFloat(formatPriceByTick(tpRaw, tickSize));
       const sl = parseFloat(formatPriceByTick(slRaw, tickSize));
