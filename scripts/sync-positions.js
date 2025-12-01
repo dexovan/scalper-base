@@ -9,14 +9,30 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import dotenv from 'dotenv';
 import CONFIG from '../src/config/index.js';
-
-// Load .env file
-dotenv.config({ path: path.resolve(path.dirname(__filename), '../.env') });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load .env file manually (no dotenv dependency)
+function loadEnv() {
+  const envPath = path.resolve(__dirname, '../.env');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [key, ...valueParts] = trimmed.split('=');
+        const value = valueParts.join('=');
+        if (key && value) {
+          process.env[key.trim()] = value.trim();
+        }
+      }
+    });
+  }
+}
+
+loadEnv();
 
 const snapshotPath = path.join(__dirname, '../data/system/tpsl_snapshot.json');
 const RECV_WINDOW = 5000;
