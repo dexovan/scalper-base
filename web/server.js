@@ -636,8 +636,20 @@ app.use(
   })
 );
 
+// 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
+app.get("/login", (req, res) => {
+  if (req.session.user) return res.redirect("/");
+  res.render("login", { title: "Login", error: null, hideChrome: true });
+});
+
+// 2️⃣ API ROUTES (public)
+app.use("/api/universe", universeAPI);
+app.use("/api/features", apiFeaturesRoutes);
+app.use("/api/test", apiTest);
+
 // ===========================================
 // PROXY → MANUAL TRADE API (port 8090)
+// MUST BE BEFORE app.use("/api", apiRoutes) to take precedence!
 // ===========================================
 // Add explicit middleware to log manual-trade requests
 app.post("/api/manual-trade", (req, res, next) => {
@@ -674,17 +686,8 @@ app.use(
   })
 );
 
-// 1️⃣ LOGIN PAGE — must be BEFORE authRoutes
-app.get("/login", (req, res) => {
-  if (req.session.user) return res.redirect("/");
-  res.render("login", { title: "Login", error: null, hideChrome: true });
-});
-
-// 2️⃣ API ROUTES (public)
-app.use("/api/universe", universeAPI);
-app.use("/api/features", apiFeaturesRoutes);
+// Generic API routes (catches /api/* after specific routes)
 app.use("/api", apiRoutes);
-app.use("/api/test", apiTest);
 
 // 3️⃣ AUTH ROUTES (login, logout, register)
 app.use(authRoutes);
