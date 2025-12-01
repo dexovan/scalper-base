@@ -1106,20 +1106,29 @@ function closeSignalModal() {
 
 async function loadSignalDetails(symbol) {
   try {
+    console.log(`📂 [MODAL] Počinjam učitavati signale za ${symbol}...`);
+
     // Get current signals
     const response = await fetch('/api/scalp-scanner');
     const data = await response.json();
+
+    console.log(`📊 [MODAL] API odgovor za signale:`, data);
+
     const signal = data.signals.find(s => s.symbol === symbol);
 
     if (!signal) {
-      console.error('Signal not found:', symbol);
+      console.error('❌ [MODAL] Signal nije pronađen za:', symbol);
       return;
     }
+
+    console.log(`✅ [MODAL] Signal pronađen:`, signal);
 
     // Update modal header
     document.getElementById('modal-symbol').textContent = symbol;
     const timestamp = new Date().toLocaleString('sr-RS');
     document.getElementById('modal-timestamp').textContent = timestamp;
+
+    console.log(`✅ [MODAL] Header ažuriran: ${symbol} - ${timestamp}`);
 
     // Store symbol in modal state
     window.modalState.symbol = symbol;
@@ -1127,23 +1136,31 @@ async function loadSignalDetails(symbol) {
     // Store wall analysis (if available from signal)
     if (signal.wallAnalysis) {
       window.modalState.wallAnalysis = signal.wallAnalysis;
-      console.log('🧱 Wall analysis loaded:', signal.wallAnalysis);
+      console.log('🧱 [MODAL] Wall analysis učitan:', signal.wallAnalysis);
     }
 
     // Load live market data
+    console.log(`🔄 [MODAL] Započinjam učitavanje tržišnih podataka...`);
     await loadMarketData(symbol);
+    console.log(`✅ [MODAL] Tržišni podaci učitani`);
 
     // Load candle data and analysis
+    console.log(`🔄 [MODAL] Započinjam učitavanje candle podataka...`);
     await loadCandleData(symbol);
+    console.log(`✅ [MODAL] Candle podaci učitani`);
 
     // Load quality assessment
+    console.log(`🔄 [MODAL] Započinjam učitavanje quality assessment-a...`);
     loadQualityAssessment(signal);
+    console.log(`✅ [MODAL] Quality assessment učitan`);
+
+    console.log(`🎉 [MODAL] Sve je uspešno učitano!`);
 
   } catch (error) {
-    console.error('Error loading signal details:', error);
+    console.error('❌ [MODAL] Greška pri učitavanju modal detalja:', error);
     document.getElementById('modal-market-data').innerHTML = `
       <div class="text-center py-8 text-red-400">
-        ❌ Greška pri učitavanju podataka
+        ❌ Greška pri učitavanju podataka: ${error.message}
       </div>
     `;
   }
