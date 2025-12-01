@@ -5,8 +5,6 @@
 
 import * as accountState from './accountState.js';
 import * as positionTracker from './positionTracker.js';
-import * as featureEngine from '../features/featureEngine.js';
-import * as regimeEngine from '../regime/regimeEngine.js';
 import { addEventListener } from '../execution/executionEngine.js';
 
 /**
@@ -270,8 +268,8 @@ export function onPriceTickForSymbol(symbol, price) {
   // 🔥 CRITICAL: Call TP/SL engine to check for TP/SL/Quick TP hits
   const positionLong = positionTracker.getPosition(symbol, "LONG");
   const positionShort = positionTracker.getPosition(symbol, "SHORT");
-  const featureState = featureEngine.getFeatureState(symbol);
-  const regimeState = regimeEngine.getRegimeState(symbol);
+  const featureState = global.featureEngine?.getFeatureState?.(symbol);
+  const regimeState = global.regimeEngine?.getRegimeState?.(symbol);
 
   // Debug logging for LTC
   if (symbol === "LTCUSDT" && (positionLong || positionShort)) {
