@@ -1671,8 +1671,11 @@ async function loadCandleData(symbol) {
 
     console.log('📊 Candle data response:', data);
 
-    if (!data.ok && !data.success) {
-      throw new Error('API returned error: ' + (data.error || 'unknown error'));
+    // Check if we have valid candle data
+    if (!data.candles || data.candles.length === 0) {
+      const errorMsg = data.error || data.message || 'Nema dostupnih candle podataka';
+      console.error('❌ API Error:', errorMsg);
+      throw new Error(errorMsg);
     }
 
     if (!data.candles || data.candles.length === 0) {
