@@ -518,14 +518,21 @@ async function startEngine() {
     };
 
     console.log("📊 [TP/SL] Calling initTpslEngine()...");
-    tpslEngine.initTpslEngine(tpslConfig);
-    console.log("📊 [TP/SL] initTpslEngine() completed");
+    try {
+      tpslEngine.initTpslEngine(tpslConfig);
+      console.log("📊 [TP/SL] initTpslEngine() completed");
 
-    // 🔥 CRITICAL: Sync positions from tpslEngine snapshot to positionTracker
-    console.log("📊 [SYNC] Synchronizing positions from tpslEngine to positionTracker...");
-    const tpslStatesMap = tpslEngine.getTpslStatesMap();
-    positionTracker.loadPositionsFromTpslSnapshot(tpslStatesMap);
-    console.log("📊 [SYNC] Position synchronization completed");
+      // 🔥 CRITICAL: Sync positions from tpslEngine snapshot to positionTracker
+      console.log("📊 [SYNC] Synchronizing positions from tpslEngine to positionTracker...");
+      const tpslStatesMap = tpslEngine.getTpslStatesMap();
+      console.log(`📊 [SYNC] Got tpslStatesMap with ${tpslStatesMap ? tpslStatesMap.size : 0} items`);
+      positionTracker.loadPositionsFromTpslSnapshot(tpslStatesMap);
+      console.log("📊 [SYNC] Position synchronization completed");
+    } catch (err) {
+      console.error("❌ [TP/SL] ERROR during TP/SL Engine initialization:", err.message);
+      console.error("❌ [TP/SL] Stack:", err.stack);
+      throw err; // Re-throw to be caught by outer try-catch
+    }
 
     // Store in global for API access
     global.tpslEngine = tpslEngine;
