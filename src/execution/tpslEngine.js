@@ -610,14 +610,23 @@ function saveSnapshot() {
  * Load snapshot from disk
  */
 function loadSnapshot() {
-  if (!snapshotPath || !fs.existsSync(snapshotPath)) return;
+  if (!snapshotPath || !fs.existsSync(snapshotPath)) {
+    console.log(`[TpslEngine] No snapshot file at ${snapshotPath}`);
+    return;
+  }
 
   try {
     const data = fs.readFileSync(snapshotPath, 'utf8');
+    console.log(`[TpslEngine] DEBUG: Read snapshot file, length=${data.length}`);
     const snapshot = JSON.parse(data);
+    console.log(`[TpslEngine] DEBUG: Parsed snapshot, positions object exists=${!!snapshot.positions}`);
+    console.log(`[TpslEngine] DEBUG: Positions keys: ${snapshot.positions ? Object.keys(snapshot.positions).join(', ') : 'N/A'}`);
 
     if (snapshot.positions) {
-      for (const [key, state] of Object.entries(snapshot.positions)) {
+      const entries = Object.entries(snapshot.positions);
+      console.log(`[TpslEngine] DEBUG: Found ${entries.length} position entries to load`);
+      for (const [key, state] of entries) {
+        console.log(`[TpslEngine] DEBUG: Loading position ${key}`);
         tpslStates.set(key, state);
       }
       console.log(`[TpslEngine] Loaded ${tpslStates.size} TP/SL states from snapshot`);
