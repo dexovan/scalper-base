@@ -347,8 +347,15 @@ async function startEngine() {
 
     console.log("🚀 DEBUG: Ready to start Monitor API…");
 
-    await startMonitorApiServer(8090); // AWAIT to ensure FeatureEngine is ready
-    console.log("🚀 DEBUG: Monitor API started AND FeatureEngine ready");
+    // Try to start Monitor API, but don't block initialization if it fails
+    try {
+      await startMonitorApiServer(8090); // AWAIT to ensure FeatureEngine is ready
+      console.log("🚀 DEBUG: Monitor API started AND FeatureEngine ready");
+    } catch (err) {
+      console.warn(`⚠️  [MONITOR API] Failed to start (port may be in use): ${err.message}`);
+      console.warn(`⚠️  [MONITOR API] Continuing with Risk Engine initialization...`);
+      // Continue anyway - Risk Engine initialization is critical
+    }
 
     // =====================================================
     // PHASE 5: RISK ENGINE INITIALIZATION
