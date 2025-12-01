@@ -103,7 +103,10 @@ async function makeRequest(method, endpoint, params = {}) {
 }
 
 async function getAllActivePositions() {
-  const result = await makeRequest("GET", "/v5/position/list", { category: "linear" });
+  const result = await makeRequest("GET", "/v5/position/list", {
+    category: "linear",
+    settleCoin: "USDT"
+  });
   const positions = result.list || [];
 
   return positions
