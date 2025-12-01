@@ -446,40 +446,14 @@ async function startEngine() {
       const tpslStatesMap = tpslEngine.getTpslStatesMap();
       console.log(`📊 [SYNC] Got tpslStatesMap with ${tpslStatesMap ? tpslStatesMap.size : 0} items`);
       positionTracker.loadPositionsFromTpslSnapshot(tpslStatesMap);
-      console.log("📊 [SYNC] Position synchronization from snapshot completed");
-
-      // 🔥 CRITICAL: Also load LIVE positions from Bybit API to catch any positions
-      // that were opened but not yet in snapshot
-      console.log("📊 [SYNC] Loading LIVE positions from Bybit API...");
-      const livePositions = await bybitOrderExecutor.getActivePositions();
-      if (livePositions && livePositions.length > 0) {
-        console.log(`📊 [SYNC] Found ${livePositions.length} active positions on Bybit:`);
-        for (const pos of livePositions) {
-          console.log(`📊 [SYNC]   - ${pos.symbol} ${pos.side} @ ${pos.avgPrice} (qty: ${pos.size})`);
-          // Register with TP/SL engine if not already there
-          const key = `${pos.symbol}_${pos.side}`;
-          if (!tpslStatesMap.has(key)) {
-            console.log(`📊 [SYNC]   ✓ Registering ${key} with TP/SL engine`);
-            // Let TP/SL engine register the position with TP/SL levels
-            tpslEngine.registerPosition(pos.symbol, pos.side, {
-              entryPrice: parseFloat(pos.avgPrice),
-              qty: parseFloat(pos.size),
-              leverage: parseFloat(pos.leverage || 1),
-              featureState: featureEngine?.getFeatureState?.(pos.symbol),
-              regimeState: null
-            });
-            console.log(`📊 [SYNC]   ✓ Position registered with TP/SL engine`);
-          }
-        }
-      } else {
-        console.log("📊 [SYNC] No active positions found on Bybit");
-      }
-      console.log("📊 [SYNC] LIVE position loading completed");
+      console.log("📊 [SYNC] Position synchronization completed");
     } catch (err) {
       console.error("❌ [TP/SL] ERROR during TP/SL Engine initialization:", err.message);
       console.error("❌ [TP/SL] Stack:", err.stack);
       throw err; // Re-throw to be caught by outer try-catch
-    }    // Store in global for API access
+    }
+
+    // Store in global for API access
     global.tpslEngine = tpslEngine;
     console.log("📊 [TP/SL] Stored in global");
 
