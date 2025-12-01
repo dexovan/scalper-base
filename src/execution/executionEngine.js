@@ -10,6 +10,7 @@ import CONFIG from "../config/index.js";
 import paths from "../config/paths.js";
 import orderRouter from "./orderRouter.js";
 import simulatedExchange from "./simulatedExchange.js";
+import * as accountState from "../risk/accountState.js";
 
 // =======================================
 // EXECUTION ENGINE STATE
@@ -328,12 +329,37 @@ export function handleFillUpdate(fillUpdate) {
 // =======================================
 function handlePositionEvent(executionOrder, action) {
   if (action === "OPEN") {
+    // 🔥 Get position data from accountState for rich event
+    let leverage = 1;
+    let featureState = null;
+    let regimeState = null;
+
+    try {
+      const posData = accountState.getPositionBySymbol(executionOrder.symbol);
+      if (posData) {
+        leverage = posData.leverage || 1;
+      }
+
+      // Try to get feature and regime state from global context
+      if (global.featureEngine) {
+        featureState = global.featureEngine.getFeatureState?.(executionOrder.symbol);
+      }
+      if (global.regimeEngine) {
+        regimeState = global.regimeEngine.getRegimeState?.(executionOrder.symbol);
+      }
+    } catch (err) {
+      // Silently continue - not critical
+    }
+
     emitEvent("EXECUTION_POSITION_OPENED", {
       symbol: executionOrder.symbol,
       side: executionOrder.side === "BUY" ? "LONG" : "SHORT",
       entryPrice: executionOrder.avgFillPrice,
       qty: executionOrder.filledQty,
       notionalUsd: executionOrder.avgFillPrice * executionOrder.filledQty,
+      leverage: leverage,
+      featureState: featureState,
+      regimeState: regimeState,
       timestamp: executionOrder.filledAt,
     });
   } else if (action === "CLOSE") {

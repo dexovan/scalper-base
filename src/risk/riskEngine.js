@@ -7,6 +7,7 @@ import * as accountState from './accountState.js';
 import * as positionTracker from './positionTracker.js';
 import * as featureEngine from '../features/featureEngine.js';
 import * as regimeEngine from '../regime/regimeEngine.js';
+import { addEventListener } from '../execution/executionEngine.js';
 
 /**
  * Risk configuration
@@ -83,6 +84,23 @@ export function initRiskEngine(customConfig = {}, accountMode = "SIM", initialEq
 
   // Calculate initial risk state
   recalcRiskState();
+
+  // 🔥 CRITICAL: Register listener for position events from executionEngine
+  addEventListener("EXECUTION_POSITION_OPENED", (event) => {
+    try {
+      onPositionEvent({ ...event, type: "POSITION_OPENED" });
+    } catch (err) {
+      console.error(`[RiskEngine] Error handling EXECUTION_POSITION_OPENED:`, err.message);
+    }
+  });
+
+  addEventListener("EXECUTION_POSITION_CLOSED", (event) => {
+    try {
+      onPositionEvent({ ...event, type: "POSITION_CLOSED" });
+    } catch (err) {
+      console.error(`[RiskEngine] Error handling EXECUTION_POSITION_CLOSED:`, err.message);
+    }
+  });
 
   // Schedule daily reset
   scheduleDailyReset();
@@ -179,6 +197,24 @@ export function onPositionEvent(event) {
     if (type === "POSITION_OPENED") {
       positionTracker.onNewPositionOpened(event);
       dailyStats.tradesCount++;
+
+      // 🔥 CRITICAL: Initialize TP/SL state for tpslEngine to monitor!
+      if (global.tpslEngine) {
+        try {
+          global.tpslEngine.onPositionOpened({
+            symbol: event.symbol,
+            side: event.side,
+            entryPrice: event.entryPrice,
+            qty: event.qty,
+            leverage: event.leverage || 1,
+            featureState: event.featureState,
+            regimeState: event.regimeState
+          });
+          console.log(`[RiskEngine] TP/SL state initialized for ${event.symbol} ${event.side} via tpslEngine.onPositionOpened()`);
+        } catch (err) {
+          console.error(`[RiskEngine] Error initializing TP/SL state: ${err.message}`);
+        }
+      }
     } else if (type === "POSITION_CLOSED") {
       const result = positionTracker.onPositionClosed(event);
 
