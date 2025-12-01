@@ -2398,6 +2398,9 @@ async function handleManualTrade() {
 
     // Show loading state
     const btn = document.getElementById('manual-trade-btn');
+    if (!btn) {
+      throw new Error('❌ Dugme nije pronađeno! Molim osvežite stranicu.');
+    }
     const originalText = btn.innerHTML;
     btn.innerHTML = '⏳ Izvršavanje...';
     btn.disabled = true;
@@ -2437,8 +2440,10 @@ async function handleManualTrade() {
     alert(`✅ TRADE USPEŠAN!\n\n${result.message}`);
 
     // Restore button
-    btn.innerHTML = originalText;
-    btn.disabled = false;
+    if (btn) {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
 
     // Close modal
     closeSignalModal();
@@ -2449,8 +2454,10 @@ async function handleManualTrade() {
 
     // Restore button
     const btn = document.getElementById('manual-trade-btn');
-    btn.innerHTML = '🚀 Idi u Trejd';
-    btn.disabled = false;
+    if (btn) {
+      btn.innerHTML = '🚀 Idi u Trejd';
+      btn.disabled = false;
+    }
   }
 }
 
