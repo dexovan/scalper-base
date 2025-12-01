@@ -54,13 +54,11 @@ export function loadPositionsFromTpslSnapshot(tpslStatesMap) {
   let loadedCount = 0;
   for (const [key, tpslState] of tpslStatesMap.entries()) {
     // tpslState has: symbol, side, entryPrice, breakEvenPrice, quickTpPrice, tp1Price, tp2Price, stopLossPrice
-    const { symbol, side, entryPrice } = tpslState;
+    const { symbol, side, entryPrice, qty, leverage } = tpslState;
 
     // Check if position already exists
     if (positions.has(key)) {
-      if (symbol === "LTCUSDT") {
-        console.log(`[PositionTracker] Position ${key} already exists, skipping...`);
-      }
+      console.log(`[PositionTracker] Position ${key} already exists, skipping...`);
       continue;
     }
 
@@ -69,11 +67,11 @@ export function loadPositionsFromTpslSnapshot(tpslStatesMap) {
     const position = {
       symbol,
       side,
-      leverage: 1,  // Default leverage (could be in tpslState if needed)
+      leverage: leverage || 1,  // Use leverage from tpslState if available
       entryPrice,
-      qty: 1,  // Qty unknown from tpslState - set to 1 as placeholder
-      notionalValue: entryPrice * 1,
-      marginUsed: entryPrice * 1,
+      qty: qty || 1,  // Use qty from tpslState if available
+      notionalValue: entryPrice * (qty || 1),
+      marginUsed: entryPrice * (qty || 1) / (leverage || 1),
       stopLossPrice: tpslState.stopLossPrice || null,
       takeProfit1Price: tpslState.tp1Price || null,
       takeProfit2Price: tpslState.tp2Price || null,
@@ -90,12 +88,10 @@ export function loadPositionsFromTpslSnapshot(tpslStatesMap) {
     positions.set(key, position);
     loadedCount++;
 
-    if (symbol === "LTCUSDT") {
-      console.log(`[PositionTracker] Loaded LTC position from snapshot: ${key}, entry=${entryPrice}`);
-    }
+    console.log(`[PositionTracker] ✅ Loaded ${key} from snapshot: entry=${entryPrice.toFixed(4)}, qty=${qty}`);
   }
 
-  console.log(`[PositionTracker] Loaded ${loadedCount} positions from tpslEngine snapshot`);
+  console.log(`[PositionTracker] ✅ Loaded ${loadedCount} positions from tpslEngine snapshot`);
 }
 
 /**
