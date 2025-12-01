@@ -651,42 +651,46 @@ app.use("/api/test", apiTest);
 // PROXY → MANUAL TRADE API (port 8090)
 // MUST BE BEFORE app.use("/api", apiRoutes) to take precedence!
 // ===========================================
-app.use(
-  "/api/manual-trade",
-  (req, res, next) => {
-    console.log("\n\n🔴🔴🔴 [MANUAL-TRADE] Request intercepted 🔴🔴🔴");
-    console.log("   Method:", req.method);
-    console.log("   URL:", req.originalUrl);
-    console.log("   Content-Type:", req.get("content-type"));
-    console.log("   Body:", JSON.stringify(req.body));
-    next();
-  },
-  createProxyMiddleware({
-    target: "http://localhost:8090",
-    changeOrigin: true,
-    timeout: 30000,
-    proxyTimeout: 30000,
-    logLevel: "debug",
-    onError: (err, req, res) => {
-      console.error("\n❌ [PROXY ERROR] /api/manual-trade:", err.message);
-      console.error("   Code:", err.code);
-      res.status(502).json({
-        ok: false,
-        error: "Proxy error: " + err.message,
-        code: err.code,
-        timestamp: new Date().toISOString()
-      });
-    },
-    onProxyRes: (proxyRes, req, res) => {
-      console.log(`\n✅ [PROXY] Response received: ${proxyRes.statusCode}`);
-    },
-    onProxyReq: (proxyReq, req, res) => {
-      console.log(`\n🟡 [PROXY] Forwarding to http://localhost:8090${req.url}`);
-      // Ensure content-type is preserved
-      proxyReq.setHeader("Content-Type", "application/json");
-    }
-  })
-);
+app.post("/api/manual-trade", async (req, res) => {
+  console.log("\n\n🔴🔴🔴 [MANUAL-TRADE] POST request received 🔴🔴🔴");
+  console.log("   URL:", req.originalUrl);
+  console.log("   Body:", JSON.stringify(req.body));
+
+  try {
+    console.log("🟡 [PROXY] Forwarding to backend: http://localhost:8090/api/manual-trade");
+
+    const backendResponse = await fetch("http://localhost:8090/api/manual-trade", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(req.get("authorization") && { "Authorization": req.get("authorization") })
+      },
+      body: JSON.stringify(req.body),
+      timeout: 30000
+    });
+
+    console.log(`✅ [PROXY] Backend responded with status: ${backendResponse.status}`);
+
+    // Get response body
+    const responseData = await backendResponse.json();
+    console.log("✅ [PROXY] Response data received");
+
+    // Forward status and response
+    res.status(backendResponse.status).json(responseData);
+    console.log("✅ [PROXY] Response sent to frontend");
+
+  } catch (error) {
+    console.error("\n❌ [PROXY ERROR] Failed to proxy request:", error.message);
+    console.error("   Code:", error.code);
+
+    res.status(502).json({
+      ok: false,
+      error: "Failed to execute trade: " + error.message,
+      code: error.code,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // Generic API routes (catches /api/* after specific routes)
 app.use("/api", apiRoutes);
