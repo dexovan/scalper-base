@@ -639,6 +639,14 @@ app.use(
 // ===========================================
 // PROXY → MANUAL TRADE API (port 8090)
 // ===========================================
+// Add explicit middleware to log manual-trade requests
+app.post("/api/manual-trade", (req, res, next) => {
+  console.log("📨 [MANUAL-TRADE] POST request received!");
+  console.log("   Content-Type:", req.get("content-type"));
+  console.log("   Body:", JSON.stringify(req.body));
+  next();
+});
+
 app.use(
   "/api/manual-trade",
   createProxyMiddleware({
@@ -657,6 +665,11 @@ app.use(
     },
     onProxyRes: (proxyRes, req, res) => {
       console.log(`✅ [PROXY] /api/manual-trade response received: ${proxyRes.statusCode}`);
+    },
+    onProxyReq: (proxyReq, req, res) => {
+      console.log(`📤 [PROXY] Forwarding to backend: ${proxyReq.path}`);
+      // Ensure content-type is preserved
+      proxyReq.setHeader("Content-Type", "application/json");
     }
   })
 );
