@@ -108,9 +108,10 @@ async function startEngine() {
     console.log("🔍 DEBUG: Initializing EventHub...");
     initEventHub();
 
-    // DISABLED: Universe refresh writes to disk every 15s (500+ symbols × 1KB = 500KB+ per write = 2MB/min = 2.9GB/day!)
-    // refreshUniversePeriodically();
-    console.log("⚠️ [ENGINE] Universe periodic refresh DISABLED - preventing disk fill");
+    // ENABLED: Universe refresh now only in RAM (disk write is disabled in universe_v2.js)
+    // This allows dynamic symbol discovery every 15 seconds without disk fill
+    refreshUniversePeriodically({ intervalMs: 15000 });
+    console.log("✅ [ENGINE] Universe periodic refresh ENABLED (memory only, no disk write)")
 
     // KORAK 2: Display storage stats
     console.log("⏰ [INDEX] About to get storage stats with 3s timeout...");
