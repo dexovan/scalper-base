@@ -32,6 +32,10 @@ const eventListeners = new Map();
 
 function emitEvent(eventType, eventData) {
   const listeners = eventListeners.get(eventType) || [];
+  console.log(`[EXEC-EVENT] emitEvent(${eventType}): ${listeners.length} listeners registered`);
+  if (listeners.length === 0) {
+    console.warn(`⚠️ [EXEC-EVENT] NO LISTENERS for ${eventType}!`);
+  }
   listeners.forEach(callback => {
     try {
       callback(eventData);
@@ -46,6 +50,7 @@ export function addEventListener(eventType, callback) {
     eventListeners.set(eventType, []);
   }
   eventListeners.get(eventType).push(callback);
+  console.log(`[EXEC-EVENT] addEventListener(${eventType}): Now has ${eventListeners.get(eventType).length} listeners`);
 }
 
 /**
@@ -328,6 +333,8 @@ export function handleFillUpdate(fillUpdate) {
 // HANDLE POSITION EVENTS
 // =======================================
 function handlePositionEvent(executionOrder, action) {
+  console.log(`[EXEC-POS] handlePositionEvent(${action}) for ${executionOrder.symbol} ${executionOrder.side}`);
+
   if (action === "OPEN") {
     // 🔥 Get position data from accountState for rich event
     let leverage = 1;
@@ -351,6 +358,7 @@ function handlePositionEvent(executionOrder, action) {
       // Silently continue - not critical
     }
 
+    console.log(`[EXEC-POS] 🎯 Emitting EXECUTION_POSITION_OPENED for ${executionOrder.symbol}@${executionOrder.avgFillPrice}`);
     emitEvent("EXECUTION_POSITION_OPENED", {
       symbol: executionOrder.symbol,
       side: executionOrder.side === "BUY" ? "LONG" : "SHORT",
@@ -363,6 +371,7 @@ function handlePositionEvent(executionOrder, action) {
       timestamp: executionOrder.filledAt,
     });
   } else if (action === "CLOSE") {
+    console.log(`[EXEC-POS] 📊 Emitting EXECUTION_POSITION_CLOSED for ${executionOrder.symbol}`);
     emitEvent("EXECUTION_POSITION_CLOSED", {
       symbol: executionOrder.symbol,
       side: executionOrder.side === "SELL" ? "LONG" : "SHORT", // Opposite
