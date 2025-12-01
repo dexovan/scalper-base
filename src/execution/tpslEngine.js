@@ -294,13 +294,14 @@ async function handleQuickTpHit(tpslState, currentPrice, positionState) {
   console.log(`[TpslEngine] 💰 Closing 50% (${partialCloseQty} ${tpslState.symbol}) for quick profit...`);
 
   try {
-    // Convert side from 'LONG'/'SHORT' to 'Buy'/'Sell' for Bybit
-    // LONG position: to close, we SELL
-    // SHORT position: to close, we BUY
-    const bybitSide = tpslState.side === 'LONG' ? 'Sell' : 'Buy';
+    // Convert side from 'LONG'/'SHORT' to Opening side for Bybit
+    // partialClosePosition() will automatically convert to closing side
+    // LONG opened with 'Buy' → partialClosePosition converts to 'Sell'
+    // SHORT opened with 'Sell' → partialClosePosition converts to 'Buy'
+    const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
     if (bybitOrderExecutor.partialClosePosition) {
-      console.log(`[TpslEngine] 📤 Submitting Quick TP close: ${bybitSide} ${partialCloseQty} ${tpslState.symbol}`);
+      console.log(`[TpslEngine] 📤 Submitting Quick TP close: Opening side ${bybitSide} ${partialCloseQty} ${tpslState.symbol}`);
       const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
       if (result) {
         console.log(`✅ [TpslEngine] Quick TP 50% closed successfully - profit secured! 🎉`);
@@ -361,11 +362,14 @@ async function handleTp1Hit(tpslState, currentPrice, positionState) {
   console.log(`[TpslEngine] 🔄 Closing 50% (${partialCloseQty} ${tpslState.symbol}) to secure profit...`);
 
   try {
-    // Convert side from 'LONG'/'SHORT' to 'Buy'/'Sell' for Bybit
-    const bybitSide = tpslState.side === 'LONG' ? 'Sell' : 'Buy';
+    // Convert side from 'LONG'/'SHORT' to Opening side for Bybit
+    // partialClosePosition() will automatically convert to closing side
+    // LONG opened with 'Buy' → partialClosePosition converts to 'Sell'
+    // SHORT opened with 'Sell' → partialClosePosition converts to 'Buy'
+    const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
     if (bybitOrderExecutor.partialClosePosition) {
-      console.log(`[TpslEngine] 📤 Submitting close order: ${bybitSide} ${partialCloseQty} ${tpslState.symbol}`);
+      console.log(`[TpslEngine] 📤 Submitting close order: Opening side ${bybitSide} ${partialCloseQty} ${tpslState.symbol}`);
       const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
 
       if (result) {
@@ -417,11 +421,14 @@ async function handleTp2Hit(tpslState, currentPrice, positionState) {
     console.log(`[TpslEngine] 🔄 Closing remaining 50% (${remainingCloseQty} ${tpslState.symbol})...`);
 
     try {
-      // Convert side from 'LONG'/'SHORT' to 'Buy'/'Sell' for Bybit
-      const bybitSide = tpslState.side === 'LONG' ? 'Sell' : 'Buy';
+      // Convert side from 'LONG'/'SHORT' to Opening side for Bybit
+      // partialClosePosition() will automatically convert to closing side
+      // LONG opened with 'Buy' → partialClosePosition converts to 'Sell'
+      // SHORT opened with 'Sell' → partialClosePosition converts to 'Buy'
+      const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
       if (bybitOrderExecutor.partialClosePosition) {
-        console.log(`[TpslEngine] 📤 Submitting TP2 close order: ${bybitSide} ${remainingCloseQty} ${tpslState.symbol}`);
+        console.log(`[TpslEngine] 📤 Submitting TP2 close order: Opening side ${bybitSide} ${remainingCloseQty} ${tpslState.symbol}`);
         const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, remainingCloseQty);
 
         if (result) {
