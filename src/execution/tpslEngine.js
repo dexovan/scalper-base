@@ -582,6 +582,13 @@ export function getAllTpslStates() {
 }
 
 /**
+ * Get tpslStates map (for position tracker synchronization)
+ */
+export function getTpslStatesMap() {
+  return tpslStates;
+}
+
+/**
  * Save snapshot to disk
  */
 function saveSnapshot() {

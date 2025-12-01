@@ -39,6 +39,66 @@ export function initPositionTracker() {
 }
 
 /**
+ * Load positions from tpslEngine snapshot
+ * When tpslEngine loads states from disk, we need to create corresponding positions
+ * @param {Map} tpslStatesMap - Map of tpslStates from tpslEngine
+ */
+export function loadPositionsFromTpslSnapshot(tpslStatesMap) {
+  if (!tpslStatesMap || tpslStatesMap.size === 0) {
+    console.log("[PositionTracker] No tpslStates to load");
+    return;
+  }
+
+  console.log(`[PositionTracker] Loading ${tpslStatesMap.size} positions from tpslEngine snapshot...`);
+
+  let loadedCount = 0;
+  for (const [key, tpslState] of tpslStatesMap.entries()) {
+    // tpslState has: symbol, side, entryPrice, breakEvenPrice, quickTpPrice, tp1Price, tp2Price, stopLossPrice
+    const { symbol, side, entryPrice } = tpslState;
+
+    // Check if position already exists
+    if (positions.has(key)) {
+      if (symbol === "LTCUSDT") {
+        console.log(`[PositionTracker] Position ${key} already exists, skipping...`);
+      }
+      continue;
+    }
+
+    // Create position from tpslState
+    const now = new Date().toISOString();
+    const position = {
+      symbol,
+      side,
+      leverage: 1,  // Default leverage (could be in tpslState if needed)
+      entryPrice,
+      qty: 1,  // Qty unknown from tpslState - set to 1 as placeholder
+      notionalValue: entryPrice * 1,
+      marginUsed: entryPrice * 1,
+      stopLossPrice: tpslState.stopLossPrice || null,
+      takeProfit1Price: tpslState.tp1Price || null,
+      takeProfit2Price: tpslState.tp2Price || null,
+      maxFavorableExcursion: 0,
+      maxAdverseExcursion: 0,
+      unrealizedPnl: 0,
+      unrealizedPnlPct: 0,
+      realizedPnl: 0,
+      openedAt: now,
+      updatedAt: now,
+      isActive: true
+    };
+
+    positions.set(key, position);
+    loadedCount++;
+
+    if (symbol === "LTCUSDT") {
+      console.log(`[PositionTracker] Loaded LTC position from snapshot: ${key}, entry=${entryPrice}`);
+    }
+  }
+
+  console.log(`[PositionTracker] Loaded ${loadedCount} positions from tpslEngine snapshot`);
+}
+
+/**
  * Generate position key
  * @param {string} symbol
  * @param {string} side - "LONG" or "SHORT"

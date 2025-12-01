@@ -520,6 +520,12 @@ async function startEngine() {
     tpslEngine.initTpslEngine(tpslConfig);
     console.log("📊 [TP/SL] initTpslEngine() completed");
 
+    // 🔥 CRITICAL: Sync positions from tpslEngine snapshot to positionTracker
+    console.log("📊 [SYNC] Synchronizing positions from tpslEngine to positionTracker...");
+    const tpslStatesMap = tpslEngine.getTpslStatesMap();
+    positionTracker.loadPositionsFromTpslSnapshot(tpslStatesMap);
+    console.log("📊 [SYNC] Position synchronization completed");
+
     // Store in global for API access
     global.tpslEngine = tpslEngine;
     console.log("📊 [TP/SL] Stored in global");
