@@ -12,6 +12,7 @@ import {
   isPriceInEntryZone,
   getDistanceToEntryZone,
   adjustEntryZoneTowardMarket,
+  adaptEntryZoneToBidAsk,
   shouldInvalidateSignal,
   getEntryZoneDisplay,
   CONFIG as ENTRY_ZONE_CONFIG
@@ -1044,6 +1045,23 @@ async function fastTrackLoop() {
       // Update signal state
       signalState.inZone = inZone;
       signalState.lastChecked = now;
+
+      // ===== DYNAMIC BID/ASK ADAPTATION =====
+      // Adapt entry zone based on current bid/ask (keeps zone realistic)
+      const bid = liveData.bid || currentPrice;
+      const ask = liveData.ask || currentPrice;
+      const adaptedZone = adaptEntryZoneToBidAsk(signalState.entryZone, bid, ask, signalState.direction);
+      if (adaptedZone.bidAdapted) {
+        signalState.entryZone = adaptedZone;
+        // Re-check if price is still in zone after adaptation
+        const newInZone = isPriceInEntryZone(currentPrice, signalState.entryZone);
+        if (newInZone !== inZone) {
+          signalState.inZone = newInZone;
+        }
+      }
+
+      // Re-calculate distance after potential zone adaptation
+      const distanceInfo = getDistanceToEntryZone(currentPrice, signalState.entryZone);
 
       // ===== PULLBACK CONFIRMATION LOGIC =====
       // Track the lowest price since signal creation

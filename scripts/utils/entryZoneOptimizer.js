@@ -183,6 +183,64 @@ export function adjustEntryZoneTowardMarket(entryZone, currentPrice, direction) 
 }
 
 /**
+ * Adapt entry zone based on current bid/ask spread
+ * Dynamically tighten or loosen zone based on market conditions
+ * @param {object} entryZone - Current entry zone
+ * @param {number} bid - Current best bid
+ * @param {number} ask - Current best ask
+ * @param {string} direction - 'LONG' or 'SHORT'
+ * @returns {object} Potentially adjusted entry zone
+ */
+export function adaptEntryZoneToBidAsk(entryZone, bid, ask, direction) {
+  const spread = ask - bid;
+  const spreadPercent = (spread / ((bid + ask) / 2)) * 100;
+
+  // If spread has tightened significantly, update zone bounds
+  // This keeps zone realistic vs actual market liquidity
+  if (direction === 'LONG') {
+    // For LONG, ideal should be bid (best available)
+    // and max should be ask (if price accelerates)
+    const newIdeal = Math.max(entryZone.ideal, bid);  // Don't go below current bid
+    const newMax = ask;
+
+    const newIdealT = parseFloat(formatPriceByTick(newIdeal, entryZone.tickSize));
+    const newMaxT = parseFloat(formatPriceByTick(newMax, entryZone.tickSize));
+
+    // Only update if bid/ask are better (tighter) than our zone
+    if (newIdealT > entryZone.ideal || newMaxT < entryZone.max) {
+      return {
+        ...entryZone,
+        ideal: newIdealT,
+        max: newMaxT,
+        midpoint: (entryZone.min + newMaxT) / 2,
+        bidAdapted: true
+      };
+    }
+  } else {
+    // For SHORT, ideal should be ask (best available)
+    // and min should be bid (if price accelerates down)
+    const newIdeal = Math.min(entryZone.ideal, ask);  // Don't go above current ask
+    const newMin = bid;
+
+    const newIdealT = parseFloat(formatPriceByTick(newIdeal, entryZone.tickSize));
+    const newMinT = parseFloat(formatPriceByTick(newMin, entryZone.tickSize));
+
+    // Only update if bid/ask are better (tighter) than our zone
+    if (newIdealT < entryZone.ideal || newMinT > entryZone.min) {
+      return {
+        ...entryZone,
+        ideal: newIdealT,
+        min: newMinT,
+        midpoint: (newMinT + entryZone.max) / 2,
+        bidAdapted: true
+      };
+    }
+  }
+
+  return entryZone;  // No adaptation needed
+}
+
+/**
  * Determine if signal should be invalidated (price moved too far)
  * @param {number} currentPrice - Current market price
  * @param {object} entryZone - Entry zone
