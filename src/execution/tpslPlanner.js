@@ -137,6 +137,16 @@ export function planTpSlLevels(params) {
     console.log(`[TpslPlanner] ${symbol} SL adjusted for tick safety: ${slPrice.toFixed(6)}`);
   }
 
+  // Calculate QUICK TP (fee cost + small buffer for immediate profit taking)
+  // This activates much earlier than TP1 to take quick scalp profits
+  const quickTpBufferPct = 0.05; // 0.05% additional buffer above break-even
+  let quickTpPrice;
+  if (side === 'LONG') {
+    quickTpPrice = breakEvenPrice * (1 + quickTpBufferPct / 100);
+  } else {
+    quickTpPrice = breakEvenPrice * (1 - quickTpBufferPct / 100);
+  }
+
   const plan = {
     symbol,
     side,
@@ -145,6 +155,7 @@ export function planTpSlLevels(params) {
     tp2Price,
     slPrice,
     breakEvenPrice,
+    quickTpPrice,  // Quick scalp profit target
     trailingDistancePct: trailingPct,
 
     // Percentages for display

@@ -99,9 +99,11 @@ export function onPositionOpened(positionEvent) {
     tp2Price: plan.tp2Price,
     stopLossPrice: plan.slPrice,
     breakEvenPrice: plan.breakEvenPrice,
+    quickTpPrice: plan.quickTpPrice,  // Quick scalp TP (fee cost + 0.05% buffer)
     trailingDistancePct: plan.trailingDistancePct,
 
     isBreakEvenHit: false,
+    isQuickTpHit: false,  // New flag for quick TP
     trailingActive: false,
     isTp1Hit: false,
     isTp2Hit: false,
@@ -163,6 +165,16 @@ export function onPriceUpdate(params) {
     return;
   }
 
+  // Check QUICK TP hit first (highest profit priority - take scalp profits immediately!)
+  if (!tpslState.isQuickTpHit) {
+    const isQuickTpHit = side === 'LONG' ? price >= tpslState.quickTpPrice : price <= tpslState.quickTpPrice;
+    if (isQuickTpHit) {
+      console.log(`[TpslEngine] 🚀 QUICK TP HIT for ${tpslState.symbol} ${tpslState.side} @ ${price}`);
+      handleQuickTpHit(tpslState, price, positionState);
+      return;
+    }
+  }
+
   // Check TP2 hit (if TP1 already hit)
   if (tpslState.isTp1Hit && !tpslState.isTp2Hit) {
     if (trailingEngine.isTp2Hit(side, price, tpslState.tp2Price)) {
@@ -189,9 +201,7 @@ export function onPriceUpdate(params) {
       handleTp1Hit(tpslState, price, positionState);
       return;
     }
-  }
-
-  // Check break-even activation
+  }  // Check break-even activation
   if (!tpslState.isBreakEvenHit) {
     const shouldBE = trailingEngine.shouldActivateBreakEven({
       side,
@@ -234,6 +244,66 @@ function handleBreakEvenActivation(tpslState, currentPrice) {
     side: tpslState.side,
     breakEvenPrice: tpslState.breakEvenPrice,
     currentPrice,
+    timestamp: new Date().toISOString()
+  });
+
+  saveSnapshot();
+}
+
+/**
+ * Handle QUICK TP hit - immediate scalp profit taking
+ * Closes 50% of position at breakeven + small buffer for fee coverage
+ */
+function handleQuickTpHit(tpslState, currentPrice, positionState) {
+  console.log(`\n[TpslEngine] 🚀🚀🚀 QUICK TP HIT for ${tpslState.symbol} ${tpslState.side} @ ${currentPrice} 🚀🚀🚀`);
+  console.log(`   This is your fee-covering profit target!`);
+
+  tpslState.isQuickTpHit = true;
+  tpslState.trailingActive = true; // Activate trailing after Quick TP
+  tpslState.lastUpdateAt = new Date().toISOString();
+
+  // Move SL to break-even immediately
+  tpslState.stopLossPrice = tpslState.breakEvenPrice;
+  console.log(`   SL moved to breakeven: ${tpslState.breakEvenPrice}`);
+
+  // Calculate quantity to close (50% of position)
+  const partialCloseQty = positionState.qty * 0.5;
+
+  // Close 50% of position to take quick scalp profit
+  console.log(`[TpslEngine] 💰 Closing 50% (${partialCloseQty} ${tpslState.symbol}) for quick profit...`);
+
+  (async () => {
+    try {
+      // Convert side from 'LONG'/'SHORT' to 'Buy'/'Sell' for Bybit
+      const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
+
+      if (bybitOrderExecutor.partialClosePosition) {
+        await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
+        console.log(`✅ [TpslEngine] 50% closed at Quick TP - profit secured! 🎉`);
+      } else {
+        console.warn(`⚠️  [TpslEngine] partialClosePosition not available`);
+      }
+    } catch (err) {
+      console.error(`❌ [TpslEngine] Failed to close at Quick TP: ${err.message}`);
+    }
+  })();
+
+  emitTpslEvent({
+    type: 'TPSL_QUICK_TP_HIT',
+    symbol: tpslState.symbol,
+    side: tpslState.side,
+    quickTpPrice: tpslState.quickTpPrice,
+    currentPrice,
+    partialCloseQty: partialCloseQty,
+    message: 'Quick scalp profit taken - 50% closed at breakeven + buffer',
+    timestamp: new Date().toISOString()
+  });
+
+  emitTpslEvent({
+    type: 'TPSL_TRAILING_ACTIVATED',
+    symbol: tpslState.symbol,
+    side: tpslState.side,
+    trailingDistancePct: tpslState.trailingDistancePct,
     timestamp: new Date().toISOString()
   });
 
