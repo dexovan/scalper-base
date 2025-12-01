@@ -9,7 +9,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
 import CONFIG from '../src/config/index.js';
+
+// Load .env file
+dotenv.config({ path: path.resolve(path.dirname(__filename), '../.env') });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
