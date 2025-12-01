@@ -171,9 +171,21 @@ export function onPriceUpdate(params) {
     }
   }
 
-  // Check TP1 hit
+  // Check TP1 hit - with retroactive detection for skipped prices
   if (!tpslState.isTp1Hit) {
+    // Direct hit
     if (trailingEngine.isTp1Hit(side, price, tpslState.tp1Price)) {
+      console.log(`[TpslEngine] TP1 HIT (direct) at ${price}`);
+      handleTp1Hit(tpslState, price, positionState);
+      return;
+    }
+
+    // Retroactive hit - price already passed TP1 from previous update
+    // For LONG: if TP1 was not hit before but price is now above TP1
+    // For SHORT: if TP1 was not hit before but price is now below TP1
+    const isPriceAboveTp1 = side === 'LONG' ? price >= tpslState.tp1Price : price <= tpslState.tp1Price;
+    if (isPriceAboveTp1) {
+      console.log(`[TpslEngine] TP1 HIT (retroactive) - price ${price} passed TP1 ${tpslState.tp1Price}`);
       handleTp1Hit(tpslState, price, positionState);
       return;
     }
