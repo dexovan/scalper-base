@@ -597,9 +597,15 @@ function saveSnapshot() {
   if (!snapshotPath) return;
 
   try {
+    // Convert Map to object for JSON serialization
+    const positionsObj = {};
+    for (const [key, state] of tpslStates.entries()) {
+      positionsObj[key] = state;
+    }
+
     const snapshot = {
       timestamp: new Date().toISOString(),
-      positions: Object.fromEntries(tpslStates)
+      positions: positionsObj
     };
 
     fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2));
@@ -619,31 +625,43 @@ function loadSnapshot() {
   }
 
   try {
-    const data = fs.readFileSync(snapshotPath, 'utf8');
-    console.log(`[TpslEngine] Read snapshot file, length=${data.length} bytes`);
-    const snapshot = JSON.parse(data);
-    console.log(`[TpslEngine] Parsed snapshot, positions object exists=${!!snapshot.positions}`);
-
-    if (snapshot.positions && typeof snapshot.positions === 'object') {
-      const entries = Object.entries(snapshot.positions);
-      console.log(`[TpslEngine] Found ${entries.length} position entries to load`);
-
-      let loadedCount = 0;
-      for (const [key, state] of entries) {
-        console.log(`[TpslEngine] Loading position: ${key}`);
-        tpslStates.set(key, state);
-        loadedCount++;
-      }
-
-      console.log(`[TpslEngine] ✅ Successfully loaded ${loadedCount} positions into tpslStates Map`);
-      console.log(`[TpslEngine] tpslStates.size is now: ${tpslStates.size}`);
-      return loadedCount;
+    if (!fs.existsSync(snapshotPath)) {
+      console.log(`[TpslEngine] Snapshot file does not exist at ${snapshotPath}`);
+      return 0;
     }
 
-    console.log(`[TpslEngine] No positions in snapshot (positions=${snapshot.positions})`);
-    return 0;
+    const data = fs.readFileSync(snapshotPath, 'utf8');
+    if (!data || data.trim().length === 0) {
+      console.log(`[TpslEngine] Snapshot file is empty`);
+      return 0;
+    }
+
+    const snapshot = JSON.parse(data);
+    if (!snapshot.positions || typeof snapshot.positions !== 'object') {
+      console.log(`[TpslEngine] No positions in snapshot`);
+      return 0;
+    }
+
+    const entries = Object.entries(snapshot.positions);
+    console.log(`[TpslEngine] Found ${entries.length} positions in snapshot file`);
+
+    let loadedCount = 0;
+    for (const [key, state] of entries) {
+      // Validate position has required fields
+      if (!state.symbol || !state.side || state.entryPrice === undefined) {
+        console.warn(`[TpslEngine] ⚠️ Invalid position data for key=${key}, skipping`);
+        continue;
+      }
+      console.log(`[TpslEngine]   → Loading ${key}: ${state.symbol} ${state.side} @ ${state.entryPrice}`);
+      tpslStates.set(key, state);
+      loadedCount++;
+    }
+
+    console.log(`[TpslEngine] ✅ Loaded ${loadedCount} positions from snapshot`);
+    console.log(`[TpslEngine] tpslStates Map now has ${tpslStates.size} entries`);
+    return loadedCount;
   } catch (error) {
-    console.error('[TpslEngine] Failed to load snapshot:', error.message);
+    console.error(`[TpslEngine] ❌ Failed to load snapshot: ${error.message}`);
     return 0;
   }
 }
