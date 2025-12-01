@@ -1059,11 +1059,13 @@ async function fastTrackLoop() {
       }
 
       // === AUTO-WAIVE PULLBACK FOR VERY STRONG SIGNALS ===
-      // If signal has very high confidence (>80%) and price is in zone, don't wait for pullback
-      const autoWaivePullback = signalState.confidence && signalState.confidence > 0.80;
+      // If signal has VERY high confidence (>90%) and price is in zone, don't wait for pullback
+      // This prevents missing strong entries while still protecting against weak signals
+      const confidenceValue = parseFloat(signalState.confidence) || 0;
+      const autoWaivePullback = confidenceValue > 90;
       if (autoWaivePullback && !signalState.pullbackConfirmed && inZone) {
         signalState.pullbackConfirmed = true;
-        console.log(`⚡ [VERY STRONG SIGNAL] ${ft.symbol} - Confidence=${(signalState.confidence * 100).toFixed(0)}% - Waiving pullback requirement`);
+        console.log(`⚡ [VERY STRONG SIGNAL] ${ft.symbol} - Confidence=${confidenceValue.toFixed(1)}% - Waiving pullback requirement`);
       }
 
       // === SMART ENTRY TIMING LOGIC (HYBRID APPROACH) ===
