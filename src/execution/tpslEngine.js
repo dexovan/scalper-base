@@ -395,13 +395,25 @@ async function handleTp1Hit(tpslState, currentPrice, positionState) {
 
     if (bybitOrderExecutor.partialClosePosition) {
       console.log(`[TpslEngine] 🚀 CALLING partialClosePosition now...`);
-      const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
+      let result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
       console.log(`[TpslEngine] ✅ partialClosePosition returned: ${result}`);
 
       if (result) {
         console.log(`✅ [TpslEngine] TP1 partial close SUCCESSFUL for ${tpslState.symbol} - locked in ${partialCloseQty} qty profit`);
       } else {
-        console.error(`❌ [TpslEngine] TP1 partial close FAILED for ${tpslState.symbol} - Bybit API rejected order`);
+        console.error(`❌ [TpslEngine] TP1 partial close FAILED for ${tpslState.symbol} - Bybit API rejected market order`);
+
+        // RETRY: Try again with slight delay
+        console.log(`⏳ [TpslEngine] Retrying TP1 close after 2s delay...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
+
+        if (result) {
+          console.log(`✅ [TpslEngine] RETRY SUCCESSFUL - TP1 partial close executed for ${tpslState.symbol}`);
+        } else {
+          console.error(`❌ [TpslEngine] RETRY FAILED - TP1 close still rejected for ${tpslState.symbol}`);
+        }
       }
     } else {
       console.error(`❌ [TpslEngine] partialClosePosition function NOT AVAILABLE - cannot execute TP1 close`);
