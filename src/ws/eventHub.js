@@ -26,10 +26,6 @@ export function initEventHub() {
     // Event format from index.js: {type: "ticker", symbol, payload: msg.data, timestamp}
     // Convert to: {topic: "tickers.SYMBOL", data: msg.data}
 
-    if (eventObj?.symbol === "LTCUSDT") {
-      console.log(`[EventHub] 📨 Received event for LTC: type=${eventObj.type}, payload keys=${Object.keys(eventObj.payload || {}).join(',')}`);
-    }
-
     if (!eventObj?.type) return;
 
     let msg = null;
@@ -39,11 +35,6 @@ export function initEventHub() {
         data: eventObj.payload,
         type: "delta"
       };
-
-      // Debug: log ticker data structure
-      if (eventObj.symbol === "LTCUSDT") {
-        console.log(`[EventHub] 🔍 LTC ticker data:`, JSON.stringify(msg.data).substring(0, 200));
-      }
     } else if (eventObj.type === "trade") {
       msg = {
         topic: `publicTrade.${eventObj.symbol}`,
@@ -73,21 +64,13 @@ export function initEventHub() {
       // 🔥 CRITICAL: Update price for TP/SL/Quick TP checks!
       // Note: Bybit ticker uses multiple possible price fields - use fallback chain
       const price = msg.data?.lastPrice || msg.data?.ask1Price || msg.data?.bid1Price;
-      if (symbol === "LTCUSDT") {
-        console.log(`[EventHub] 📊 LTC payload check: lastPrice=${msg.data?.lastPrice}, ask1Price=${msg.data?.ask1Price}, bid1Price=${msg.data?.bid1Price}`);
-      }
       if (price) {
         const priceNum = Number(price);
-        if (symbol === "LTCUSDT") {
-          console.log(`[EventHub] 💰 Extracted LTC price: ${priceNum} from available field`);
-        }
         try {
           riskEngine.onPriceTickForSymbol(symbol, priceNum);
         } catch (err) {
           console.error(`[EventHub] Error processing price tick for ${symbol}: ${err.message}`);
         }
-      } else if (symbol === "LTCUSDT") {
-        console.log(`[EventHub] ⚠️  LTC: No price field found in payload!`);
       }
       return;
     }

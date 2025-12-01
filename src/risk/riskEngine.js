@@ -261,10 +261,6 @@ export function onPositionEvent(event) {
  * @param {number} price
  */
 export function onPriceTickForSymbol(symbol, price) {
-  if (symbol === "LTCUSDT") {
-    console.log(`[RiskEngine] 📞 onPriceTickForSymbol called for LTC: price=${price}`);
-  }
-
   // Update both LONG and SHORT positions if they exist
   positionTracker.onPositionPriceUpdate(symbol, "LONG", price);
   positionTracker.onPositionPriceUpdate(symbol, "SHORT", price);
@@ -274,14 +270,6 @@ export function onPriceTickForSymbol(symbol, price) {
   const positionShort = positionTracker.getPosition(symbol, "SHORT");
   const featureState = global.featureEngine?.getFeatureState?.(symbol);
   const regimeState = global.regimeEngine?.getRegimeState?.(symbol);
-
-  // Debug logging for LTC
-  if (symbol === "LTCUSDT") {
-    console.log(`[RiskEngine] 🔍 LTC Price Update: ${price}, positionLong=${positionLong ? 'YES' : 'NO'}, positionShort=${positionShort ? 'YES' : 'NO'}`);
-    if (!positionLong && !positionShort) {
-      console.log(`[RiskEngine] ⚠️  LTC: No positions in tracker! tpslState check needed.`);
-    }
-  }
 
   if (positionLong && positionLong.isActive) {
     console.log(`[RiskEngine] 📞 Calling tpslEngine.onPriceUpdate for ${symbol} LONG @ ${price}`);
