@@ -22,6 +22,9 @@ module.exports = {
       out_file: "/home/aiuser/.pm2/logs/engine-out.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",
 
+      // Max log size 100MB, rotate and compress
+      max_size: "100M",
+
       // Rotate logs daily, keep only 3 days
       merge_logs: true,
 
@@ -48,6 +51,9 @@ module.exports = {
       error_file: "/home/aiuser/.pm2/logs/dashboard-error.log",
       out_file: "/home/aiuser/.pm2/logs/dashboard-out.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+
+      // Max log size 100MB, rotate and compress
+      max_size: "100M",
 
       // Rotate logs daily, keep only 3 days
       merge_logs: true,
