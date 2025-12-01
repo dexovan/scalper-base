@@ -127,10 +127,11 @@ async function getAllActivePositions() {
 // ================================================================
 
 function calculateTpSlPrices(entryPrice, side) {
-  const tp1Pct = 0.005;      // +0.5%
-  const tp2Pct = 0.010;      // +1.0%
-  const slPct = 0.0025;      // -0.25%
-  const bePct = 0.0005;      // +0.05%
+  // More realistic scalping targets
+  const tp1Pct = 0.0015;     // +0.15% (tight scalp)
+  const tp2Pct = 0.0035;     // +0.35% (medium scalp)
+  const slPct = 0.0010;      // -0.10% (tight SL)
+  const bePct = 0.0002;      // +0.02% (BE buffer)
 
   if (side === 'Buy' || side === 'LONG') {
     return {

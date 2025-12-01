@@ -7,13 +7,13 @@
  * Default TP/SL configuration
  */
 const DEFAULT_CONFIG = {
-  // TP/SL targets
-  tp1DistancePct: 0.50,           // TP1 at +0.50% from entry
-  tp2DistancePct: 1.00,           // TP2 at +1.00% from entry
-  slDistancePct: 0.25,            // SL at -0.25% from entry
+  // TP/SL targets - SCALPING TIGHT LEVELS
+  tp1DistancePct: 0.15,           // TP1 at +0.15% from entry (tight scalp)
+  tp2DistancePct: 0.35,           // TP2 at +0.35% from entry (medium scalp)
+  slDistancePct: 0.10,            // SL at -0.10% from entry (tight SL)
 
   // Break-even
-  breakEvenBufferPct: 0.05,       // Additional buffer above fee cost
+  breakEvenBufferPct: 0.02,       // Additional buffer above fee cost (+0.02%)
 
   // Trailing
   trailingDistancePct: 0.10,      // Default trailing distance
