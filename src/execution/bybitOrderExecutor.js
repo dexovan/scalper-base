@@ -1362,7 +1362,8 @@ async function executeManualTrade(ctx) {
   let orderId = null;
 
   try {
-    const orderPayload = {
+    // First try with positionIdx (hedged mode)
+    let orderPayload = {
       category: 'linear',
       symbol,
       side,
@@ -1371,7 +1372,7 @@ async function executeManualTrade(ctx) {
       positionIdx: 0
     };
 
-    console.log(`\n📤 [ORDER PAYLOAD] About to send to Bybit:`);
+    console.log(`\n📤 [ORDER PAYLOAD] About to send to Bybit (attempt 1 - with positionIdx):`);
     console.log(`   Category: ${orderPayload.category}`);
     console.log(`   Symbol: ${orderPayload.symbol}`);
     console.log(`   Side: ${orderPayload.side}`);
@@ -1379,9 +1380,28 @@ async function executeManualTrade(ctx) {
     console.log(`   Qty: ${orderPayload.qty}`);
     console.log(`   PositionIdx: ${orderPayload.positionIdx}`);
 
-    const orderResult = await bybitClient.submitOrder(orderPayload);
+    let orderResult = await bybitClient.submitOrder(orderPayload);
 
     console.log(`📨 Bybit response:`, JSON.stringify(orderResult, null, 2));
+
+    // Check if error is due to positionIdx - if so, retry without it (one-way mode)
+    if (orderResult?.retCode !== 0 && orderResult?.retMsg?.includes('positionIdx')) {
+      console.warn(`⚠️ [RETRY] PositionIdx rejected, trying without it (one-way mode)...`);
+
+      orderPayload = {
+        category: 'linear',
+        symbol,
+        side,
+        orderType: 'Market',
+        qty: String(qty)
+      };
+
+      console.log(`📤 [ORDER PAYLOAD] Attempt 2 (without positionIdx):`);
+      console.log(JSON.stringify(orderPayload, null, 2));
+
+      orderResult = await bybitClient.submitOrder(orderPayload);
+      console.log(`📨 Bybit response (attempt 2):`, JSON.stringify(orderResult, null, 2));
+    }
 
     // Check for Bybit API errors
     if (orderResult?.retCode !== 0) {
