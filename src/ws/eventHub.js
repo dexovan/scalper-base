@@ -27,7 +27,7 @@ export function initEventHub() {
     // Convert to: {topic: "tickers.SYMBOL", data: msg.data}
 
     if (eventObj?.symbol === "LTCUSDT") {
-      console.log(`[EventHub] 📨 Received event for LTC: type=${eventObj.type}`);
+      console.log(`[EventHub] 📨 Received event for LTC: type=${eventObj.type}, payload keys=${Object.keys(eventObj.payload || {}).join(',')}`);
     }
 
     if (!eventObj?.type) return;
@@ -39,6 +39,11 @@ export function initEventHub() {
         data: eventObj.payload,
         type: "delta"
       };
+
+      // Debug: log ticker data structure
+      if (eventObj.symbol === "LTCUSDT") {
+        console.log(`[EventHub] 🔍 LTC ticker data:`, JSON.stringify(msg.data).substring(0, 200));
+      }
     } else if (eventObj.type === "trade") {
       msg = {
         topic: `publicTrade.${eventObj.symbol}`,
