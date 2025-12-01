@@ -1165,6 +1165,14 @@ async function fastTrackLoop() {
         const needsPullback = minZone - currentPrice;
 
         console.log(`⏳ [WAITING FOR PULLBACK] ${ft.symbol} - Price at ${currentPrice.toFixed(6)}, needs to drop ${needsPullback.toFixed(6)} more (${pullbackPercent}% to min ${minZone.toFixed(6)})`);
+
+        // === MOMENTUM VALIDATION DURING PULLBACK WAIT ===
+        // Abort if momentum flips drastically (opposite direction pressure)
+        const momentumCheck = checkMomentum(liveData, signalState.direction);
+        if (!momentumCheck.passed) {
+          // Log warning but don't abort immediately (give some tolerance)
+          console.log(`⚠️  [MOMENTUM DEGRADING] ${ft.symbol} - ${momentumCheck.reason} during pullback wait`);
+        }
       }
 
       // 2. Price moved OUT of zone after being ready
