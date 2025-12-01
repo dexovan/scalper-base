@@ -1489,8 +1489,9 @@ async function scanAllSymbols() {
       signals.forEach(s => {
         const entryStatus = s.entryStatus.inZone ? '✅ IN ZONE' : `⏳ ${s.entryStatus.direction} (${s.entryStatus.distancePercent.toFixed(3)}%)`;
         const currentPrice = s.live.price.toFixed(4);
+        const pullbackStatus = signalStates.get(s.symbol)?.pullbackConfirmed ? '✅ PULLBACK OK' : '⏳ WAITING PULLBACK';
         console.log(`  ${s.symbol} ${s.direction} | Entry Zone: ${s.entryZone.display}`);
-        console.log(`    Status: ${entryStatus} | Current: ${currentPrice}`);
+        console.log(`    Status: ${entryStatus} | Current: ${currentPrice} | Pullback: ${pullbackStatus}`);
         console.log(`    TP: ${s.tp.toFixed(4)} | SL: ${s.sl.toFixed(4)} | Confidence: ${s.confidence}%`);
         console.log(`    Volatility: ${s.candle.volatility?.toFixed(2)}% | Volume: ${s.candle.volumeSpike?.toFixed(1)}x`);
         console.log(`    Imbalance: ${s.live.imbalance?.toFixed(2)} | OrderFlow: $${s.live.orderFlowNet60s?.toFixed(0) || 0}\n`);
