@@ -653,14 +653,21 @@ app.use("/api/test", apiTest);
 // ===========================================
 // Add explicit middleware to log manual-trade requests
 app.post("/api/manual-trade", (req, res, next) => {
-  console.log("📨 [MANUAL-TRADE] POST request received!");
+  console.log("\n\n🔴🔴🔴 [MANUAL-TRADE] POST request received! 🔴🔴🔴");
   console.log("   Content-Type:", req.get("content-type"));
   console.log("   Body:", JSON.stringify(req.body));
+  console.log("   Passing to next middleware...");
   next();
 });
 
 app.use(
   "/api/manual-trade",
+  (req, res, next) => {
+    console.log("\n🟢 [MANUAL-TRADE] Before proxy middleware");
+    console.log("   URL:", req.url);
+    console.log("   Method:", req.method);
+    next();
+  },
   createProxyMiddleware({
     target: "http://localhost:8090",
     changeOrigin: true,
@@ -668,18 +675,23 @@ app.use(
     proxyTimeout: 30000,
     logLevel: "debug",
     onError: (err, req, res) => {
-      console.error("❌ [PROXY ERROR] /api/manual-trade:", err.message);
+      console.error("\n❌ [PROXY ERROR] /api/manual-trade:", err.message);
+      console.error("   Code:", err.code);
+      console.error("   Stack:", err.stack);
       res.status(502).json({
         ok: false,
         error: "Proxy error: " + err.message,
+        code: err.code,
         timestamp: new Date().toISOString()
       });
     },
     onProxyRes: (proxyRes, req, res) => {
-      console.log(`✅ [PROXY] /api/manual-trade response received: ${proxyRes.statusCode}`);
+      console.log(`\n✅ [PROXY] /api/manual-trade response received: ${proxyRes.statusCode}`);
     },
     onProxyReq: (proxyReq, req, res) => {
-      console.log(`📤 [PROXY] Forwarding to backend: ${proxyReq.path}`);
+      console.log(`\n🟡 [PROXY] Forwarding to backend at http://localhost:8090${req.url}`);
+      console.log("   Method:", req.method);
+      console.log("   Body length:", req.body ? JSON.stringify(req.body).length : 0);
       // Ensure content-type is preserved
       proxyReq.setHeader("Content-Type", "application/json");
     }
