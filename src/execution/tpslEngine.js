@@ -360,13 +360,18 @@ function handleTp1Hit(tpslState, currentPrice, positionState) {
       const buyitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
       if (bybitOrderExecutor.partialClosePosition) {
-        await bybitOrderExecutor.partialClosePosition(tpslState.symbol, buyitSide, partialCloseQty);
-        console.log(`✅ [TpslEngine] 50% position closed successfully`);
+        const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, buyitSide, partialCloseQty);
+
+        if (result) {
+          console.log(`✅ [TpslEngine] TP1 partial close successful for ${tpslState.symbol}`);
+        } else {
+          console.error(`❌ [TpslEngine] TP1 partial close FAILED for ${tpslState.symbol} - check Bybit API logs`);
+        }
       } else {
-        console.warn(`⚠️  [TpslEngine] partialClosePosition not available`);
+        console.error(`❌ [TpslEngine] partialClosePosition function NOT AVAILABLE - cannot execute TP1 close`);
       }
     } catch (err) {
-      console.error(`❌ [TpslEngine] Failed to close 50% position: ${err.message}`);
+      console.error(`❌ [TpslEngine] Error executing TP1 partial close: ${err.message}`);
     }
   })();
 
@@ -412,13 +417,18 @@ function handleTp2Hit(tpslState, currentPrice, positionState) {
         const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
         if (bybitOrderExecutor.partialClosePosition) {
-          await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, remainingCloseQty);
-          console.log(`✅ [TpslEngine] Remaining position closed successfully`);
+          const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, remainingCloseQty);
+
+          if (result) {
+            console.log(`✅ [TpslEngine] TP2 remaining position closed successfully`);
+          } else {
+            console.error(`❌ [TpslEngine] TP2 partial close FAILED for ${tpslState.symbol} - check Bybit API logs`);
+          }
         } else {
-          console.warn(`⚠️  [TpslEngine] partialClosePosition not available`);
+          console.error(`❌ [TpslEngine] partialClosePosition function NOT AVAILABLE - cannot execute TP2 close`);
         }
       } catch (err) {
-        console.error(`❌ [TpslEngine] Failed to close remaining position: ${err.message}`);
+        console.error(`❌ [TpslEngine] Error executing TP2 partial close: ${err.message}`);
       }
     })();
   }
