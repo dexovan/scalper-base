@@ -2846,7 +2846,7 @@ export function startMonitorApiServer(port = 8090) {
   // ============================================================
   // START SERVER
   // ============================================================
-  app.listen(port, "0.0.0.0", async () => {
+  const server = app.listen(port, "0.0.0.0", async () => {
     console.log("=".repeat(60));
     console.log("🚀 DEBUG: Monitor API successfully started");
     console.log(`🟢 ENGINE-API running on port ${port}`);
@@ -2877,6 +2877,12 @@ export function startMonitorApiServer(port = 8090) {
       reject(error);
     }
     console.log("=".repeat(60));
+  });
+
+  // Handle server listen errors (e.g., port already in use)
+  server.on('error', (err) => {
+    console.error(`⚠️  [MONITOR API] Server listen error on port ${port}:`, err.message);
+    reject(err);
   });
   });
 }
