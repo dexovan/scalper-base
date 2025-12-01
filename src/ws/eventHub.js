@@ -13,6 +13,9 @@ import {
 // EngineMetrics tracking
 import metrics from '../core/metrics.js';
 
+// Risk Engine for price updates
+import * as riskEngine from '../risk/riskEngine.js';
+
 export function initEventHub() {
   console.log("📡 [EVENT-HUB] Initializing...");
 
@@ -32,6 +35,16 @@ export function initEventHub() {
       const symbol = topic.split(".")[1];
       // DISABLED: Ticker disk storage fills disk too fast
       // storeTicker(symbol, msg.data);
+
+      // 🔥 CRITICAL: Update price for TP/SL/Quick TP checks!
+      if (msg.data?.lastPrice) {
+        const price = Number(msg.data.lastPrice);
+        try {
+          riskEngine.onPriceTickForSymbol(symbol, price);
+        } catch (err) {
+          console.error(`[EventHub] Error processing price tick for ${symbol}: ${err.message}`);
+        }
+      }
       return;
     }
 
