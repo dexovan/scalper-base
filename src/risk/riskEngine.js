@@ -273,7 +273,13 @@ export function onPriceTickForSymbol(symbol, price) {
   const featureState = featureEngine.getFeatureState(symbol);
   const regimeState = regimeEngine.getRegimeState(symbol);
 
+  // Debug logging for LTC
+  if (symbol === "LTCUSDT" && (positionLong || positionShort)) {
+    console.log(`[RiskEngine] 🔍 LTC Price Update: ${price}, positionLong=${positionLong ? 'YES' : 'NO'}, positionShort=${positionShort ? 'YES' : 'NO'}`);
+  }
+
   if (positionLong && positionLong.isActive) {
+    console.log(`[RiskEngine] 📞 Calling tpslEngine.onPriceUpdate for ${symbol} LONG @ ${price}`);
     (async () => {
       try {
         await global.tpslEngine?.onPriceUpdate({
@@ -290,6 +296,7 @@ export function onPriceTickForSymbol(symbol, price) {
   }
 
   if (positionShort && positionShort.isActive) {
+    console.log(`[RiskEngine] 📞 Calling tpslEngine.onPriceUpdate for ${symbol} SHORT @ ${price}`);
     (async () => {
       try {
         await global.tpslEngine?.onPriceUpdate({
