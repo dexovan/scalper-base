@@ -66,11 +66,13 @@ export function initEventHub() {
       const price = msg.data?.lastPrice || msg.data?.ask1Price || msg.data?.bid1Price;
       if (price) {
         const priceNum = Number(price);
-        try {
-          riskEngine.onPriceTickForSymbol(symbol, priceNum);
-        } catch (err) {
-          console.error(`[EventHub] Error processing price tick for ${symbol}: ${err.message}`);
-        }
+        (async () => {
+          try {
+            await riskEngine.onPriceTickForSymbol(symbol, priceNum);
+          } catch (err) {
+            console.error(`[EventHub] Error processing price tick for ${symbol}: ${err.message}`);
+          }
+        })();
       }
       return;
     }

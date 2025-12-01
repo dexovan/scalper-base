@@ -260,7 +260,7 @@ export function onPositionEvent(event) {
  * @param {string} symbol
  * @param {number} price
  */
-export function onPriceTickForSymbol(symbol, price) {
+export async function onPriceTickForSymbol(symbol, price) {
   // Update both LONG and SHORT positions if they exist
   positionTracker.onPositionPriceUpdate(symbol, "LONG", price);
   positionTracker.onPositionPriceUpdate(symbol, "SHORT", price);
@@ -273,36 +273,32 @@ export function onPriceTickForSymbol(symbol, price) {
 
   if (positionLong && positionLong.isActive) {
     console.log(`[RiskEngine] 📞 Calling tpslEngine.onPriceUpdate for ${symbol} LONG @ ${price}`);
-    (async () => {
-      try {
-        await global.tpslEngine?.onPriceUpdate({
-          symbol,
-          price,
-          positionState: positionLong,
-          featureState,
-          regimeState
-        });
-      } catch (err) {
-        console.error(`[RiskEngine] Error in tpslEngine.onPriceUpdate for ${symbol} LONG:`, err);
-      }
-    })();
+    try {
+      await global.tpslEngine?.onPriceUpdate({
+        symbol,
+        price,
+        positionState: positionLong,
+        featureState,
+        regimeState
+      });
+    } catch (err) {
+      console.error(`[RiskEngine] Error in tpslEngine.onPriceUpdate for ${symbol} LONG:`, err);
+    }
   }
 
   if (positionShort && positionShort.isActive) {
     console.log(`[RiskEngine] 📞 Calling tpslEngine.onPriceUpdate for ${symbol} SHORT @ ${price}`);
-    (async () => {
-      try {
-        await global.tpslEngine?.onPriceUpdate({
-          symbol,
-          price,
-          positionState: positionShort,
-          featureState,
-          regimeState
-        });
-      } catch (err) {
-        console.error(`[RiskEngine] Error in tpslEngine.onPriceUpdate for ${symbol} SHORT:`, err);
-      }
-    })();
+    try {
+      await global.tpslEngine?.onPriceUpdate({
+        symbol,
+        price,
+        positionState: positionShort,
+        featureState,
+        regimeState
+      });
+    } catch (err) {
+      console.error(`[RiskEngine] Error in tpslEngine.onPriceUpdate for ${symbol} SHORT:`, err);
+    }
   }
 
   // Update account (throttled - only 1% of ticks)
