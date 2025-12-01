@@ -602,7 +602,12 @@ async function startEngine() {
     console.log("🎉 ====================================================\n");
 }
 
-startEngine().catch((err) => {
-    console.error("❌ ENGINE CRASHED:", err);
-    metrics.markError();
-});
+// CRITICAL: Wrap in IIFE and await startEngine() to ensure initialization completes
+(async () => {
+    try {
+        await startEngine();
+    } catch (err) {
+        console.error("❌ ENGINE CRASHED:", err);
+        metrics.markError();
+    }
+})();
