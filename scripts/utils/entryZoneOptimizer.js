@@ -39,10 +39,13 @@ export function calculateEntryZone(direction, bid, ask, price, tickSize) {
   const flex = ENTRY_ZONE_CONFIG.flexibilityPercent / 100;
 
   if (direction === 'LONG') {
-    // LONG: Enter at ask or slightly above
-    const ideal = ask;
-    const min = bid;  // Can enter at bid (better price)
-    const max = ask * (1 + flex);  // Allow 0.04% above ask
+    // LONG: Start BELOW market (wait for pullback), max at current ask
+    // min: 0.04% below bid (pullback zone)
+    // ideal: bid (good entry point)
+    // max: ask (worst case - enter at ask if price keeps going up)
+    const ideal = bid;
+    const min = bid * (1 - flex);  // 0.04% below bid (pullback zone)
+    const max = ask;  // Allow up to ask if price accelerates
 
     // Apply Bybit tickSize precision
     const idealT = parseFloat(formatPriceByTick(ideal, tickSize));
@@ -59,10 +62,13 @@ export function calculateEntryZone(direction, bid, ask, price, tickSize) {
       tickSize
     };
   } else {
-    // SHORT: Enter at bid or slightly below
-    const ideal = bid;
-    const min = bid * (1 - flex);  // Allow 0.04% below bid
-    const max = ask;  // Can enter at ask (better price for short)
+    // SHORT: Start ABOVE market (wait for pullback), min at current bid
+    // min: bid (worst case - enter at bid if price keeps going down)
+    // ideal: ask (good entry point)
+    // max: 0.04% above ask (pullback zone)
+    const ideal = ask;
+    const min = bid;  // Allow down to bid if price accelerates
+    const max = ask * (1 + flex);  // 0.04% above ask (pullback zone)
 
     // Apply Bybit tickSize precision
     const idealT = parseFloat(formatPriceByTick(ideal, tickSize));
