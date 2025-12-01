@@ -7,23 +7,23 @@ import { formatPriceByTick } from "./priceFormatter.js";
 
 /**
  * Entry Zone Configuration
- * Balanced mode (0.04%) - optimal for micro-scalping
+ * Increased flexibility for micro-tokens with tight spreads
  */
 const ENTRY_ZONE_CONFIG = {
   // Zone flexibility (how far from ideal entry we allow)
-  flexibilityPercent: 0.04,  // 0.04% = balanced (optimal for 0.22% TP)
+  flexibilityPercent: 0.12,  // 0.12% = wider zone for tight spread tokens (was 0.04%)
 
   // Entry timeout (how long to wait before adjusting zone)
-  timeoutMs: 45000,  // 45 seconds max wait
+  timeoutMs: 35000,  // 35 seconds max wait (reduced from 45s for faster signals)
 
   // Re-evaluation interval (how often to check if entry is reachable)
   recheckIntervalMs: 2000,  // 2 seconds (synced with Fast Track)
 
   // Zone adjustment (if price moves away, how much to adjust)
-  adjustmentPercent: 0.03,  // 0.03% nudge toward market price
+  adjustmentPercent: 0.08,  // 0.08% nudge toward market price (was 0.03%, faster adjustment)
 
   // Maximum adjustments before giving up
-  maxAdjustments: 2  // Allow 2 nudges max (0.06% total flexibility)
+  maxAdjustments: 3  // Allow 3 nudges max (0.24% total flexibility)
 };
 
 /**
