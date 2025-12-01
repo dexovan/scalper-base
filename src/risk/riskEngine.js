@@ -86,7 +86,10 @@ export function initRiskEngine(customConfig = {}, accountMode = "SIM", initialEq
   recalcRiskState();
 
   // 🔥 CRITICAL: Register listener for position events from executionEngine
+  console.log("[RiskEngine] 📋 Registering event listeners for EXECUTION_POSITION_OPENED/CLOSED...");
+
   addEventListener("EXECUTION_POSITION_OPENED", (event) => {
+    console.log(`[RiskEngine] 🎯 POSITION_OPENED event received:`, JSON.stringify(event).substring(0, 200));
     try {
       onPositionEvent({ ...event, type: "POSITION_OPENED" });
     } catch (err) {
@@ -95,12 +98,15 @@ export function initRiskEngine(customConfig = {}, accountMode = "SIM", initialEq
   });
 
   addEventListener("EXECUTION_POSITION_CLOSED", (event) => {
+    console.log(`[RiskEngine] 📊 POSITION_CLOSED event received:`, JSON.stringify(event).substring(0, 200));
     try {
       onPositionEvent({ ...event, type: "POSITION_CLOSED" });
     } catch (err) {
       console.error(`[RiskEngine] Error handling EXECUTION_POSITION_CLOSED:`, err.message);
     }
   });
+
+  console.log("[RiskEngine] ✅ Event listeners registered for EXECUTION_POSITION_OPENED/CLOSED");
 
   // Schedule daily reset
   scheduleDailyReset();
@@ -192,14 +198,17 @@ export function onDailyReset() {
  */
 export function onPositionEvent(event) {
   const { type } = event;
+  console.log(`[RiskEngine] onPositionEvent() called with type=${type}, symbol=${event.symbol}, side=${event.side}`);
 
   try {
     if (type === "POSITION_OPENED") {
+      console.log(`[RiskEngine] Processing POSITION_OPENED for ${event.symbol} ${event.side}`);
       positionTracker.onNewPositionOpened(event);
       dailyStats.tradesCount++;
 
       // 🔥 CRITICAL: Initialize TP/SL state for tpslEngine to monitor!
       if (global.tpslEngine) {
+        console.log(`[RiskEngine] 🎯 Calling tpslEngine.onPositionOpened() with leverage=${event.leverage}, featureState=${event.featureState ? 'YES' : 'NO'}, regimeState=${event.regimeState ? 'YES' : 'NO'}`);
         try {
           global.tpslEngine.onPositionOpened({
             symbol: event.symbol,
@@ -210,10 +219,12 @@ export function onPositionEvent(event) {
             featureState: event.featureState,
             regimeState: event.regimeState
           });
-          console.log(`[RiskEngine] TP/SL state initialized for ${event.symbol} ${event.side} via tpslEngine.onPositionOpened()`);
+          console.log(`[RiskEngine] ✅ TP/SL state initialized for ${event.symbol} ${event.side} via tpslEngine.onPositionOpened()`);
         } catch (err) {
-          console.error(`[RiskEngine] Error initializing TP/SL state: ${err.message}`);
+          console.error(`[RiskEngine] ❌ Error initializing TP/SL state: ${err.message}`, err.stack);
         }
+      } else {
+        console.warn(`[RiskEngine] ⚠️ global.tpslEngine NOT available!`);
       }
     } else if (type === "POSITION_CLOSED") {
       const result = positionTracker.onPositionClosed(event);
