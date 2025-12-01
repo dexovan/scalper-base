@@ -261,6 +261,10 @@ export function onPositionEvent(event) {
  * @param {number} price
  */
 export function onPriceTickForSymbol(symbol, price) {
+  if (symbol === "LTCUSDT") {
+    console.log(`[RiskEngine] 📞 onPriceTickForSymbol called for LTC: price=${price}`);
+  }
+
   // Update both LONG and SHORT positions if they exist
   positionTracker.onPositionPriceUpdate(symbol, "LONG", price);
   positionTracker.onPositionPriceUpdate(symbol, "SHORT", price);
