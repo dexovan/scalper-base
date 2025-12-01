@@ -62,10 +62,14 @@ export function initTpslEngine(config = {}) {
   const loadedCount = loadSnapshot();
   console.log(`[TpslEngine] ✅ Loaded ${loadedCount} positions from snapshot into tpslStates Map`);
 
-  // Start periodic snapshot updates (every 10 seconds)
-  updateTimer = setInterval(() => {
-    saveSnapshot();
-  }, 10000);
+  // Start periodic snapshot updates (every 10 seconds) - but delay to allow position sync
+  // This prevents saveSnapshot() from overwriting the snapshot during initialization
+  setTimeout(() => {
+    updateTimer = setInterval(() => {
+      saveSnapshot();
+    }, 10000);
+    console.log('[TpslEngine] Snapshot auto-save timer started (delayed 30s for initialization)');
+  }, 30000);
 
   console.log('[TpslEngine] Initialized successfully');
   console.log(`[TpslEngine] Snapshot path: ${snapshotPath}`);
