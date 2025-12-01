@@ -894,7 +894,9 @@ async function attemptExecution(symbol, signalState, liveData) {
     sl: signalState.sl,
     confidence: signalState.confidence || 0,
     initialMomentum: signalState.initialMomentum || 0,  // Include momentum for executor
-    entryZone: signalState.entryZone
+    entryZone: signalState.entryZone,
+    pullbackConfirmed: signalState.pullbackConfirmed || false,  // Signal quality indicator
+    lowestPriceSinceSignal: signalState.lowestPriceSinceSignal  // For diagnostics
   };
 
   const ts = signalState.tickSize || 0.0001;
@@ -1370,8 +1372,8 @@ async function scanAllSymbols() {
 
       // Calculate TP/SL from IDEAL entry (raw first, then format)
       const tpRaw = direction === 'LONG'
-        ? formattedEntryZone.ideal * 1.0035  // +0.35% (tighter, realistic)
-        : formattedEntryZone.ideal * 0.9965; // -0.35%
+        ? formattedEntryZone.ideal * 1.0075  // +0.75% (covers spread + slippage + fee + profit)
+        : formattedEntryZone.ideal * 0.9925; // -0.75%
 
       const slRaw = direction === 'LONG'
         ? formattedEntryZone.ideal * 0.9970  // -0.30% (wider, avoid noise)
