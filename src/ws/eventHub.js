@@ -71,14 +71,15 @@ export function initEventHub() {
       // storeTicker(symbol, msg.data);
 
       // 🔥 CRITICAL: Update price for TP/SL/Quick TP checks!
-      // Note: Bybit ticker uses ask1Price, not lastPrice
-      if (msg.data?.ask1Price) {
-        const price = Number(msg.data.ask1Price);
+      // Note: Bybit ticker uses multiple possible price fields - use fallback chain
+      const price = msg.data?.lastPrice || msg.data?.ask1Price || msg.data?.bid1Price;
+      if (price) {
+        const priceNum = Number(price);
         if (symbol === "LTCUSDT") {
-          console.log(`[EventHub] 💰 Extracted LTC price: ${price} from ask1Price`);
+          console.log(`[EventHub] 💰 Extracted LTC price: ${priceNum} from available field`);
         }
         try {
-          riskEngine.onPriceTickForSymbol(symbol, price);
+          riskEngine.onPriceTickForSymbol(symbol, priceNum);
         } catch (err) {
           console.error(`[EventHub] Error processing price tick for ${symbol}: ${err.message}`);
         }

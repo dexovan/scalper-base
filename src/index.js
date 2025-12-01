@@ -243,7 +243,8 @@ async function startEngine() {
 
                     if (channelType === "tickers" && msg.data) {
                         if (symbol === "LTCUSDT") {
-                            console.log(`[INDEX] 🎯 EMITTING ticker event for LTC ask1Price: ${msg.data.ask1Price}`);
+                            const availablePrice = msg.data?.lastPrice || msg.data?.ask1Price || msg.data?.bid1Price;
+                            console.log(`[INDEX] 🎯 EMITTING ticker event for LTC price: ${availablePrice}`);
                         }
                         publicEmitter.emit("event", {
                             type: "ticker",
