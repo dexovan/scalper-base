@@ -1043,6 +1043,27 @@ async function fastTrackLoop() {
       signalState.inZone = inZone;
       signalState.lastChecked = now;
 
+      // ===== PULLBACK CONFIRMATION LOGIC =====
+      // Track the lowest price since signal creation
+      if (currentPrice < signalState.lowestPriceSinceSignal) {
+        signalState.lowestPriceSinceSignal = currentPrice;
+      }
+
+      // Check if pullback has occurred (price went below min zone)
+      const minZone = signalState.entryZone.min;
+      if (!signalState.pullbackConfirmed && currentPrice < minZone) {
+        signalState.pullbackConfirmed = true;
+        console.log(`✅ [PULLBACK CONFIRMED] ${ft.symbol} - Price dropped to ${currentPrice.toFixed(6)} (below ${minZone.toFixed(6)})`);
+      }
+
+      // === AUTO-WAIVE PULLBACK FOR VERY STRONG SIGNALS ===
+      // If signal has very high confidence (>80%) and price is in zone, don't wait for pullback
+      const autoWaivePullback = signalState.confidence && signalState.confidence > 0.80;
+      if (autoWaivePullback && !signalState.pullbackConfirmed && inZone) {
+        signalState.pullbackConfirmed = true;
+        console.log(`⚡ [VERY STRONG SIGNAL] ${ft.symbol} - Confidence=${(signalState.confidence * 100).toFixed(0)}% - Waiving pullback requirement`);
+      }
+
       // === SMART ENTRY TIMING LOGIC (HYBRID APPROACH) ===
 
       // 1. Calculate range position (0-100% of recent price range)
@@ -1057,8 +1078,8 @@ async function fastTrackLoop() {
         continue;
       }
 
-      // 3. Price IN ZONE → Check for optimal entry timing
-      if (inZone && !signalState.readyForEntry) {
+      // 3. Price IN ZONE + PULLBACK CONFIRMED → Check for optimal entry timing
+      if (inZone && !signalState.readyForEntry && signalState.pullbackConfirmed) {
         const idealEntry = signalState.entryZone.ideal;
         const minEntry = signalState.entryZone.min;
         const maxEntry = signalState.entryZone.max;
@@ -1115,6 +1136,13 @@ async function fastTrackLoop() {
             await attemptExecution(ft.symbol, signalState, freshData || liveData);
           }
         }
+      } else if (inZone && !signalState.readyForEntry && !signalState.pullbackConfirmed) {
+        // === WAITING FOR PULLBACK ===
+        const minZone = signalState.entryZone.min;
+        const pullbackPercent = ((minZone - currentPrice) / currentPrice * 100).toFixed(2);
+        const needsPullback = minZone - currentPrice;
+
+        console.log(`⏳ [WAITING FOR PULLBACK] ${ft.symbol} - Price at ${currentPrice.toFixed(6)}, needs to drop ${needsPullback.toFixed(6)} more (${pullbackPercent}% to min ${minZone.toFixed(6)})`);
       }
 
       // 2. Price moved OUT of zone after being ready
@@ -1395,7 +1423,11 @@ async function scanAllSymbols() {
         adjustmentCount: 0,
         priceHistory: [entryPrice],
         inZone: priceInZone,
-        executionAttempts: 0
+        executionAttempts: 0,
+        // ===== PULLBACK CONFIRMATION =====
+        pullbackConfirmed: false,  // Has price fallen below min zone?
+        lowestPriceSinceSignal: entryPrice,  // Track lowest price for pullback confirmation
+        signalPrice: entryPrice  // Entry price when signal was created
       });
 
       const signal = {
