@@ -1362,16 +1362,33 @@ async function executeManualTrade(ctx) {
   let orderId = null;
 
   try {
-    const orderResult = await bybitClient.submitOrder({
+    const orderPayload = {
       category: 'linear',
       symbol,
       side,
       orderType: 'Market',
       qty: String(qty),
       positionIdx: 0
-    });
+    };
+
+    console.log(`\n📤 [ORDER PAYLOAD] About to send to Bybit:`);
+    console.log(`   Category: ${orderPayload.category}`);
+    console.log(`   Symbol: ${orderPayload.symbol}`);
+    console.log(`   Side: ${orderPayload.side}`);
+    console.log(`   Type: ${orderPayload.orderType}`);
+    console.log(`   Qty: ${orderPayload.qty}`);
+    console.log(`   PositionIdx: ${orderPayload.positionIdx}`);
+
+    const orderResult = await bybitClient.submitOrder(orderPayload);
 
     console.log(`📨 Bybit response:`, JSON.stringify(orderResult, null, 2));
+
+    // Check for Bybit API errors
+    if (orderResult?.retCode !== 0) {
+      const errorMsg = orderResult?.retMsg || 'Unknown Bybit error';
+      console.error(`❌ [BYBIT ERROR] Code ${orderResult?.retCode}: ${errorMsg}`);
+      throw new Error(`Bybit API error: ${errorMsg}`);
+    }
 
     // Uzmi orderId bez obzira šta
     if (orderResult?.result?.orderId) {
