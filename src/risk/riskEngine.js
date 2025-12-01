@@ -5,6 +5,8 @@
 
 import * as accountState from './accountState.js';
 import * as positionTracker from './positionTracker.js';
+import * as featureEngine from '../features/featureEngine.js';
+import * as regimeEngine from '../regime/regimeEngine.js';
 
 /**
  * Risk configuration
@@ -217,6 +219,44 @@ export function onPriceTickForSymbol(symbol, price) {
   // Update both LONG and SHORT positions if they exist
   positionTracker.onPositionPriceUpdate(symbol, "LONG", price);
   positionTracker.onPositionPriceUpdate(symbol, "SHORT", price);
+
+  // 🔥 CRITICAL: Call TP/SL engine to check for TP/SL/Quick TP hits
+  const positionLong = positionTracker.getPosition(symbol, "LONG");
+  const positionShort = positionTracker.getPosition(symbol, "SHORT");
+  const featureState = featureEngine.getFeatureState(symbol);
+  const regimeState = regimeEngine.getRegimeState(symbol);
+
+  if (positionLong && positionLong.isActive) {
+    (async () => {
+      try {
+        await global.tpslEngine?.onPriceUpdate({
+          symbol,
+          price,
+          positionState: positionLong,
+          featureState,
+          regimeState
+        });
+      } catch (err) {
+        console.error(`[RiskEngine] Error in tpslEngine.onPriceUpdate for ${symbol} LONG:`, err);
+      }
+    })();
+  }
+
+  if (positionShort && positionShort.isActive) {
+    (async () => {
+      try {
+        await global.tpslEngine?.onPriceUpdate({
+          symbol,
+          price,
+          positionState: positionShort,
+          featureState,
+          regimeState
+        });
+      } catch (err) {
+        console.error(`[RiskEngine] Error in tpslEngine.onPriceUpdate for ${symbol} SHORT:`, err);
+      }
+    })();
+  }
 
   // Update account (throttled - only 1% of ticks)
   if (Math.random() < 0.01) {

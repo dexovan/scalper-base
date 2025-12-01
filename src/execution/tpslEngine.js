@@ -120,6 +120,12 @@ export function onPositionOpened(positionEvent) {
   tpslStates.set(key, tpslState);
 
   console.log(`[TpslEngine] TP/SL state created for ${key}`);
+  console.log(`[TpslEngine] 🎯 QUICK TP Details for ${key}:`);
+  console.log(`  - Entry Price: ${tpslState.entryPrice}`);
+  console.log(`  - Break Even Price: ${tpslState.breakEvenPrice}`);
+  console.log(`  - Quick TP Target: ${tpslState.quickTpPrice}`);
+  console.log(`  - TP1 Target: ${tpslState.tp1Price}`);
+  console.log(`  - SL: ${tpslState.stopLossPrice}`);
 
   // Emit event to State Machine
   emitTpslEvent({
@@ -143,8 +149,11 @@ export function onPositionOpened(positionEvent) {
  * @param {Object} params.featureState - From feature engine
  * @param {Object} params.regimeState - From regime engine
  */
-export function onPriceUpdate(params) {
+export async function onPriceUpdate(params) {
   const { symbol, price, positionState, featureState, regimeState } = params;
+
+  // DEBUG: Log every price update for monitoring
+  console.log(`[TpslEngine] onPriceUpdate() called for ${symbol} @ ${price}`);
 
   if (!positionState || !positionState.isActive) {
     return; // No active position
@@ -168,14 +177,20 @@ export function onPriceUpdate(params) {
   // Check QUICK TP hit first (highest profit priority - take scalp profits immediately!)
   if (!tpslState.isQuickTpHit) {
     const isQuickTpHit = side === 'LONG' ? price >= tpslState.quickTpPrice : price <= tpslState.quickTpPrice;
+
+    // Log every price check for Quick TP (DEBUGGING!)
+    console.log(`[TpslEngine] Quick TP Check for ${tpslState.symbol}:`);
+    console.log(`  - Current Price: ${price}`);
+    console.log(`  - Quick TP Target: ${tpslState.quickTpPrice}`);
+    console.log(`  - Side: ${side}`);
+    console.log(`  - Hit? ${isQuickTpHit}`);
+
     if (isQuickTpHit) {
       console.log(`[TpslEngine] 🚀 QUICK TP HIT for ${tpslState.symbol} ${tpslState.side} @ ${price}`);
-      handleQuickTpHit(tpslState, price, positionState);
+      await handleQuickTpHit(tpslState, price, positionState);
       return;
     }
-  }
-
-  // Check TP2 hit (if TP1 already hit)
+  }  // Check TP2 hit (if TP1 already hit)
   if (tpslState.isTp1Hit && !tpslState.isTp2Hit) {
     if (trailingEngine.isTp2Hit(side, price, tpslState.tp2Price)) {
       handleTp2Hit(tpslState, price, positionState);
@@ -254,7 +269,7 @@ function handleBreakEvenActivation(tpslState, currentPrice) {
  * Handle QUICK TP hit - immediate scalp profit taking
  * Closes 50% of position at breakeven + small buffer for fee coverage
  */
-function handleQuickTpHit(tpslState, currentPrice, positionState) {
+async function handleQuickTpHit(tpslState, currentPrice, positionState) {
   console.log(`\n[TpslEngine] 🚀🚀🚀 QUICK TP HIT for ${tpslState.symbol} ${tpslState.side} @ ${currentPrice} 🚀🚀🚀`);
   console.log(`   This is your fee-covering profit target!`);
 
@@ -272,21 +287,21 @@ function handleQuickTpHit(tpslState, currentPrice, positionState) {
   // Close 50% of position to take quick scalp profit
   console.log(`[TpslEngine] 💰 Closing 50% (${partialCloseQty} ${tpslState.symbol}) for quick profit...`);
 
-  (async () => {
-    try {
-      // Convert side from 'LONG'/'SHORT' to 'Buy'/'Sell' for Bybit
-      const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
+  try {
+    // Convert side from 'LONG'/'SHORT' to 'Buy'/'Sell' for Bybit
+    const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
-      if (bybitOrderExecutor.partialClosePosition) {
-        await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
-        console.log(`✅ [TpslEngine] 50% closed at Quick TP - profit secured! 🎉`);
-      } else {
-        console.warn(`⚠️  [TpslEngine] partialClosePosition not available`);
-      }
-    } catch (err) {
-      console.error(`❌ [TpslEngine] Failed to close at Quick TP: ${err.message}`);
+    if (bybitOrderExecutor.partialClosePosition) {
+      console.log(`[TpslEngine] Calling partialClosePosition(${tpslState.symbol}, ${bybitSide}, ${partialCloseQty})`);
+      await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
+      console.log(`✅ [TpslEngine] 50% closed at Quick TP - profit secured! 🎉`);
+    } else {
+      console.warn(`⚠️  [TpslEngine] partialClosePosition not available`);
     }
-  })();
+  } catch (err) {
+    console.error(`❌ [TpslEngine] Failed to close at Quick TP: ${err.message}`);
+    console.error(err.stack);
+  }
 
   emitTpslEvent({
     type: 'TPSL_QUICK_TP_HIT',
