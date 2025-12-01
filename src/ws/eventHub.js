@@ -73,6 +73,9 @@ export function initEventHub() {
       // 🔥 CRITICAL: Update price for TP/SL/Quick TP checks!
       // Note: Bybit ticker uses multiple possible price fields - use fallback chain
       const price = msg.data?.lastPrice || msg.data?.ask1Price || msg.data?.bid1Price;
+      if (symbol === "LTCUSDT") {
+        console.log(`[EventHub] 📊 LTC payload check: lastPrice=${msg.data?.lastPrice}, ask1Price=${msg.data?.ask1Price}, bid1Price=${msg.data?.bid1Price}`);
+      }
       if (price) {
         const priceNum = Number(price);
         if (symbol === "LTCUSDT") {
@@ -83,6 +86,8 @@ export function initEventHub() {
         } catch (err) {
           console.error(`[EventHub] Error processing price tick for ${symbol}: ${err.message}`);
         }
+      } else if (symbol === "LTCUSDT") {
+        console.log(`[EventHub] ⚠️  LTC: No price field found in payload!`);
       }
       return;
     }
