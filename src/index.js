@@ -351,7 +351,95 @@ async function startEngine() {
     console.log("🚀 DEBUG: Monitor API started AND FeatureEngine ready");
 
     // =====================================================
-    // PHASE 5: REGIME ENGINE INITIALIZATION
+    // PHASE 5: RISK ENGINE INITIALIZATION
+    // ⚠️ CRITICAL: Must initialize BEFORE any data processing begins!
+    // =====================================================
+    console.log("=============================");
+    console.log("💰 RISK: Starting Risk Engine...");
+    console.log("=============================");
+
+    console.log("💰 [RISK] Importing Risk Engine...");
+    const riskEngine = await import('./risk/riskEngine.js');
+    const positionTracker = await import('./risk/positionTracker.js');
+    console.log("💰 [RISK] Risk Engine imported");
+
+    // Initialize with SIM mode (10K starting equity)
+    const riskConfig = {
+        maxRiskPerTradePct: 1.0,
+        maxPortfolioHeatPct: 6.0,
+        maxDailyLossPct: 5.0,
+        maxOpenPositions: 5
+    };
+
+    console.log("💰 [RISK] Calling initRiskEngine()...");
+    riskEngine.initRiskEngine(riskConfig, "SIM", 10000);
+    console.log("💰 [RISK] initRiskEngine() completed");
+
+    // Store in global for API access
+    global.riskEngine = riskEngine;
+    console.log("💰 [RISK] Stored in global");
+
+    const riskSnapshot = riskEngine.getRiskSnapshot();
+    console.log("💰 [RISK] Risk Engine started successfully:");
+    console.log(`   Mode: SIM (Simulated)`);
+    console.log(`   Starting equity: $${riskSnapshot.account.equityTotal.toFixed(2)}`);
+    console.log(`   Max risk per trade: ${riskConfig.maxRiskPerTradePct}%`);
+    console.log(`   Max portfolio heat: ${riskConfig.maxPortfolioHeatPct}%`);
+    console.log(`   Max daily loss: ${riskConfig.maxDailyLossPct}%`);
+    console.log("=============================");
+
+    // =====================================================
+    // PHASE 5b: TP/SL ENGINE INITIALIZATION
+    // =====================================================
+    console.log("=============================");
+    console.log("📊 TP/SL: Starting TP/SL Engine...");
+    console.log("=============================");
+
+    console.log("📊 [TP/SL] Importing TP/SL Engine...");
+    const tpslEngine = await import('./execution/tpslEngine.js');
+    console.log("📊 [TP/SL] TP/SL Engine imported");
+
+    // Initialize with default config
+    const tpslConfig = {
+        planner: {
+            tp1DistancePct: 0.50,
+            tp2DistancePct: 1.00,
+            slDistancePct: 0.25,
+            breakEvenBufferPct: 0.05,
+            trailingDistancePct: 0.10
+        }
+    };
+
+    console.log("📊 [TP/SL] Calling initTpslEngine()...");
+    try {
+      tpslEngine.initTpslEngine(tpslConfig);
+      console.log("📊 [TP/SL] initTpslEngine() completed");
+
+      // 🔥 CRITICAL: Sync positions from tpslEngine snapshot to positionTracker
+      console.log("📊 [SYNC] Synchronizing positions from tpslEngine to positionTracker...");
+      const tpslStatesMap = tpslEngine.getTpslStatesMap();
+      console.log(`📊 [SYNC] Got tpslStatesMap with ${tpslStatesMap ? tpslStatesMap.size : 0} items`);
+      positionTracker.loadPositionsFromTpslSnapshot(tpslStatesMap);
+      console.log("📊 [SYNC] Position synchronization completed");
+    } catch (err) {
+      console.error("❌ [TP/SL] ERROR during TP/SL Engine initialization:", err.message);
+      console.error("❌ [TP/SL] Stack:", err.stack);
+      throw err; // Re-throw to be caught by outer try-catch
+    }
+
+    // Store in global for API access
+    global.tpslEngine = tpslEngine;
+    console.log("📊 [TP/SL] Stored in global");
+
+    console.log("📊 [TP/SL] TP/SL Engine started successfully:");
+    console.log(`   TP1 distance: ${tpslConfig.planner.tp1DistancePct}%`);
+    console.log(`   TP2 distance: ${tpslConfig.planner.tp2DistancePct}%`);
+    console.log(`   SL distance: ${tpslConfig.planner.slDistancePct}%`);
+    console.log(`   Trailing distance: ${tpslConfig.planner.trailingDistancePct}%`);
+    console.log("=============================");
+
+    // =====================================================
+    // PHASE 6: REGIME ENGINE INITIALIZATION
     // =====================================================
     console.log("=============================");
     console.log("🛡️  REGIME: Starting Regime Engine...");
@@ -386,7 +474,7 @@ async function startEngine() {
     console.log("=============================");
 
     // =====================================================
-    // PHASE 6: SCORING ENGINE INITIALIZATION
+    // PHASE 7: SCORING ENGINE INITIALIZATION
     // =====================================================
     console.log("=============================");
     console.log("🎯 SCORING: Starting Scoring Engine...");
@@ -408,7 +496,7 @@ async function startEngine() {
     console.log("=============================");
 
     // =====================================================
-    // PHASE 7: STATE MACHINE INITIALIZATION
+    // PHASE 8: STATE MACHINE INITIALIZATION
     // =====================================================
     console.log("=============================");
     console.log("⚙️  STATE MACHINE: Starting State Machine...");
@@ -459,94 +547,7 @@ async function startEngine() {
     };
 
     // =====================================================
-    // PHASE 8: RISK ENGINE INITIALIZATION
-    // =====================================================
-    console.log("=============================");
-    console.log("💰 RISK: Starting Risk Engine...");
-    console.log("=============================");
-
-    console.log("💰 [RISK] Importing Risk Engine...");
-    const riskEngine = await import('./risk/riskEngine.js');
-    const positionTracker = await import('./risk/positionTracker.js');
-    console.log("💰 [RISK] Risk Engine imported");
-
-    // Initialize with SIM mode (10K starting equity)
-    const riskConfig = {
-        maxRiskPerTradePct: 1.0,
-        maxPortfolioHeatPct: 6.0,
-        maxDailyLossPct: 5.0,
-        maxOpenPositions: 5
-    };
-
-    console.log("💰 [RISK] Calling initRiskEngine()...");
-    riskEngine.initRiskEngine(riskConfig, "SIM", 10000);
-    console.log("💰 [RISK] initRiskEngine() completed");
-
-    // Store in global for API access
-    global.riskEngine = riskEngine;
-    console.log("💰 [RISK] Stored in global");
-
-    const riskSnapshot = riskEngine.getRiskSnapshot();
-    console.log("💰 [RISK] Risk Engine started successfully:");
-    console.log(`   Mode: SIM (Simulated)`);
-    console.log(`   Starting equity: $${riskSnapshot.account.equityTotal.toFixed(2)}`);
-    console.log(`   Max risk per trade: ${riskConfig.maxRiskPerTradePct}%`);
-    console.log(`   Max portfolio heat: ${riskConfig.maxPortfolioHeatPct}%`);
-    console.log(`   Max daily loss: ${riskConfig.maxDailyLossPct}%`);
-    console.log("=============================");
-
-    // =====================================================
-    // PHASE 9: TP/SL ENGINE INITIALIZATION
-    // =====================================================
-    console.log("=============================");
-    console.log("📊 TP/SL: Starting TP/SL Engine...");
-    console.log("=============================");
-
-    console.log("📊 [TP/SL] Importing TP/SL Engine...");
-    const tpslEngine = await import('./execution/tpslEngine.js');
-    console.log("📊 [TP/SL] TP/SL Engine imported");
-
-    // Initialize with default config
-    const tpslConfig = {
-        planner: {
-            tp1DistancePct: 0.50,
-            tp2DistancePct: 1.00,
-            slDistancePct: 0.25,
-            breakEvenBufferPct: 0.05,
-            trailingDistancePct: 0.10
-        }
-    };
-
-    console.log("📊 [TP/SL] Calling initTpslEngine()...");
-    try {
-      tpslEngine.initTpslEngine(tpslConfig);
-      console.log("📊 [TP/SL] initTpslEngine() completed");
-
-      // 🔥 CRITICAL: Sync positions from tpslEngine snapshot to positionTracker
-      console.log("📊 [SYNC] Synchronizing positions from tpslEngine to positionTracker...");
-      const tpslStatesMap = tpslEngine.getTpslStatesMap();
-      console.log(`📊 [SYNC] Got tpslStatesMap with ${tpslStatesMap ? tpslStatesMap.size : 0} items`);
-      positionTracker.loadPositionsFromTpslSnapshot(tpslStatesMap);
-      console.log("📊 [SYNC] Position synchronization completed");
-    } catch (err) {
-      console.error("❌ [TP/SL] ERROR during TP/SL Engine initialization:", err.message);
-      console.error("❌ [TP/SL] Stack:", err.stack);
-      throw err; // Re-throw to be caught by outer try-catch
-    }
-
-    // Store in global for API access
-    global.tpslEngine = tpslEngine;
-    console.log("📊 [TP/SL] Stored in global");
-
-    console.log("📊 [TP/SL] TP/SL Engine started successfully:");
-    console.log(`   TP1 distance: ${tpslConfig.planner.tp1DistancePct}%`);
-    console.log(`   TP2 distance: ${tpslConfig.planner.tp2DistancePct}%`);
-    console.log(`   SL distance: ${tpslConfig.planner.slDistancePct}%`);
-    console.log(`   Trailing distance: ${tpslConfig.planner.trailingDistancePct}%`);
-    console.log("=============================");
-
-    // =====================================================
-    // PHASE 10: EXECUTION ENGINE INITIALIZATION
+    // PHASE 9: EXECUTION ENGINE INITIALIZATION
     // =====================================================
     console.log("=============================");
     console.log("⚡ EXEC: Starting Execution Engine...");
