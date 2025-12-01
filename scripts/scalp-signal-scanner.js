@@ -1399,9 +1399,19 @@ async function scanAllSymbols() {
       };
 
       // Calculate TP/SL from IDEAL entry (raw first, then format)
+      // Dynamic TP based on spread to ensure achievability
+      // Wider spreads need tighter TP targets to avoid missing executions
+      const spreadPercent = parseFloat(currentLiveData.spreadPercent) || 0.1;
+      const volatilityPercent = candle.volatility || 1.0;
+
+      // Adaptive TP: increase by 0.1% for every 0.2% wider spread (but min 0.50%, max 1.0%)
+      const spreadAdjustment = Math.max(0, Math.min(0.5, (spreadPercent - 0.05) * 0.5));
+      const volatilityAdjustment = Math.max(0, Math.min(0.2, (volatilityPercent - 1.0) * 0.01));
+      const dynamicTpPercent = Math.max(0.50, Math.min(1.0, 0.75 + spreadAdjustment + volatilityAdjustment));
+
       const tpRaw = direction === 'LONG'
-        ? formattedEntryZone.ideal * 1.0075  // +0.75% (covers spread + slippage + fee + profit)
-        : formattedEntryZone.ideal * 0.9925; // -0.75%
+        ? formattedEntryZone.ideal * (1 + dynamicTpPercent / 100)
+        : formattedEntryZone.ideal * (1 - dynamicTpPercent / 100);
 
       const slRaw = direction === 'LONG'
         ? formattedEntryZone.ideal * 0.9950  // -0.50% (wider stop, better risk:reward)
@@ -1417,6 +1427,9 @@ async function scanAllSymbols() {
       // Check if price is CURRENTLY in entry zone
       const priceInZone = isPriceInEntryZone(entryPrice, formattedEntryZone);
       const distanceInfo = getDistanceToEntryZone(entryPrice, formattedEntryZone);
+
+      // DEBUG: Log dynamic TP calculation
+      console.log(`📊 [TP CALC] ${symbol}: spread=${spreadPercent.toFixed(3)}% vol=${volatilityPercent.toFixed(2)}% → TP=${dynamicTpPercent.toFixed(2)}%`);
 
       // Extract initial momentum for executor
       // imbalance > 1.0 = more bids (bullish), < 1.0 = more asks (bearish)
