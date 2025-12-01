@@ -2834,7 +2834,7 @@ export function startMonitorApiServer(port = 8090) {
 
     } catch (error) {
       console.error("❌ [API/MANUAL-TRADE] Error:", error);
-      res.status(500).json({
+      return res.status(500).json({
         ok: false,
         error: error.message,
         message: `Greška pri izvršenju manuelnog trade-a: ${error.message}`,
