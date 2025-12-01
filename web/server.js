@@ -646,7 +646,18 @@ app.use(
     changeOrigin: true,
     timeout: 30000,
     proxyTimeout: 30000,
-    logLevel: "debug"
+    logLevel: "debug",
+    onError: (err, req, res) => {
+      console.error("❌ [PROXY ERROR] /api/manual-trade:", err.message);
+      res.status(502).json({
+        ok: false,
+        error: "Proxy error: " + err.message,
+        timestamp: new Date().toISOString()
+      });
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      console.log(`✅ [PROXY] /api/manual-trade response received: ${proxyRes.statusCode}`);
+    }
   })
 );
 
