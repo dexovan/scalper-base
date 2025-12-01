@@ -158,10 +158,11 @@ export function onPositionOpened(positionEvent) {
 export async function onPriceUpdate(params) {
   const { symbol, price, positionState, featureState, regimeState } = params;
 
-  // DEBUG: Log every price update for monitoring
-  console.log(`[TpslEngine] onPriceUpdate() called for ${symbol} @ ${price}`);
+  console.log(`[TpslEngine] 📍 onPriceUpdate() called for ${symbol} @ ${price}`);
+  console.log(`[TpslEngine]   positionState: ${positionState ? `ACTIVE (${positionState.side}, qty=${positionState.qty})` : 'NULL/INACTIVE'}`);
 
   if (!positionState || !positionState.isActive) {
+    console.log(`[TpslEngine] ⚠️  No active position for ${symbol} - skipping TP/SL check`);
     return; // No active position
   }
 
@@ -169,10 +170,15 @@ export async function onPriceUpdate(params) {
   const key = `${symbol}_${side}`;
   const tpslState = tpslStates.get(key);
 
+  console.log(`[TpslEngine]   Looking for tpslState with key: ${key}, found: ${tpslState ? 'YES' : 'NO'}`);
+
   if (!tpslState) {
-    console.warn(`[TpslEngine] No TP/SL state for ${key}`);
+    console.warn(`[TpslEngine] ❌ No TP/SL state for ${key} - position not in TP/SL engine!`);
     return;
   }
+
+  console.log(`[TpslEngine] ✅ Found tpslState - checking targets:`);
+  console.log(`[TpslEngine]   TP1: ${tpslState.tp1Price} (hit: ${tpslState.isTp1Hit}), TP2: ${tpslState.tp2Price} (hit: ${tpslState.isTp2Hit}), SL: ${tpslState.stopLossPrice}`);
 
   // Check SL hit (highest priority)
   if (trailingEngine.isSlHit(side, price, tpslState.stopLossPrice)) {
@@ -207,8 +213,11 @@ export async function onPriceUpdate(params) {
   // Check TP1 hit - with retroactive detection for skipped prices
   if (!tpslState.isTp1Hit) {
     // Direct hit
-    if (trailingEngine.isTp1Hit(side, price, tpslState.tp1Price)) {
-      console.log(`[TpslEngine] TP1 HIT (direct) at ${price}`);
+    const tp1HitCheck = trailingEngine.isTp1Hit(side, price, tpslState.tp1Price);
+    console.log(`[TpslEngine] 🔍 TP1 Check for ${tpslState.symbol}: side=${side}, price=${price}, tp1Target=${tpslState.tp1Price}, isTp1Hit=${tp1HitCheck}`);
+
+    if (tp1HitCheck) {
+      console.log(`[TpslEngine] ✅ TP1 HIT (direct) at ${price}`);
       await handleTp1Hit(tpslState, price, positionState);
       return;
     }
@@ -218,7 +227,7 @@ export async function onPriceUpdate(params) {
     // For SHORT: if TP1 was not hit before but price is now below TP1
     const isPriceAboveTp1 = side === 'LONG' ? price >= tpslState.tp1Price : price <= tpslState.tp1Price;
     if (isPriceAboveTp1) {
-      console.log(`[TpslEngine] TP1 HIT (retroactive) - price ${price} passed TP1 ${tpslState.tp1Price}`);
+      console.log(`[TpslEngine] ✅ TP1 HIT (retroactive) - price ${price} passed TP1 ${tpslState.tp1Price}`);
       await handleTp1Hit(tpslState, price, positionState);
       return;
     }
