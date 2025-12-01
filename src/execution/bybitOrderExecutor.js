@@ -1336,6 +1336,24 @@ async function executeManualTrade(ctx) {
   console.log(`TickSize: ${ctx.tickSize}`);
   console.log('═══════════════════════════════════════════════════════════════\n');
 
+  // ⚠️ VALIDACIJA - PROVERAVAMO OBAVEZNE PARAMETRE
+  if (!tp || !sl) {
+    throw new Error(`❌ [VALIDATION ERROR] TP and SL are REQUIRED! TP: ${tp}, SL: ${sl}. Order will NOT be placed without risk protection!`);
+  }
+
+  if (tp === entry || sl === entry) {
+    throw new Error(`❌ [VALIDATION ERROR] TP and SL cannot be equal to entry price! This would be meaningless.`);
+  }
+
+  // Validate direction consistency
+  if (direction === 'LONG' && (tp <= entry || sl >= entry)) {
+    throw new Error(`❌ [VALIDATION ERROR] For LONG: TP must be > entry, SL must be < entry. Got TP=${tp}, SL=${sl}, Entry=${entry}`);
+  }
+
+  if (direction === 'SHORT' && (tp >= entry || sl <= entry)) {
+    throw new Error(`❌ [VALIDATION ERROR] For SHORT: TP must be < entry, SL must be > entry. Got TP=${tp}, SL=${sl}, Entry=${entry}`);
+  }
+
   // KORAK 1: Set leverage
   console.log(`[1/5] Setting leverage ${leverage}x...`);
   try {
@@ -1423,8 +1441,9 @@ async function executeManualTrade(ctx) {
     orderId = `manual_error_${Date.now()}`;
   }
 
-  // KORAK 4: Set TP/SL - POKUŠAJ ALI NE BLOKIRA
+  // KORAK 4: Set TP/SL - OBAVEZNO MORA DA USPE!
   console.log(`[4/5] Setting TP/SL...`);
+  let tpslSuccessful = false;
   try {
     const formattedTP = formatPriceByTick(tp, ctx.tickSize);
     const formattedSL = formatPriceByTick(sl, ctx.tickSize);
@@ -1438,9 +1457,44 @@ async function executeManualTrade(ctx) {
     });
 
     console.log(`📨 TP/SL response:`, JSON.stringify(tpslResult, null, 2));
-    console.log(`✅ TP/SL set!\n`);
+
+    if (tpslResult?.retCode === 0) {
+      console.log(`✅ TP/SL set successfully!\n`);
+      tpslSuccessful = true;
+    } else {
+      throw new Error(`Bybit returned error: ${tpslResult?.retMsg}`);
+    }
   } catch (e) {
-    console.warn(`⚠️ TP/SL warning: ${e.message}, ali order je postavljen\n`);
+    console.error(`❌ [CRITICAL] TP/SL FAILED: ${e.message}`);
+    console.error(`❌ [CRITICAL] POSITION IS UNPROTECTED! SL/TP MUST BE SET!`);
+
+    // Trebamo da molimo da se TP/SL retry
+    console.warn(`\n⚠️ RETRYING TP/SL in 2 seconds...`);
+    await new Promise(r => setTimeout(r, 2000));
+
+    try {
+      const formattedTP = formatPriceByTick(tp, ctx.tickSize);
+      const formattedSL = formatPriceByTick(sl, ctx.tickSize);
+
+      const tpslRetry = await bybitClient.setTradingStop({
+        category: 'linear',
+        symbol,
+        positionIdx: 0,
+        takeProfit: formattedTP,
+        stopLoss: formattedSL
+      });
+
+      if (tpslRetry?.retCode === 0) {
+        console.log(`✅ TP/SL set on RETRY!\n`);
+        tpslSuccessful = true;
+      } else {
+        throw new Error(`Retry failed: ${tpslRetry?.retMsg}`);
+      }
+    } catch (retryErr) {
+      console.error(`❌ [CRITICAL FAILURE] TP/SL could not be set after RETRY: ${retryErr.message}`);
+      console.error(`❌ POSITION IS DANGEROUSLY UNPROTECTED!`);
+      tpslSuccessful = false;
+    }
   }
 
   // KORAK 5: Update position tracker
