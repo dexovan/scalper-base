@@ -492,9 +492,10 @@ async function partialClosePosition(symbol, side, qty) {
     const closeSide = side === 'Buy' ? 'Sell' : 'Buy';
     const closeQty = qty.toString();
 
-    console.log(`💰 [PARTIAL CLOSE] Closing ${closeQty} ${symbol} (${closeSide})...`);
+    console.log(`💰 [PARTIAL CLOSE] Starting close for ${symbol}`);
+    console.log(`   Opening side: ${side}, Close side: ${closeSide}, Qty: ${closeQty}`);
 
-    const response = await bybitClient.submitOrder({
+    const orderPayload = {
       category: 'linear',
       symbol,
       side: closeSide,
@@ -503,17 +504,26 @@ async function partialClosePosition(symbol, side, qty) {
       timeInForce: 'IOC',
       positionIdx: 0,
       reduceOnly: true
-    });
+    };
+
+    console.log(`💰 [PARTIAL CLOSE] Sending order to Bybit:`, JSON.stringify(orderPayload, null, 2));
+
+    const response = await bybitClient.submitOrder(orderPayload);
+
+    console.log(`💰 [PARTIAL CLOSE] Bybit response received:`, JSON.stringify(response, null, 2));
 
     if (response?.retCode !== 0) {
-      throw new Error(`Partial close failed: ${response?.retMsg || 'Unknown error'}`);
+      const errorMsg = `${response?.retMsg || 'Unknown error'} (retCode: ${response?.retCode})`;
+      console.error(`❌ [PARTIAL CLOSE] API Error: ${errorMsg}`);
+      throw new Error(`Partial close failed: ${errorMsg}`);
     }
 
-    console.log(`✅ [PARTIAL CLOSE] Closed ${closeQty} ${symbol} (OrderID ${response.result?.orderId})`);
+    console.log(`✅ [PARTIAL CLOSE] SUCCESS! Closed ${closeQty} ${symbol} with ${closeSide} (OrderID ${response.result?.orderId})`);
     return true;
 
   } catch (err) {
-    console.error(`❌ [PARTIAL CLOSE] Failed: ${err.message}`);
+    console.error(`❌ [PARTIAL CLOSE] EXCEPTION: ${err.message}`);
+    console.error(`❌ [PARTIAL CLOSE] Stack:`, err.stack);
     return false;
   }
 }

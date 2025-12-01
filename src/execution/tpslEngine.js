@@ -300,9 +300,18 @@ async function handleQuickTpHit(tpslState, currentPrice, positionState) {
     // SHORT opened with 'Sell' → partialClosePosition converts to 'Buy'
     const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
+    console.log(`[TpslEngine] 📊 Quick TP Close details:`);
+    console.log(`   Symbol: ${tpslState.symbol}`);
+    console.log(`   Position side: ${tpslState.side}`);
+    console.log(`   Opening side to send: ${bybitSide}`);
+    console.log(`   Quantity to close: ${partialCloseQty}`);
+    console.log(`   bybitOrderExecutor available: ${!!bybitOrderExecutor.partialClosePosition}`);
+
     if (bybitOrderExecutor.partialClosePosition) {
-      console.log(`[TpslEngine] 📤 Submitting Quick TP close: Opening side ${bybitSide} ${partialCloseQty} ${tpslState.symbol}`);
+      console.log(`[TpslEngine] 🚀 CALLING partialClosePosition now...`);
       const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
+      console.log(`[TpslEngine] ✅ partialClosePosition returned: ${result}`);
+
       if (result) {
         console.log(`✅ [TpslEngine] Quick TP 50% closed successfully - profit secured! 🎉`);
       } else {
@@ -313,7 +322,7 @@ async function handleQuickTpHit(tpslState, currentPrice, positionState) {
     }
   } catch (err) {
     console.error(`❌ [TpslEngine] EXCEPTION during Quick TP close: ${err.message}`);
-    console.error(err.stack);
+    console.error(`❌ [TpslEngine] Exception stack:`, err.stack);
   }
 
   emitTpslEvent({
@@ -368,9 +377,17 @@ async function handleTp1Hit(tpslState, currentPrice, positionState) {
     // SHORT opened with 'Sell' → partialClosePosition converts to 'Buy'
     const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
+    console.log(`[TpslEngine] 📊 TP1 Close details:`);
+    console.log(`   Symbol: ${tpslState.symbol}`);
+    console.log(`   Position side: ${tpslState.side}`);
+    console.log(`   Opening side to send: ${bybitSide}`);
+    console.log(`   Quantity to close: ${partialCloseQty}`);
+    console.log(`   bybitOrderExecutor available: ${!!bybitOrderExecutor.partialClosePosition}`);
+
     if (bybitOrderExecutor.partialClosePosition) {
-      console.log(`[TpslEngine] 📤 Submitting close order: Opening side ${bybitSide} ${partialCloseQty} ${tpslState.symbol}`);
+      console.log(`[TpslEngine] 🚀 CALLING partialClosePosition now...`);
       const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, partialCloseQty);
+      console.log(`[TpslEngine] ✅ partialClosePosition returned: ${result}`);
 
       if (result) {
         console.log(`✅ [TpslEngine] TP1 partial close SUCCESSFUL for ${tpslState.symbol} - locked in ${partialCloseQty} qty profit`);
@@ -382,6 +399,7 @@ async function handleTp1Hit(tpslState, currentPrice, positionState) {
     }
   } catch (err) {
     console.error(`❌ [TpslEngine] EXCEPTION during TP1 partial close: ${err.message}`);
+    console.error(`❌ [TpslEngine] Exception stack:`, err.stack);
   }
 
   emitTpslEvent({
@@ -427,9 +445,17 @@ async function handleTp2Hit(tpslState, currentPrice, positionState) {
       // SHORT opened with 'Sell' → partialClosePosition converts to 'Buy'
       const bybitSide = tpslState.side === 'LONG' ? 'Buy' : 'Sell';
 
+      console.log(`[TpslEngine] 📊 TP2 Close details:`);
+      console.log(`   Symbol: ${tpslState.symbol}`);
+      console.log(`   Position side: ${tpslState.side}`);
+      console.log(`   Opening side to send: ${bybitSide}`);
+      console.log(`   Quantity to close: ${remainingCloseQty}`);
+      console.log(`   bybitOrderExecutor available: ${!!bybitOrderExecutor.partialClosePosition}`);
+
       if (bybitOrderExecutor.partialClosePosition) {
-        console.log(`[TpslEngine] 📤 Submitting TP2 close order: Opening side ${bybitSide} ${remainingCloseQty} ${tpslState.symbol}`);
+        console.log(`[TpslEngine] 🚀 CALLING partialClosePosition now...`);
         const result = await bybitOrderExecutor.partialClosePosition(tpslState.symbol, bybitSide, remainingCloseQty);
+        console.log(`[TpslEngine] ✅ partialClosePosition returned: ${result}`);
 
         if (result) {
           console.log(`✅ [TpslEngine] TP2 remaining position closed SUCCESSFULLY for ${tpslState.symbol}`);
@@ -441,6 +467,7 @@ async function handleTp2Hit(tpslState, currentPrice, positionState) {
       }
     } catch (err) {
       console.error(`❌ [TpslEngine] EXCEPTION during TP2 partial close: ${err.message}`);
+      console.error(`❌ [TpslEngine] Exception stack:`, err.stack);
     }
   }
 
