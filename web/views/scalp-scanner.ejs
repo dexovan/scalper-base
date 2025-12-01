@@ -1671,13 +1671,6 @@ async function loadCandleData(symbol) {
 
     console.log('📊 Candle data response:', data);
 
-    // Check if we have valid candle data
-    if (!data.candles || data.candles.length === 0) {
-      const errorMsg = data.error || data.message || 'Nema dostupnih candle podataka';
-      console.error('❌ API Error:', errorMsg);
-      throw new Error(errorMsg);
-    }
-
     if (!data.candles || data.candles.length === 0) {
       console.warn('⚠️ No candles found for', symbol);
       document.getElementById('modal-candles').innerHTML = `
