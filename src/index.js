@@ -467,6 +467,7 @@ async function startEngine() {
 
     console.log("💰 [RISK] Importing Risk Engine...");
     const riskEngine = await import('./risk/riskEngine.js');
+    const positionTracker = await import('./risk/positionTracker.js');
     console.log("💰 [RISK] Risk Engine imported");
 
     // Initialize with SIM mode (10K starting equity)
