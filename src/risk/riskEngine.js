@@ -272,8 +272,11 @@ export function onPriceTickForSymbol(symbol, price) {
   const regimeState = global.regimeEngine?.getRegimeState?.(symbol);
 
   // Debug logging for LTC
-  if (symbol === "LTCUSDT" && (positionLong || positionShort)) {
+  if (symbol === "LTCUSDT") {
     console.log(`[RiskEngine] 🔍 LTC Price Update: ${price}, positionLong=${positionLong ? 'YES' : 'NO'}, positionShort=${positionShort ? 'YES' : 'NO'}`);
+    if (!positionLong && !positionShort) {
+      console.log(`[RiskEngine] ⚠️  LTC: No positions in tracker! tpslState check needed.`);
+    }
   }
 
   if (positionLong && positionLong.isActive) {
